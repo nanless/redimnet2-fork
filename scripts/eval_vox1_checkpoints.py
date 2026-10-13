@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 """Evaluate ReDimNet2 checkpoints on VoxCeleb1 cleaned protocols (O/E/H).
 
-Matches the spirit of wespeaker_lite eval_epoch:
+Scoring matches wespeaker_lite's *fast* validation path, eval_epoch_simple:
 - extract L2-normalized embeddings for unique trial utterances
 - score with cosine similarity
 - report EER (%)
+
+It does NOT match wespeaker_lite's full eval_epoch (5 crops x 3 s with TTA and
+multi-crop averaging). That function is gated behind the `full_val` config key,
+which no recipe in this repo sets, so it never runs during training.
+
+Audio duration also differs from the training-time validation: this script reads
+each utterance in full (soundfile read, variable length, batch_size=1), whereas
+the fast path reads only the first 8 s (eval_dur=8.0, start_time=0.0) and wraps
+the tail around when the clip is shorter. Hence these numbers, not val_log.csv's
+`-eer-fl`, are the ones comparable to the official table.
 
 Usage (from repo root, with redimnet2 env):
   python scripts/eval_vox1_checkpoints.py \
