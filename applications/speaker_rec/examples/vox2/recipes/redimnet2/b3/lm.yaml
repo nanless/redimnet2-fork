@@ -48,8 +48,9 @@ do_lm: true
 enable_amp: true
 eval_dur: 8.0
 exp_dir: exp/redimnet2/b3/conv_att/lm
-gpus:
-- 0
+# gpus: removed - not read by the training code; the number of GPU processes
+# comes from launch.sh's second argument (and CUDA_VISIBLE_DEVICES). The old
+# `gpus: [0]` here never restricted training to one GPU.
 log_batch_interval: 25
 loss: CrossEntropyLoss
 loss_args: {}
