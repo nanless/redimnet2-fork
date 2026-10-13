@@ -1,0 +1,27 @@
+VoxCeleb 拷贝与转换状态（白话说明 + 机器可读字段）
+Date: 2026-10-13
+
+约定好的主目录（请以这里为准）：
+DEST: /root/group-shared/voiceprint/data/speech/speaker_verification/voxceleb
+downloads: /root/group-shared/voiceprint/data/speech/speaker_verification/voxceleb/downloads
+raw aac: /root/group-shared/voiceprint/data/speech/speaker_verification/voxceleb/raw/vox2_aac (dev/aac + aac)
+vox2 wav: /root/group-shared/voiceprint/data/speech/speaker_verification/voxceleb/vox2/wav
+vox1 wav: /root/group-shared/voiceprint/data/speech/speaker_verification/voxceleb/vox1/wav (symlink -> voxceleb1/wav)
+
+来源压缩包：/aispeech-cfs/voiceprint/data/voxceleb_hf/vox2/
+  rsync -> downloads/: vox2_aac_1.zip, vox2_aac_2.zip, vox2_test_aac.zip,
+                       vox2_meta.csv, vox2_dev_txt.zip, vox2_test_txt.zip
+  不要用：/aispeech-cfs/voiceprint/data/voxceleb/vox2/wav（句数不完整）
+
+句数核对（实测 / 期望）：
+vox2-dev wav: 1092009 / expected 1092009 => 检查通过
+vox2-test wav: 36237 / expected 36237 => 检查通过
+vox2 spk_dirs: 6112 (meta 6114; dev_spk=5994, test_spk=118)
+missing_dev_spk=0 missing_test_spk=2 ['id04170', 'id05348']
+  说明：缺的是测试集说话人目录名，不影响开发集句数。
+vox1: 1251 spk / 153516 wav（沿用已有 voxceleb1 全量）
+OVERALL_VOX2_OK=True   # 白话：VoxCeleb2 整体检查通过
+
+转换：ffmpeg -ar 16000 -ac 1 pcm_s16le; 1,128,246/1,128,246 converted, 0 failed
+本次未再从 HuggingFace 下载（用的是 CFS 上 voxceleb_hf 归档）
+MUSAN：本次跳过（当时已齐；后续恢复见 musan_restore_status.txt）

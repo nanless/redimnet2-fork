@@ -1,0 +1,7 @@
+CN-Celeb,CN-Celeb-protocol,VOICES,Vox1-B,checkpoint,delta-CN-Celeb,delta-VOICES,delta-Vox1-B,official-CN-Celeb,official-VOICES,official-Vox1-B
+4.776,enroll.map-avg,3.875,1.722,b3-vb2+vox2+cnc2_v0-lm.pt,-0.004,0.005,0.002,4.78,3.87,1.72
+5.294,enroll.map-avg,5.957,2.163,b3-vb2+vox2+cnc2_v0-ptn.pt,0.004,-0.003,0.003,5.29,5.96,2.16
+3.605,enroll.map-avg,3.029,1.153,b6-vb2+vox2+cnc2_v0-lm.pt,0.015,-0.001,0.003,3.59,3.03,1.15
+4.316,enroll.map-avg,4.302,1.507,b6-vb2+vox2+cnc2_v0-ptn.pt,-0.004,0.002,-0.003,4.32,4.3,1.51
+7.399,enroll.map-avg,2.59,0.954,b6-vb2+vox2_v0-lm.pt,-0.091,0.04,0.064,7.49,2.55,0.89
+8.51,enroll.map-avg,3.254,1.268,b6-vb2+vox2_v0-ptn.pt,0.01,0.004,-0.002,8.5,3.25,1.27

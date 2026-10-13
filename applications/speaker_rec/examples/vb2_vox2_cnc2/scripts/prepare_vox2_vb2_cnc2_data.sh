@@ -13,7 +13,8 @@ set -e
 #
 # This script does not download or convert the source corpora. Prepare
 # VoxCeleb2/VoxCeleb1/MUSAN with applications/speaker_rec/examples/vox2/scripts/prepare_data.py, acquire
-# VoxBlink2 and CN-Celeb2 separately, then use this script to build manifests.
+# VoxBlink2 and CN-Celeb2 separately, then use this script to build training
+# list files (sample lists: data.list / utt2spk).
 #
 # Steps:
 #   1. Validate the existing CN-Celeb2 FLAC and VoxBlink2 WAV trees
@@ -62,7 +63,7 @@ EOF
     exit 1
 fi
 
-# Sanity: VC2 datalist must already exist (this pipeline doesn't regen it).
+# Sanity: VC2 datalist must already exist (this script does not regenerate it).
 if [ ! -f "$VOX2_LIST/data.list" ] || [ ! -f "$VOX2_LIST/utt2spk" ]; then
     echo "ERROR: VC2 datalist missing at $VOX2_LIST (need data.list + utt2spk)"
     exit 1
@@ -80,7 +81,7 @@ fi
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "================================================================"
-echo "  VC2 + VB2 + CN-Celeb2 data preparation pipeline"
+echo "  VC2 + VB2 + CN-Celeb2 data preparation steps"
 echo "================================================================"
 echo "  VC2 datalist (reuse): $VOX2_LIST"
 echo "  VB2 audio root:       $VB2_ROOT"

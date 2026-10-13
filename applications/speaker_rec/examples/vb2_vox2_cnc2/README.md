@@ -1,9 +1,10 @@
 # VoxCeleb2 + VoxBlink2 + CN-Celeb2 training
 
-This example prepares the manifest mix used by the VoxCeleb2 + VoxBlink2 +
-CN-Celeb2 ReDimNet2 recipes in `applications/speaker_rec`. It is intentionally manifest-only:
-VoxCeleb2, VoxCeleb1-test, MUSAN, RIRS, VoxBlink2, and CN-Celeb2 acquisition or
-audio conversion must happen before these scripts are run.
+This example builds the mixed training list files (`data.list`, `utt2spk`) used
+by the VoxCeleb2 + VoxBlink2 + CN-Celeb2 ReDimNet2 recipes in
+`applications/speaker_rec`. These scripts only write those list files: VoxCeleb2,
+VoxCeleb1-test, MUSAN, RIRS, VoxBlink2, and CN-Celeb2 acquisition or audio
+conversion must happen before they are run.
 
 The data mix uses three stable namespaces:
 
@@ -11,20 +12,22 @@ The data mix uses three stable namespaces:
 - `B_`: VoxBlink2
 - `C_`: CN-Celeb2
 
-The PTN and LM manifests use the same namespace order so LM projection-head
-reassembly can map speakers from the PTN `spk2id.json`.
+The PTN and LM training list files use the same namespace order so LM
+projection-head reassembly can map speakers from the PTN `spk2id.json`.
 
 ## Prerequisites
 
-Run commands from the repository root. The manifest scripts need Python 3.10+
-and the Python packages used for JSONL/parquet audio metadata:
+Run commands from the repository root. The list-building scripts need Python
+3.10+ and the Python packages used for JSONL/parquet audio metadata:
 
 ```bash
 python -m pip install pandas pyarrow soundfile
 ```
 
-The VoxCeleb2 helper also needs `ffmpeg` and `lmdb`, as documented in
-`applications/speaker_rec/examples/vox2/README.md`.
+The VoxCeleb2 helper needs `ffmpeg`, as documented in
+`applications/speaker_rec/examples/vox2/README.md`. LMDB is not required:
+`prepare_data.py` skips the `lmdb` stage by default, and these recipes read
+MUSAN/RIRS from raw wav directories via `dataset_dir`.
 
 ## Acquire the datasets
 
@@ -48,17 +51,18 @@ For this example the important outputs are:
 |-- vox1-test/
 |   |-- veri_test2.txt
 |   `-- wav/
-|-- raw/
-|   `-- musan/
-|       |-- music/
-|       |-- noise/
-|       `-- speech/
-`-- rirs/
-    `-- lmdb/
+`-- raw/
+    |-- musan/
+    |   |-- music/
+    |   |-- noise/
+    |   `-- speech/
+    `-- rirs/
+        `-- simulated_rirs/
 ```
 
-The combined recipes use raw MUSAN category directories, not the MUSAN LMDB.
-RIRS is used through the LMDB produced by the VoxCeleb2 helper.
+The combined recipes use **raw** MUSAN and RIRS via `dataset_dir` (not LMDB):
+`/data/wespeaker_data/raw/musan/{music,noise,speech}` and
+`/data/wespeaker_data/raw/rirs/simulated_rirs`.
 
 ### CN-Celeb2
 
@@ -97,9 +101,9 @@ below speaker directories:
 This example does not include VoxBlink2 download, extraction, or conversion
 scripts.
 
-## Build PTN manifests
+## Build PTN training list files
 
-Generate per-source manifests and the joined PTN manifest:
+Generate per-source `data.list` / `utt2spk` and the joined PTN mix:
 
 ```bash
 applications/speaker_rec/examples/vb2_vox2_cnc2/scripts/prepare_vox2_vb2_cnc2_data.sh \
@@ -126,10 +130,10 @@ Outputs:
 
 Use `mix_join/data.list` and `mix_join/utt2spk` for PTN training.
 
-## Build LM manifests
+## Build LM training list files
 
-The LM stage filters short utterances from the same three source manifests and
-joins the survivors with the same `A_`, `B_`, `C_` prefixes:
+The LM stage filters short utterances from the same three source list
+directories and joins the survivors with the same `A_`, `B_`, `C_` prefixes:
 
 ```bash
 applications/speaker_rec/examples/vb2_vox2_cnc2/scripts/prepare_vox2_vb2_cnc2_lm_data.sh \
@@ -147,7 +151,7 @@ If your VoxBlink2 package includes a duration parquet, pass it explicitly:
   --vb2-durations /data/voxblink2/durations.parquet
 ```
 
-Otherwise durations are inferred into each manifest directory as
+Otherwise durations are inferred into each list directory as
 `durations.parquet`.
 
 Outputs:
@@ -199,7 +203,7 @@ dataset_args:
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      lmdb_file: /data/wespeaker_data/rirs/lmdb
+      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
       prob: 0.2
     - aug_type: OneOf
       prob: 0.25
@@ -269,7 +273,7 @@ dataset_args:
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      lmdb_file: /data/wespeaker_data/rirs/lmdb
+      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
       prob: 0.2
     - aug_type: OneOf
       prob: 0.25
@@ -310,4 +314,4 @@ set it manually in overlays.
   `<cnc2-root>/CN-Celeb2_flac/data/<speaker>/<utterance>.flac`.
 - Missing parquet support: install `pyarrow`.
 - Missing duration rows during LM filtering: regenerate the durations parquet
-  or remove the stale parquet and rerun the LM manifest script.
+  or remove the stale parquet and rerun the LM list-building script.

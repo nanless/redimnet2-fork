@@ -1,1 +1,42 @@
+# Python
 *__pycache__*
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+
+# 模型权重与训练输出（体积大，勿提交）
+*.pt
+*.pth
+*.ckpt
+*.onnx
+checkpoints/pretrained/
+exp/
+**/exp/
+
+# 评测运行日志（可本地重跑脚本再生）
+*.log
+checkpoints/eval_*_logs/
+checkpoints/**/nohup*.out
+checkpoints/**/master.log
+
+# 数据与键值库（本机路径，不进仓库）
+*.mdb
+*.lmdb
+/data/
+
+# 编辑器与系统杂项
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# 临时文件
+/tmp/
+*.tmp
+*.bak

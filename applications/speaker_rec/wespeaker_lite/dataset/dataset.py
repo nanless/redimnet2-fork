@@ -26,7 +26,7 @@ import torch.distributed as dist
 from torch.utils.data import IterableDataset
 
 from wespeaker_lite.utils.file_utils import read_lists
-from wespeaker_lite.dataset.lmdb_data import LmdbData, LmdbDataMap
+from wespeaker_lite.dataset.lmdb_data import DiskDataMap, LmdbData, LmdbDataMap
 import wespeaker_lite.dataset.processor as processor
 from wespeaker_lite.dataset.processor import read_audio_section
 
@@ -238,27 +238,41 @@ def Dataset(data_type,
             print(f"AUG_TYPE : augmentor_chain -> {repr(augmentor)}")
             dataset = Processor(dataset, processor.apply_augmentor,
                                 augmentor, resample_rate)
-            return dataset
-
-        # Legacy string format: both 'wespeaker_augs' and 'wespeaker_augs_v2'
-        # use the level-faithful chain (reverb -> noise@SNR -> random gain, no
-        # RMS norm) via add_reverb_noise_gain with categorized LMDB sources.
-        aug_type = aug_cfg['type']
-        print(f"AUG_TYPE : {aug_type}")
-        reverb_data = LmdbDataMap(aug_cfg['reverb_lmdb_file'])
-        noise_data = LmdbDataMap(aug_cfg['noise_lmdb_file'])
-        dataset = Processor(dataset, processor.add_reverb_noise_gain,
-                            reverb_data, noise_data, resample_rate,
-                            aug_cfg.get('aug_prob', 0.6),
-                            aug_cfg.get('preset', 'default'),
-                            gain_prob=aug_cfg.get('gain_prob', 1.0),
-                            gain_db_range=tuple(
-                                aug_cfg.get('gain_db_range', (-18.0, 6.0))),
-                            speech_rms_mode=aug_cfg.get(
-                                'speech_rms_mode', 'full'),
-                            peak_protect=aug_cfg.get('peak_protect', True),
-                            noise_categories=aug_cfg.get(
-                                'noise_categories', None))
+        else:
+            # Legacy string format: both 'wespeaker_augs' and 'wespeaker_augs_v2'
+            # use the level-faithful chain (reverb -> noise@SNR -> random gain, no
+            # RMS norm) via add_reverb_noise_gain. Prefer raw wav dirs; LMDB keys
+            # remain for backward compatibility.
+            aug_type = aug_cfg['type']
+            print(f"AUG_TYPE : {aug_type}")
+            if aug_cfg.get('reverb_dataset_dir'):
+                reverb_data = DiskDataMap(
+                    aug_cfg['reverb_dataset_dir'], categorized=False)
+            elif aug_cfg.get('reverb_lmdb_file'):
+                reverb_data = LmdbDataMap(aug_cfg['reverb_lmdb_file'])
+            else:
+                raise ValueError(
+                    "aug_setup requires reverb_dataset_dir or reverb_lmdb_file")
+            if aug_cfg.get('noise_dataset_dir'):
+                noise_data = DiskDataMap(
+                    aug_cfg['noise_dataset_dir'], categorized=True)
+            elif aug_cfg.get('noise_lmdb_file'):
+                noise_data = LmdbDataMap(aug_cfg['noise_lmdb_file'])
+            else:
+                raise ValueError(
+                    "aug_setup requires noise_dataset_dir or noise_lmdb_file")
+            dataset = Processor(dataset, processor.add_reverb_noise_gain,
+                                reverb_data, noise_data, resample_rate,
+                                aug_cfg.get('aug_prob', 0.6),
+                                aug_cfg.get('preset', 'default'),
+                                gain_prob=aug_cfg.get('gain_prob', 1.0),
+                                gain_db_range=tuple(
+                                    aug_cfg.get('gain_db_range', (-18.0, 6.0))),
+                                speech_rms_mode=aug_cfg.get(
+                                    'speech_rms_mode', 'full'),
+                                peak_protect=aug_cfg.get('peak_protect', True),
+                                noise_categories=aug_cfg.get(
+                                    'noise_categories', None))
 
     return dataset
 

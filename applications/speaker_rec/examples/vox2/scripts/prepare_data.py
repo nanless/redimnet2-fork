@@ -52,7 +52,9 @@ DEFAULT_VOX1_TRIALS = 37_611
 DEFAULT_MUSAN_FILES = 2_016
 DEFAULT_RIRS_FILES = 60_000  # simulated_rirs only, matching WeSpeaker
 MIN_WAV_BYTES = 44 + 1_000 * 2
-STAGE_ORDER = ("download", "extract", "convert", "manifests", "lmdb")
+# LMDB is optional: training recipes prefer raw MUSAN/RIRS directories.
+STAGE_ORDER = ("download", "extract", "convert", "lists", "lmdb")
+DEFAULT_STAGES = ("download", "extract", "convert", "lists")
 
 _CONVERT_SOURCE_ROOT = ""
 _CONVERT_OUTPUT_ROOT = ""
@@ -321,6 +323,9 @@ def run_extract(args: argparse.Namespace, data_root: Path, downloads: Path) -> N
         )
         extract_archive(archive, raw_root)
         maybe_delete_archive(archive, downloads, args.delete_archives)
+
+    # Recipes use raw/rirs/simulated_rirs; archives extract to RIRS_NOISES/.
+    ensure_rirs_recipe_layout(data_root, args.rirs_source)
 
     prepare_vox1_test(args, data_root, downloads)
 
@@ -760,7 +765,7 @@ def atomic_replace(temp_paths: Sequence[tuple[Path, Path]]) -> None:
         temporary.replace(final)
 
 
-def write_vox2_manifests(
+def write_vox2_lists(
     wav_root: Path,
     output_dir: Path,
     expected_count: int,
@@ -807,13 +812,15 @@ def write_vox2_manifests(
                 if speaker_keys:
                     spk_stream.write(f"{speaker} {' '.join(speaker_keys)}\n")
                     speakers += 1
-        validate_count("VoxCeleb2 manifest", count, expected_count, allow_incomplete)
+        validate_count(
+            "VoxCeleb2 sample lists", count, expected_count, allow_incomplete
+        )
         atomic_replace([(temps[name], finals[name]) for name in finals])
     except Exception:
         for path in temps.values():
             path.unlink(missing_ok=True)
         raise
-    log(f"[manifests] VoxCeleb2: {count:,} utterances, {speakers:,} speakers")
+    log(f"[lists] VoxCeleb2: {count:,} utterances, {speakers:,} speakers")
     return count
 
 
@@ -829,6 +836,53 @@ def resolve_augmentation_root(
     if not root.is_dir():
         raise FileNotFoundError(f"Augmentation source directory not found: {root}")
     return root
+
+
+def ensure_rirs_recipe_layout(
+    data_root: Path,
+    rirs_source: str | None = None,
+) -> Path:
+    """Ensure ``raw/rirs/simulated_rirs`` for recipe ``dataset_dir`` paths.
+
+    OpenSLR extracts to ``raw/RIRS_NOISES/simulated_rirs``, while training
+    configs expect ``raw/rirs/simulated_rirs``. Prefer a relative symlink.
+    """
+    raw_root = data_root / "raw"
+    source_root = resolve_augmentation_root(
+        rirs_source,
+        raw_root / "RIRS_NOISES",
+        "simulated_rirs",
+    )
+    source_resolved = source_root.resolve()
+    recipe_parent = raw_root / "rirs"
+    recipe_link = recipe_parent / "simulated_rirs"
+
+    if recipe_link.exists() or recipe_link.is_symlink():
+        if recipe_link.resolve() != source_resolved:
+            raise RuntimeError(
+                f"Existing {recipe_link} points to {recipe_link.resolve()}, "
+                f"not requested source {source_resolved}"
+            )
+        log(f"[rirs] recipe path ready: {recipe_link} -> {source_resolved}")
+        return recipe_link
+
+    if source_resolved == recipe_link:
+        log(f"[rirs] recipe path ready: {recipe_link}")
+        return recipe_link
+
+    recipe_parent.mkdir(parents=True, exist_ok=True)
+    try:
+        link_target: str | Path = os.path.relpath(
+            source_resolved, start=recipe_parent.resolve()
+        )
+    except ValueError:
+        link_target = source_resolved
+    recipe_link.symlink_to(link_target, target_is_directory=True)
+    log(
+        f"[rirs] linked {recipe_link} -> {link_target} "
+        f"(extract: {source_resolved})"
+    )
+    return recipe_link
 
 
 def write_audio_scp(
@@ -854,11 +908,11 @@ def write_audio_scp(
                 )
             stream.write(f"{key} {absolute}\n")
     temporary.replace(output)
-    log(f"[manifests] {label}: {len(files):,} files -> {output}")
+    log(f"[lists] {label}: {len(files):,} files -> {output}")
     return len(files)
 
 
-def run_manifests(
+def run_lists(
     args: argparse.Namespace,
     data_root: Path,
     wav_root: Path | None,
@@ -870,7 +924,7 @@ def run_manifests(
         args.allow_incomplete,
     )
     wav_root = wav_root or resolve_vox2_wav_root(args, data_root)
-    write_vox2_manifests(
+    write_vox2_lists(
         wav_root,
         data_root / "vox2_dev",
         args.expected_vox2_files,
@@ -881,11 +935,7 @@ def run_manifests(
     musan_root = resolve_augmentation_root(
         args.musan_source, raw_root / "musan", "musan"
     )
-    rirs_root = resolve_augmentation_root(
-        args.rirs_source,
-        raw_root / "RIRS_NOISES",
-        "simulated_rirs",
-    )
+    rirs_root = ensure_rirs_recipe_layout(data_root, args.rirs_source)
     write_audio_scp(
         musan_root,
         data_root / "musan" / "wav.scp",
@@ -999,6 +1049,11 @@ def make_lmdb(
 
 
 def run_lmdb(args: argparse.Namespace, data_root: Path) -> None:
+    log(
+        "[lmdb] Building optional LMDB packs. Current training recipes read "
+        "raw audio via dataset_dir under <data-root>/raw/{musan,rirs}/; "
+        "LMDB is only needed for older noise_lmdb_file / reverb_lmdb_file configs."
+    )
     make_lmdb(
         data_root / "musan" / "wav.scp",
         data_root / "musan" / "lmdb",
@@ -1022,8 +1077,13 @@ def parse_args() -> argparse.Namespace:
         "--stages",
         nargs="+",
         choices=("all",) + STAGE_ORDER,
-        default=("all",),
-        help="Ordered stages to execute (default: all)",
+        default=DEFAULT_STAGES,
+        help=(
+            "Stages to run. Default and 'all' are the same: "
+            f"{' '.join(DEFAULT_STAGES)} (no lmdb). "
+            "The 'lists' stage writes data.list / utt2spk (and related tables). "
+            "To build LMDB, pass --stages lmdb explicitly."
+        ),
     )
     parser.add_argument(
         "--workers",
@@ -1124,7 +1184,9 @@ def main() -> None:
     data_root = Path(args.data_root).expanduser().resolve()
     downloads = data_root / "downloads"
     data_root.mkdir(parents=True, exist_ok=True)
-    stages = STAGE_ORDER if "all" in args.stages else tuple(args.stages)
+    # "all" matches the default data preparation steps (no LMDB).
+    # Pass --stages lmdb explicitly when needed.
+    stages = DEFAULT_STAGES if "all" in args.stages else tuple(args.stages)
 
     wav_root: Path | None = None
     for stage in STAGE_ORDER:
@@ -1137,17 +1199,31 @@ def main() -> None:
             run_extract(args, data_root, downloads)
         elif stage == "convert":
             wav_root = run_convert(args, data_root)
-        elif stage == "manifests":
-            run_manifests(args, data_root, wav_root)
+        elif stage == "lists":
+            run_lists(args, data_root, wav_root)
         elif stage == "lmdb":
             run_lmdb(args, data_root)
 
     log("\nSelected stages complete. Expected training paths:")
     log(f"  train_data: {data_root / 'vox2_dev' / 'data.list'}")
     log(f"  train_label: {data_root / 'vox2_dev' / 'utt2spk'}")
-    log(f"  noise_lmdb_file: {data_root / 'musan' / 'lmdb'}")
-    log(f"  reverb_lmdb_file: {data_root / 'rirs' / 'lmdb'}")
+    log(f"  musan dataset_dir: {data_root / 'raw' / 'musan'}/{{music,noise,speech}}")
+    log(
+        f"  rirs extract: {data_root / 'raw' / 'RIRS_NOISES' / 'simulated_rirs'}"
+    )
+    log(
+        f"  rirs dataset_dir (recipe): "
+        f"{data_root / 'raw' / 'rirs' / 'simulated_rirs'}"
+    )
     log(f"  validation.vox1: {data_root / 'vox1-test'}")
+    if "lmdb" in stages:
+        log(f"  (optional) noise_lmdb_file: {data_root / 'musan' / 'lmdb'}")
+        log(f"  (optional) reverb_lmdb_file: {data_root / 'rirs' / 'lmdb'}")
+    else:
+        log(
+            "  LMDB skipped (default / --stages all). To build optional LMDBs: "
+            "--stages lmdb"
+        )
 
 
 if __name__ == "__main__":

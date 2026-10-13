@@ -1,0 +1,60 @@
+MUSAN 恢复状态 — 2026-10-13（官方 OpenSLR）
+
+结果：完整恢复（检查通过）
+RESULT: COMPLETE
+
+== 下载 ==
+URL:      https://www.openslr.org/resources/17/musan.tar.gz
+Proxy:    http://127.0.0.1:17897
+Archive:  /root/group-shared/voiceprint/data/noise/musan/downloads/musan.tar.gz
+Size:     11086114085 bytes (~11G)
+MD5:      0c472d4fc0c5141eca47ad1ffeb2a7df
+MD5 check: 检查通过 (OK，与 OpenSLR 公布校验和一致)
+Tool:     aria2c -x16 -s16 -c（在此前不完整下载上续传）
+
+== 解压 / 合并 ==
+只从压缩包解出 musan/speech，再合并进已有目录。
+没有覆盖 music/ 或 noise/。没有动 segments_10s/。
+合并后删掉了误产生的嵌套 speech/speech/ 重复目录。
+
+== 最终目录（绝对路径）==
+原始树根：
+  /root/group-shared/voiceprint/data/noise/musan/musan/
+    music/   660 wav
+    noise/   930 wav
+    speech/  426 wav   (librivox/ + us-gov/ + README)
+  TOTAL:   2016 wav   (期望：music 660 + noise 930 + speech 426)
+
+保留未动：
+  /root/group-shared/voiceprint/data/noise/musan/segments_10s/
+
+压缩包仍在：
+  /root/group-shared/voiceprint/data/noise/musan/downloads/musan.tar.gz
+
+此前旁路副本（仍在，不必依赖）：
+  /root/group-shared/voiceprint/data/noise/unused/musan/speech/  (426 wav)
+
+== 配方路径对应 ==
+混合线 yaml（vb2_vox2_cnc2）期望读：
+  /data/wespeaker_data/raw/musan/{music,noise,speech}
+
+本机实际音频在：
+  /root/group-shared/voiceprint/data/noise/musan/musan/{music,noise,speech}
+
+说明：写本记录时 /data/wespeaker_data/raw/musan 还不存在。
+若要按 yaml 原路径用，可：
+  mkdir -p /data/wespeaker_data/raw
+  ln -s /root/group-shared/voiceprint/data/noise/musan/musan /data/wespeaker_data/raw/musan
+（或改 yaml 里的 dataset_dir）。当时未建软链接（可选；/data 当时不在）。
+
+旧配方若仍写 LMDB，会期望：
+  /data/wespeaker_data/musan/lmdb
+  （需单独跑 prepare_data 的 lmdb 阶段；本仓库当前 ReDimNet2 配方已改为直接读文件夹，不必再做）
+
+== 核对时用过的命令 ==
+  md5sum downloads/musan.tar.gz
+  find musan/{music,noise,speech} -type f \( -name '*.wav' -o -name '*.sph' \) | wc -l
+
+wespeaker 路径（2026-10-13 后续）：
+  /data/wespeaker_data -> /root/group-shared/voiceprint/data/wespeaker_data
+  raw/musan -> .../noise/musan/musan  (music/noise/speech = 660/930/426)

@@ -5,12 +5,13 @@
 #   * model + spec/fbank + augmentation   <- ptn_ha.yaml (the cnc2 b6 model)
 #   * LM schedule (1 epoch, fixed margin 0.3, SGD + ExponentialDecrease,
 #     5 s crops / batch 48, do_lm)         <- exp/vox2_vb2_mix/b6_gnorm_50ep/lm_v2
-#   * train data = the LM datalist mix_join_lm (>=5 s utts, verbatim A_/B_/C_ join)
+#   * train data = mix_join_lm data.list / utt2spk (>=5 s utts, A_/B_/C_ join)
 #
 # Inits from the PTN checkpoint; the projection head is reassembled from the PTN
 # spk2id.json — all 115,361 LM speakers are a strict subset of PTN's 119,273, so
 # the mapping is 1:1 (no random centroids). num_class and epoch_iter are
 # auto-computed by train.py from the data — do NOT set them here.
+# Augmentation reads MUSAN/RIRS from raw wav dirs via dataset_dir (no LMDB).
 #
 # Launch (8 GPUs):
 #   ./applications/speaker_rec/launch.sh applications/speaker_rec/examples/vb2_vox2_cnc2/recipes/redimnet2/b6/lm.yaml 8
@@ -85,7 +86,8 @@ dataset_args:
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      lmdb_file: /data/wespeaker_data/rirs/lmdb
+      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      file_pattern: '**/*.wav'
       prob: 0.2
     - aug_type: OneOf
       prob: 0.25

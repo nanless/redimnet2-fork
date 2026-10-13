@@ -9,17 +9,34 @@ dataloader_args:
   prefetch_factor: 2
 dataset_args:
   aug_setup:
-    aug_prob: 0.6
-    noise_lmdb_file: /data/wespeaker_data/musan/lmdb
-    preset: default
-    reverb_lmdb_file: /data/wespeaker_data/rirs/lmdb
-    type: wespeaker_augs
+    aug_type: Sequential
+    prob: 0.6
+    augmentors:
+    - aug_type: OneOf
+      prob: 0.8
+      augmentors:
+      - aug_type: CustomNoise
+        dataset_dir: /data/wespeaker_data/raw/musan/music
+        snr: [2, 12]
+        prob: 1.0
+      - aug_type: CustomNoise
+        dataset_dir: /data/wespeaker_data/raw/musan/noise
+        snr: [0, 12]
+        prob: 1.0
+      - aug_type: CustomNoise
+        dataset_dir: /data/wespeaker_data/raw/musan/speech
+        snr: [7, 18]
+        babble: true
+        prob: 1.0
+    - aug_type: Reverb
+      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      file_pattern: '**/*.wav'
+      prob: 0.2
   fbank_args:
     dither: 1.0
     frame_length: 25
     frame_shift: 10
     num_mel_bins: 80
-  lmdb_to_ram: true
   num_frms: 200
   resample_rate: 16000
   sample_num_per_epoch: 0

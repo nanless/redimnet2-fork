@@ -124,7 +124,7 @@ def main():
     ap.add_argument('--drop-missing', action='store_true', default=True,
                     help='Drop utts with no duration entry (default: on)')
     ap.add_argument('--seed', type=int, default=42,
-                    help='Unused; accepted for pipeline symmetry')
+                    help='Unused; accepted for CLI symmetry with sibling scripts')
     args = ap.parse_args()
 
     data_list_path = os.path.join(args.in_dir, 'data.list')

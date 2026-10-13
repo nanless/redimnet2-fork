@@ -211,7 +211,8 @@ def train(config='conf/config.yaml', **kwargs):
     # per node to /dev/shm so every noise/RIR fetch is a shared RAM read. Opt-in
     # via dataset_args.lmdb_to_ram. Uses a deep copy so the saved config.yaml
     # keeps the original paths (clean resume); falls back to the original path
-    # on any failure. Only the legacy reverb/noise_lmdb_file keys are staged.
+    # on any failure. Only legacy reverb/noise_lmdb_file keys that point at a
+    # real LMDB env (data.mdb present) are staged; raw wav dirs are skipped.
     ds_args_runtime = configs['dataset_args']
     if configs['dataset_args'].get('lmdb_to_ram', False):
         ds_args_runtime = copy.deepcopy(configs['dataset_args'])
@@ -219,8 +220,16 @@ def train(config='conf/config.yaml', **kwargs):
         _pending = {}
         if isinstance(aug_rt, dict):
             for _k in ('reverb_lmdb_file', 'noise_lmdb_file'):
-                if aug_rt.get(_k):
-                    _pending[_k] = stage_lmdb_to_ram(aug_rt[_k], gpu, logger)
+                if not aug_rt.get(_k):
+                    continue
+                _src = Path(aug_rt[_k])
+                if not (_src / 'data.mdb').is_file():
+                    if rank == 0:
+                        logger.warning(
+                            f"[lmdb_to_ram] skip {_k}: {_src} is not an "
+                            f"LMDB dir (no data.mdb); using path as-is")
+                    continue
+                _pending[_k] = stage_lmdb_to_ram(aug_rt[_k], gpu, logger)
         dist.barrier(device_ids=[gpu])  # wait for local-rank-0 copies
         for _k, (_tgt, _marker) in _pending.items():
             if _marker.is_file():

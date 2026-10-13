@@ -40,7 +40,7 @@ CNC2_LIST=""        # dir with CN-Celeb2 data.list + utt2spk (PTN's cnc2:C sourc
 OUTPUT_ROOT=""
 
 # Durations parquets. Set --vb2-durations if your VoxBlink2 package includes
-# one; otherwise all sources are inferred into the manifest directories.
+# one; otherwise all sources are inferred into the sample-list directories.
 # "AUTO" => derive + infer as <listdir>/durations.parquet.
 VB2_DURATIONS="AUTO"
 VOX2_DURATIONS="AUTO"

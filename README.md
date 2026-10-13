@@ -95,7 +95,7 @@ Pretrained weights are available as GitHub Release assets.
 We are actively working on improving model stability and expanding the release. Planned updates:
 
 - [x] Release a new version of ReDimNet2 with improved normalization unified for both 1D and 2D feature map representations (`agg_gnorm` + `dual_agg` options, first used by the `vb2+vox2_v0` B6 release)
-- [x] Release the training pipeline (VoxCeleb2)
+- [x] Release the training recipes (VoxCeleb2)
 - [x] Release VoxBlink2 + VoxCeleb2 pretrained model (B6)
 - [x] Release VoxBlink2 + VoxCeleb2 + CN-Celeb2 pretrained models (B3, B6)
 - [x] Release training recipes for VoxBlink2 + VoxCeleb2 + CN-Celeb2 training

@@ -1,15 +1,15 @@
 # Speaker Recognition Training
 
-This application contains the lightweight [wespeaker](https://github.com/wenet-e2e/wespeaker)-forked training pipeline used for
-ReDimNet2 speaker-recognition experiments.
+This application contains the lightweight [wespeaker](https://github.com/wenet-e2e/wespeaker)-forked
+training stack used for ReDimNet2 speaker-recognition experiments.
 
 ## Contents
 
 - `wespeaker_lite/`: training code, datasets, augmentations, schedulers, and
   checkpoint utilities.
-- `examples/vox2/`: VoxCeleb2-only data preparation and b3/b6 recipes.
-- `examples/vb2_vox2_cnc2/`: VoxCeleb2 + VoxBlink2 + CN-Celeb2 manifest
-  preparation and b3/b6 recipes.
+- `examples/vox2/`: VoxCeleb2-only data preparation and b0–b6 recipes.
+- `examples/vb2_vox2_cnc2/`: VoxCeleb2 + VoxBlink2 + CN-Celeb2 training list
+  files (`data.list`, `utt2spk`) and b3/b6 recipes.
 - `launch.md`: torchrun launch details and environment setup.
 - `pyproject.toml`: Poetry environment with the Python dependencies needed by
   `wespeaker_lite` and the included data-preparation scripts.
@@ -44,7 +44,9 @@ augmentation:
 
 - `ffmpeg` for VoxCeleb audio conversion and codec augmentation.
 - `libsndfile` for the Python `soundfile` package.
-- Enough `/dev/shm` capacity if `dataset_args.lmdb_to_ram: true` is enabled.
+- Extra `/dev/shm` only if you enable the legacy option
+  `dataset_args.lmdb_to_ram: true` (current ReDimNet2 recipes do **not** use
+  LMDB; they read MUSAN/RIRS from raw wav directories via `dataset_dir`).
 
 ## Typical Workflow
 
@@ -61,5 +63,5 @@ poetry run bash -lc 'cd ../.. && ./applications/speaker_rec/launch.sh \
 
 For the combined VoxCeleb2 + VoxBlink2 + CN-Celeb2 recipes, start with
 `examples/vb2_vox2_cnc2/README.md`. That example uses `pyarrow` and
-`soundfile` for duration manifests in addition to the core training
-dependencies.
+`soundfile` to build duration tables when filtering short utterances for the
+large-margin stage, in addition to the core training dependencies.

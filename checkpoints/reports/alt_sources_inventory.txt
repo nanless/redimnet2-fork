@@ -1,0 +1,140 @@
+备用 VoxCeleb / 训练资源盘点（白话说明）
+Date: 2026-10-13
+Scope: 浅层检查（带超时）；不含 VoxBlink2。
+Note: 体积来自 find -printf '%s' / ls -lah；未做全量校验和。
+
+================================================================================
+拷贝完整 Vox2 压缩包时，请优先用下面路径
+================================================================================
+首选（完整，优先用已拼好的 zip）：
+  /aispeech-cfs/voiceprint/data/voxceleb_hf/vox2/
+
+  已拼好的 AAC（可直接解压；分卷合计 ≈ zip 合计，约 72.2 GiB / 77.48e9 字节）：
+    vox2_aac_1.zip   49994268966  (~46.6G)
+    vox2_aac_2.zip   27483014340  (~25.6G)
+    TOTAL              77477283306
+
+  等价分卷 AAC（cat 后等于上面；合计 77477283208，比 zip 少约 98 字节）：
+    vox2_dev_aac_partaa .. partag   (7 × 10737418240)
+    vox2_dev_aac_partah             2315355528
+
+  测试集 AAC：
+    vox2_test_aac.zip  2594018146  (~2.4G)
+
+  另有 MP4 视频包（说话人验证转 wav 一般不需要）：
+    vox2_mp4_1.zip .. vox2_mp4_6.zip  (~266G joined + parts)
+    vox2_test_mp4.zip, vox2_dev_txt.zip, vox2_meta.csv
+
+拷贝建议：
+  拷贝（或硬链 / rsync）到训练暂存区：
+    vox2_aac_1.zip
+    vox2_aac_2.zip
+    vox2_test_aac.zip
+  可选再加 vox2_dev_txt.zip + vox2_meta.csv。
+  优先用两个已拼好的 aac zip，不必再 cat 分卷。
+  不要把 /aispeech-cfs/voiceprint/data/voxceleb/vox2/wav 当作主数据来源——
+  那里解压出来的树不完整（开发集句数比 WeSpeaker 期望少约 2.4%；见 05-训练数据检查.md）。
+
+================================================================================
+1) /aispeech-cfs/voiceprint/data/voxceleb_hf/
+================================================================================
+树：.cache, README.md, .gitattributes, vox1/, vox2/
+du: vox1 ~62G ; vox2 ~654G（含 AAC + MP4 + 分卷 + 已拼好的包）
+
+vox1/（wav 归档看起来完整；分卷合计 == 已拼好的 zip）：
+  vox1_dev_wav.zip           32596624183  (~30.4G)  **已拼好，可用**
+  vox1_dev_wav_partaa..ad    10G+10G+10G+367M（合计与 zip 一致）
+  vox1_test_wav.zip          1072793438   (~1.0G)   **可用**
+  vox1_dev_txt.zip, vox1_test_txt.zip, vox1_meta.csv
+
+vox2/：见上文「拷贝完整 Vox2」——**完整 Vox2 AAC/MP4 归档在此**。
+
+README（与 HF 数据集说明相同）：ProgramComputer/voxceleb 镜像；写明
+  cat vox1_dev* > vox1_dev_wav.zip
+  cat vox2_dev_aac* > vox2_aac.zip
+  cat vox2_dev_mp4* > vox2_mp4.zip
+以及 vox2_aac_1/2、vox2_mp4_1..6 是方便用的已拼好 zip。
+
+================================================================================
+2) /aispeech-cfs/voiceprint/data/voxceleb/  (README.md + pull.log)
+================================================================================
+意图：HuggingFace 数据集克隆（ProgramComputer/voxceleb），用 Git LFS
+拉 Vox1/Vox2 归档，并在 vox1/wav、vox2/wav 下解出 wav。
+
+README.md：与 voxceleb_hf 相同的分卷/拼接说明（cc-by-4.0）。
+
+pull.log（LFS 拉取检查未通过 — 对象不完整/损坏）：
+  - git index 在 vox1/vox1_dev_wav.zip 上报错
+  - 写入约 22.5G 后 LFS OID 不匹配：
+      expected 874fa676da2a81ea087a2c53fe0bf2cdf6b21bfc33160291453e9bc6beff316b
+      got      d057b3c8cbafa20b13a0e1a6e6d2ebea63000dedf829096f5ab16de2f03785b7
+  - 从 huggingface.co/.../voxceleb.git/info/lfs 拉取失败
+
+该树下磁盘内容（maxdepth 3）：多为元数据 + git；
+  vox1/、vox2/ 有解出的 wav/ + txt/ + meta.csv（此处无 zip 归档）。
+  说话人目录数（wav/ 下一层）：vox1=1252, vox2=6113
+  （含父目录本身；与约 1251 / 6112 个说话人一致）。
+  此前核对：vox2 开发集句数偏少——不要当作完整集。
+
+================================================================================
+3) /root/group-shared/.../voxceleb1/downloads/
+================================================================================
+残留归档约 62G：
+  vox1_dev_wav.zip           32596624183  (~31G)  大小与 CFS HF 一致
+  vox1_dev_wav_partaa..ad    与 CFS HF 分卷大小相同
+  vox1_test_wav.zip          1072793438   (~1.0G)
+
+可作为本地 Vox1 wav 归档备份 / 重新解压来源。
+此 downloads/ 下没有 Vox2 归档。
+
+================================================================================
+4) maxdepth-3 搜索：musan.tar.gz | vox2*.zip | vox2*aac*
+================================================================================
+Under /aispeech-cfs/voiceprint/data (maxdepth 3)：
+  命中：全部 vox2*.zip / vox2*aac* 在 voxceleb_hf/vox2/（见上）
+  未命中：musan.tar.gz（该根下 maxdepth 3 无；也无 *musan* 目录）
+
+Under /root/group-shared/voiceprint/data (maxdepth 3)：
+  未命中：musan.tar.gz, vox2*.zip, vox2*aac*
+  （musan/rirs 在更深层 data/noise/...）
+
+更深一点（噪声树，仍浅扫）：
+  MUSAN 压缩包（当时不完整 — 勿用；后续已从 OpenSLR 恢复，见 musan_restore_status.txt）：
+    /root/group-shared/voiceprint/data/noise/musan/downloads/musan.tar.gz
+      当时约 11G，且仍有 musan.tar.gz.aria2
+      tar -tzf 失败："invalid compressed data--format violated"
+  已解压的 MUSAN（盘点当时）：
+    .../noise/musan/musan/{music,noise}   # 当时缺 speech/
+    .../noise/unused/musan/speech/        # **426 wav**（完整 speech，曾挪到旁路）
+  RIRS（在，此前 05 报告已核对完整）：
+    .../noise/rirs_noises/rirs_noises.zip  (~1.2G / 1311166223)
+
+================================================================================
+其他缺失 / 不完整项（不含 VoxBlink2）
+================================================================================
+本扫 + 此前 05 核对（注意：部分项在 2026-10-13 晚间已补齐，以 05 与 musan_restore 为准）：
+  - CFS voxceleb/ 上解出的 Vox2 wav：句数不完整
+  - MUSAN speech：盘点当时主树缺；完整 426 在 unused/；
+    当时新下的 musan.tar.gz 仍不完整/损坏（.aria2）——之后已用 OpenSLR 恢复
+  - /data/wespeaker_data 下的样本清单与旧 LMDB：本文件未查
+    （路径当时曾报不存在；晚间复检见 05-训练数据检查.md）
+  - CN-Celeb / RIRS：本文件未重核；05 报告写为检查通过
+  - group-shared maxdepth 3 下未发现完整 Vox2 归档
+
+================================================================================
+汇总 — 可用的备用归档 / 路径
+================================================================================
+可用 — 可拷贝：
+  Vox2 AAC（完整）：/aispeech-cfs/voiceprint/data/voxceleb_hf/vox2/vox2_aac_{1,2}.zip
+                    + vox2_test_aac.zip
+  Vox1 WAV（完整）：/aispeech-cfs/voiceprint/data/voxceleb_hf/vox1/vox1_{dev,test}_wav.zip
+                    或 group-shared voxceleb1/downloads/（同样大小）
+  MUSAN speech（旁路，非压缩包）：曾可把
+    /root/group-shared/voiceprint/data/noise/unused/musan/speech
+    → .../noise/musan/musan/speech  (426 wav)
+    （正式恢复见 musan_restore_status.txt）
+
+不要依赖：
+  /aispeech-cfs/voiceprint/data/voxceleb/          # LFS 拉取失败；解压不完整
+  .../musan/downloads/musan.tar.gz                # 盘点当时 aria2 不完整（后已重下）
+  group-shared maxdepth-3                         # 那里没有 vox2 归档

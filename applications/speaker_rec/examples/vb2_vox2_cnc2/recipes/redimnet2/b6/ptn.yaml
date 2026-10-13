@@ -1,10 +1,10 @@
 # b6 PT v3: 100ep on vox2 + vb2 + cnc2 mix — HARD AUGS variant of ptn.yaml.
 #
-# Differs from ptn.yaml only in the augmentation pipeline:
+# Differs from ptn.yaml only in the augmentation setup:
 #   * Sequential aug tree (from dataset.augs) replaces the legacy
 #     wespeaker_augs preset path.
 #   * MUSAN noise/music/babble OneOf at the standard hard_augs.md SNRs,
-#     plus RIR reverb.
+#     plus RIR reverb — all read from raw wav dirs via dataset_dir (no LMDB).
 #   * LowPassAug as a OneOf with two cutoffs:
 #       - cutoff_ratio=0.5  → mimics 8 kHz bandlimited (telephony) audio.
 #       - cutoff_ratio=0.6  → softer band-limit, used as a spec-aug
@@ -12,7 +12,8 @@
 #   * CodecAug at moderate prob (mp3 / opus / vorbis / g722 / g711);
 #     verified to run in the palabra_universe_2 conda env.
 #
-# Schedule, model, optimizer, data are unchanged from ptn.yaml.
+# Schedule, model, optimizer, and training list paths are unchanged from
+# ptn.yaml (mix_join data.list / utt2spk).
 
 compile_backbone:
   mode: default
@@ -47,7 +48,8 @@ dataset_args:
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      lmdb_file: /data/wespeaker_data/rirs/lmdb
+      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      file_pattern: '**/*.wav'
       prob: 0.2
     - aug_type: OneOf
       prob: 0.25

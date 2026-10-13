@@ -13,6 +13,8 @@
 # the target PT spk2id.json. The 115,361 LM speakers are a strict subset of the
 # target PT run's 119,273 speakers, so the mapping is 1:1. num_class and
 # epoch_iter are auto-computed by train.py from the data; do not set them here.
+# Augmentation reads MUSAN/RIRS from raw wav dirs via dataset_dir (no LMDB).
+# Training list files: mix_join_lm/data.list and utt2spk.
 #
 # Launch (8 GPUs):
 #   ./applications/speaker_rec/launch.sh applications/speaker_rec/examples/vb2_vox2_cnc2/recipes/redimnet2/b3/lm.yaml 8
@@ -84,7 +86,8 @@ dataset_args:
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      lmdb_file: /data/wespeaker_data/rirs/lmdb
+      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      file_pattern: '**/*.wav'
       prob: 0.2
     - aug_type: OneOf
       prob: 0.25

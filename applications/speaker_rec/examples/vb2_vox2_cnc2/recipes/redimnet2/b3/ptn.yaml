@@ -1,10 +1,10 @@
 # b3 PT: 110ep on the VoxCeleb2 + VoxBlink2 + CN-Celeb2 mix.
 #
-# Uses the hard augmentation pipeline from the source b3 recipe:
+# Uses the hard augmentation setup from the source b3 recipe:
 #   * Sequential aug tree (from dataset.augs) replaces the legacy
 #     wespeaker_augs preset path.
 #   * MUSAN noise/music/babble OneOf at the standard hard_augs.md SNRs,
-#     plus RIR reverb.
+#     plus RIR reverb — all read from raw wav dirs via dataset_dir (no LMDB).
 #   * LowPassAug as a OneOf with two cutoffs:
 #       - cutoff_ratio=0.5  → mimics 8 kHz bandlimited (telephony) audio.
 #       - cutoff_ratio=0.6  → softer band-limit, used as a spec-aug
@@ -13,7 +13,8 @@
 #     verified to run in the palabra_universe_2 conda env.
 #
 # Schedule, model, optimizer are unchanged from the original b3 ptn.yaml.
-# Data is adapted for applications/speaker_rec raw_fast manifests produced by this example.
+# Training list files are the raw_fast data.list / utt2spk produced by this
+# example (mix_join).
 
 compile_backbone:
   mode: default
@@ -48,7 +49,8 @@ dataset_args:
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      lmdb_file: /data/wespeaker_data/rirs/lmdb
+      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      file_pattern: '**/*.wav'
       prob: 0.2
     - aug_type: OneOf
       prob: 0.25
