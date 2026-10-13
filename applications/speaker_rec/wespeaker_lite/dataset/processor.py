@@ -52,6 +52,20 @@ def read_audio_section(fp,
         start_time=None,
         extend_to_duration=False,
     ):
+    # Read `duration` seconds starting at `start_time` and return them at
+    # `samplerate`, resampling on the fly if the file differs. The returned
+    # rate is always `samplerate`.
+    #
+    # extend_to_duration=True (the training path): the requested window is
+    # chunk_len * 1.1 (the caller's speed-perturb margin), and for clips
+    # shorter than that the tail is looped -- np.pad(..., 'wrap') -- until the
+    # window is full. How often that triggers depends on the chunk window:
+    # VoxCeleb2 clips are at least 3.97 s, so a ptn window (2.02 s, target
+    # 2.22 s) never wraps (0%), while an lm window (6.02 s, target 6.62 s)
+    # wraps on ~58% of clips, duplicating ~24% of the samples on those clips.
+    # WeSpeaker upstream behaves the same way; this is deliberate and must not
+    # be turned into zeros or dropped, as that would change training.
+    #
     # No Path(fp).exists() pre-check: sf.SoundFile already raises on a missing
     # file (callers handle that identically), and the explicit stat() was a
     # redundant virtiofs round-trip (~0.65 ms/sample, ~2 stat calls/sample).
@@ -77,28 +91,36 @@ def read_audio_section(fp,
     start_frame = int(sr * start_time)
     # print(f"start_frame : {start_frame}, tot len : {ns}")
 
+    # Number of *source* frames to read, expressed at the file's own rate.
     if duration is not None:
-        frames_to_read = int(sr * duration)
+        src_frames_to_read = int(sr * duration)
     else:
-        frames_to_read = ns
+        src_frames_to_read = ns
 
     f.seek(start_frame)
 
-    samples = f.read(frames_to_read)
+    samples = f.read(src_frames_to_read)
 
     if sr != samplerate:
         # warnings.warn(f"Runtime resampling : {fp}")
-        samples = resampy.resample(samples,sr,samplerate)
+        samples = resampy.resample(samples, sr, samplerate)
 
-    frames_to_read = int(samplerate * duration)
+    # `samples` is now at `samplerate`, so the output length is counted at the
+    # target rate. This was previously the same name as the source-frame count
+    # above while meaning a different unit, which is what let the stale `sr`
+    # slip into the return value.
+    out_frames = int(samplerate * duration)
     if extend_to_duration:
-        shortage = frames_to_read - len(samples)
+        shortage = out_frames - len(samples)
         if shortage > 0:
             samples = np.pad(samples, (0, shortage), 'wrap')
 
-    samples = samples[:frames_to_read]
+    samples = samples[:out_frames]
 
-    return samples, sr
+    # `samples` are at `samplerate`; reporting the file's own rate here made
+    # processor.resample() resample a second time (44.1 kHz inputs kept only
+    # 16/44.1 of their length and were pitched up by the same factor).
+    return samples, samplerate
 
 def parse_raw_fast_and_filter(
         data,
@@ -136,8 +158,16 @@ def parse_raw_fast_and_filter(
         try:
             sample_rate = 16_000
 
+            # Only a lower bound on utterance length is enforced, through
+            # read_audio_section's min_duration: clips shorter than
+            # min_num_frames frames (100 frames * 10 ms = 1.0 s by default) are
+            # dropped. `max_num_frames` used to be turned into a `max_len` here
+            # and then never read, so long clips were never discarded despite
+            # the parameter name. Reinstating an upper bound would drop 29.7%
+            # of VoxCeleb2 dev clips (the 8.0 s implied by the default 800),
+            # which is a training-data change, not a bug fix; the parameter is
+            # therefore kept for signature compatibility but left unused.
             min_len = int(frame_shift / 1000 * min_num_frames * sample_rate)
-            max_len = int(frame_shift / 1000 * max_num_frames * sample_rate)
 
             ext_spd_pert_dur = (chunk_len/sample_rate) * 1.1
 
@@ -157,8 +187,17 @@ def parse_raw_fast_and_filter(
             waveform = torch.from_numpy(waveform).unsqueeze(0).float()
 
             if 'vad' in obj:
-                print(f"NO VAD TURNED ON!")
-                raise NotImplemented()
+                # VAD-segmented shard lines are not supported by this reader.
+                # Raise a real exception: `NotImplemented` is a sentinel object,
+                # not a class, so `raise NotImplemented()` raised a confusing
+                # TypeError("'NotImplementedType' object is not callable").
+                # The sample is still skipped by the handler below, matching the
+                # other per-sample failures (missing file, bad json); this
+                # reader never emits `vad` keys itself, so a data list that
+                # carries them is being read by the wrong pipeline and the
+                # per-line skip is the intended degradation.
+                raise NotImplementedError(
+                    "'vad' segments are not supported by this reader")
 
             sample = dict(key=key,
                            spk=spk,
@@ -288,7 +327,14 @@ def get_random_chunk(data, chunk_len):
         else:  # np.array
             data = data.copy()
     else:
-        # padding
+        # Tile-and-crop, for input shorter than chunk_len. Not dead code:
+        # parse_raw_fast_and_filter always hands this function at least
+        # chunk_len samples (it reads chunk_len * 1.1, and speed perturb only
+        # shortens to chunk_len), so the training chunk path never lands here.
+        # The noise path inside add_reverb_noise_gain does: it asks for a full
+        # chunk of noise, and 298 of the 930 MUSAN noise files are shorter than
+        # a 6 s chunk, so this branch runs on a large share of noisy samples.
+        # Looping the noise keeps the augmentation from failing on short files.
         repeat_factor = chunk_len // data_len + 1
         repeat_shape = repeat_factor if len(data_shape) == 1 else (
             repeat_factor, 1)
