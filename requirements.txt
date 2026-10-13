@@ -24,6 +24,5 @@ lmdb            # only for reading pre-built LMDB packs (legacy path)
 fire            # command-line entry point of bin/train.py
 tableprint      # per-step logging table in bin/train.py / utils/executor.py
 tqdm            # progress bars
-torchnet        # AverageValueMeter / ClassErrorMeter in utils/executor.py
 scikit-learn    # EER and ROC computation in utils/executor.py
 pyarrow         # parquet output for duration tables (vb2_vox2_cnc2 scripts)

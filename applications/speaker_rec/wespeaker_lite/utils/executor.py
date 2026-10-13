@@ -19,7 +19,7 @@ import os
 import torch
 import pandas as pd
 from tqdm import tqdm
-import torchnet as tnt
+from wespeaker_lite.utils import meters as tnt
 import torch.nn.functional as F
 from torch.distributed.nn.functional import all_gather
 
