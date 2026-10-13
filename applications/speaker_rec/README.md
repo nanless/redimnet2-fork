@@ -65,3 +65,21 @@ For the combined VoxCeleb2 + VoxBlink2 + CN-Celeb2 recipes, start with
 `examples/vb2_vox2_cnc2/README.md`. That example uses `pyarrow` and
 `soundfile` to build duration tables when filtering short utterances for the
 large-margin stage, in addition to the core training dependencies.
+
+## Recipe keys that have no effect
+
+Some keys appear in the `recipes/redimnet2/**/*.yaml` files but are **not read
+by the training code**. They are leftovers from other training stacks and can
+be safely ignored; do not expect them to change anything.
+
+| Key | Why it does nothing |
+|-----|---------------------|
+| `gpus` | Never referenced by `train.py` or `launch.sh`. The number of GPU processes is the second positional argument of `launch.sh`, not a config value. Setting `gpus: [0]` will **not** restrict training to a single GPU. |
+| `grad_accum_steps` | Gradient accumulation is not implemented in this training stack. The value is unused, so the effective batch size is `dataloader_args.batch_size` times the number of GPU processes. |
+| `eval_step_interval` | Validation is triggered by epoch, not by step (`_run_validation` runs once per epoch in `train.py`). The value is unused. |
+| `scheduler_args.scale_ratio` | Overwritten at startup by `train.py`: `configs['scheduler_args']['scale_ratio'] = world_size * batch_size / 64`. Whatever value you put in the YAML is discarded. |
+
+If you need to limit the run to specific GPUs, use `CUDA_VISIBLE_DEVICES`
+before calling `launch.sh`, and pass the number of processes as the second
+argument.
+

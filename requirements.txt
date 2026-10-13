@@ -1,4 +1,29 @@
+# Dependency list for this repository.
+#
+# Two groups are marked below. Installing everything in this file gives you a
+# working training environment; if you only want to run inference, the smaller
+# group is enough.
+
+# --- Inference only: the `redimnet2` package and `hubconf.py` ---
+# `redimnet2` imports torch, torchaudio, numpy and scipy at import time, and
+# `hubconf.py` pulls in the package. Nothing else is needed to load a published
+# checkpoint and compute speaker embeddings.
 torch
 torchaudio
-scipy
 numpy
+scipy
+
+# --- Training only: applications/speaker_rec ---
+# Everything below is imported by the `wespeaker_lite` training stack or by the
+# data-preparation scripts under `applications/speaker_rec/examples/`.
+pandas          # train.py writes val_log.csv; data-prep scripts join duration tables
+pyyaml          # reads the recipe .yaml configs
+soundfile       # libsndfile bindings for reading wav/flac
+resampy         # resampling in dataset/processor.py
+lmdb            # only for reading pre-built LMDB packs (legacy path)
+fire            # command-line entry point of bin/train.py
+tableprint      # per-step logging table in bin/train.py / utils/executor.py
+tqdm            # progress bars
+torchnet        # AverageValueMeter / ClassErrorMeter in utils/executor.py
+scikit-learn    # EER and ROC computation in utils/executor.py
+pyarrow         # parquet output for duration tables (vb2_vox2_cnc2 scripts)

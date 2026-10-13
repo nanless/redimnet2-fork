@@ -30,10 +30,7 @@ class SpeakerModel(nn.Module):
         self.projection = projection
 
     def forward(self, x, **kwargs):
+        # The backbone (ReDimNet2Wrap) returns the speaker embedding directly,
+        # so callers go through forward() and not through a separate
+        # feature/embedding extraction API.
         return self.backbone(x, **kwargs)
-
-    def extract_features(self, x):
-        return self.backbone.extract_features(x)
-
-    def extract_embedding(self, features, mask=None):
-        return self.backbone.extract_embedding(features, mask=mask)

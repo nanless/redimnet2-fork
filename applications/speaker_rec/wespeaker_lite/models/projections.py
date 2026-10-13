@@ -112,6 +112,10 @@ class SphereFace2(nn.Module):
         self.cos_m = math.cos(margin)
         self.sin_m = math.sin(margin)
         self.th = math.cos(math.pi - margin)
+        # Dead variable: forward() never reads self.mm, so this value has no
+        # effect. It also differs from ArcMarginProduct's `sin(pi - margin) *
+        # margin`; kept as-is to avoid touching the frozen forward path. The
+        # branch below falls back to `cos - self.mmm` past `self.th`.
         self.mm = math.sin(math.pi - margin)
         self.mmm = 1.0 + math.cos(math.pi - margin)
         ########
@@ -469,6 +473,11 @@ class SphereProduct(nn.Module):
         self.iter = 0
         self.weight = nn.Parameter(torch.FloatTensor(out_features,
                                                      in_features))
+        # Missing-underscore name: kept for upstream fidelity. `xavier_uniform`
+        # is a deprecated alias of `xavier_uniform_` that emits a FutureWarning
+        # but is numerically identical, so this is not a bug. Unreachable in
+        # practice: no recipe uses `project_type: sphere` (all 18 set
+        # sphereface2), so this branch is never taken unless a caller opts in.
         nn.init.xavier_uniform(self.weight)
 
         # duplication formula
