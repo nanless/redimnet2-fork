@@ -30,11 +30,16 @@ torchrun --nnodes=1:1 --nproc_per_node="$NUM_GPUS" --rdzv-backend=static \
 `MASTER_ADDR` and `MASTER_PORT` can be overridden in the environment. Training
 auto-resumes from the newest `model_*.pt` in the configured `exp_dir/models/`.
 
-> **Caveat for the large-margin fine-tuning stage.** The `lm` recipes set
-> `model_ckpt`, which takes priority over the auto-detected checkpoint
-> (`train.py`: `ckpt_to_load = configs.get('model_ckpt', None) or checkpoint`).
-> So restarting an `lm` run **re-initializes backbone and projection head from
-> the PTN weights again**; only the starting epoch number comes from the newest
-> file. PTN runs do not set `model_ckpt` and resume normally. If an `lm` run is
-> interrupted, prefer clearing `exp_dir` and starting over. See
-> `docs/04-训练流程.md` section 6.
+The load order is `checkpoint` (a config key, unset in every recipe) →
+newest file in `exp_dir/models/` → `model_ckpt`, first non-empty wins. So:
+
+- **PTN** resumes from its own latest checkpoint, as expected.
+- **LM fine-tuning** bootstraps from the PTN weights given by `model_ckpt` only
+  on the first run, when `exp_dir/models/` is still empty; after an interruption
+  it resumes from its own newest checkpoint instead of redoing the epochs.
+
+> **To restart an LM run from scratch you must clear `exp_dir` first.** Because
+> a checkpoint in `exp_dir/models/` outranks `model_ckpt`, editing `model_ckpt`
+> alone has no effect — it is silently ignored while an old checkpoint is
+> present. Use the `checkpoint:` config key to pin a specific starting file.
+> See `docs/04-训练流程.md` section 6.
