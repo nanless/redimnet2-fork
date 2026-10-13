@@ -48,6 +48,22 @@ from wespeaker_lite.utils.utils import get_logger, parse_config_or_kwargs, set_s
     spk2id, save_spk2id, load_spk2id, reassemble_projection_head
 from wespeaker_lite.utils.utils import seed_worker
 
+def _make_train_logger(exp_dir, rank):
+    """Build the training logger, writing to ``train.log`` on rank 0 only.
+
+    get_logger() attaches a FileHandler in append mode to a process-wide logger
+    name, so calling it from every rank made all ranks append to the same
+    train.log with no locking or rank separation -- interleaved (and on a crash,
+    unreadable) lines. Only rank 0 owns the file; the other ranks get a logger
+    that still forwards to stderr via the root configuration.
+    """
+    if rank == 0:
+        return get_logger(exp_dir, 'train.log')
+    logger = logging.getLogger('wespeaker_train_rank{}'.format(rank))
+    logger.propagate = True
+    return logger
+
+
 def make_mix_aug(configs):
     if ('mixup_alpha' in configs) and (configs['mixup_alpha'] is not None):
         print(f"USING MixUp aug")
@@ -119,7 +135,6 @@ def train(config='conf/config.yaml', **kwargs):
     logging.basicConfig(level=logging.WARNING)
 
     configs = parse_config_or_kwargs(config, **kwargs)
-    checkpoint = configs.get('checkpoint', None)
     # dist configs
     rank = int(os.environ['RANK'])
     world_size = int(os.environ['WORLD_SIZE'])
@@ -133,10 +148,27 @@ def train(config='conf/config.yaml', **kwargs):
             os.makedirs(model_dir)
         except IOError:
             print(model_dir + " already exists !!!")
+    # Barrier right after the mkdir and before anyone reads the directory: rank 0
+    # creates models/ and every rank decides resume-vs-scratch from its contents.
+    # Without this, a non-zero rank can list models/ before rank 0 has created
+    # it, conclude there is nothing to resume and start from epoch 1 with
+    # randomly initialised weights while the other ranks resume -- no error, just
+    # ranks silently disagreeing about start_epoch and which weights to load.
+    dist.barrier(device_ids=[gpu])
+
+    # Optional explicit pin: `checkpoint: /path/to/model_N.pt` in the config (or
+    # --checkpoint on the command line) overrides the directory scan below. No
+    # recipe sets it; it exists for one-off resumes from a specific file.
+    pinned_checkpoint = configs.get('checkpoint', None)
 
     checkpoint = None
     start_epoch = 1
-    if os.path.exists(model_dir):
+    if pinned_checkpoint is not None:
+        checkpoint = pinned_checkpoint
+        pinned_match = re.search(r'model_(\d+)\.pt$', str(pinned_checkpoint))
+        if pinned_match:
+            start_epoch = int(pinned_match.group(1)) + 1
+    elif os.path.exists(model_dir):
         epoch_pattern = re.compile(r'model_(\d+)\.pt$')
         models = os.listdir(model_dir)
         last_epoch_time = 0
@@ -152,9 +184,7 @@ def train(config='conf/config.yaml', **kwargs):
                     checkpoint = full_path
                     start_epoch = int(match.group(1)) + 1
 
-    dist.barrier(device_ids=[gpu])  # let the rank 0 mkdir first
-
-    logger = get_logger(configs['exp_dir'], 'train.log')
+    logger = _make_train_logger(configs['exp_dir'], rank)
     if world_size > 1:
         logger.info('training on multiple gpus, this gpu {}'.format(gpu))
 
@@ -202,8 +232,11 @@ def train(config='conf/config.yaml', **kwargs):
             configs['projection_args']['num_class'] *= 3
 
     # dataset and dataloader
-    if isinstance(configs['train_data'], str):
-        configs['train_data'] = configs['train_data'].replace('raw_fast','raw')
+    # (No string rewriting of configs['train_data'] here: the data_type arg to
+    # Dataset() selects the reading path, and every recipe already points
+    # train_data at the JSONL data.list directly, so a replace('raw_fast','raw')
+    # on the path never did anything -- it only risked silently mangling a path
+    # whose directory name happened to contain 'raw_fast'.)
 
     # ── Optional: stage augmentation LMDBs into RAM (tmpfs / /dev/shm) ──
     # Random reads over the 12 GB musan + 2.2 GB rirs LMDBs are virtiofs
@@ -256,8 +289,15 @@ def train(config='conf/config.yaml', **kwargs):
 
     dataloader_args = {k: v for k, v in configs['dataloader_args'].items()
                        if k != 'seed_worker'}
+    # No persistent_workers: train_dataset.set_epoch() below only reaches the
+    # in-process object graph, and the epoch that actually drives the shuffle
+    # lives on the innermost DataList.sampler. Persistent workers are forked
+    # once and never re-fork, so they would keep the epoch they were born with
+    # and re-yield the same base permutation every epoch. Spawning fresh
+    # workers per epoch means each one re-reads the sampler on its first
+    # __iter__ and picks up the new epoch. The cost is one fork per epoch,
+    # amortised over epoch_iter steps of real audio loading.
     train_dataloader = DataLoader(train_dataset,
-                                  persistent_workers=True,
                                   worker_init_fn=seed_worker if configs['dataloader_args'].get(
                                       'seed_worker', False) else None,
                                   **dataloader_args)
@@ -270,6 +310,19 @@ def train(config='conf/config.yaml', **kwargs):
     epoch_iter = sample_num_per_epoch // world_size // batch_size
     # optimizer_epoch_iter = number of optimizer steps per epoch (for schedulers)
     optimizer_epoch_iter = epoch_iter
+    # Fail loudly instead of hanging: run_epoch() bounds the epoch with
+    # `if (i + 1) == epoch_iter: break` while the dataset is an infinite stream,
+    # so epoch_iter == 0 never matches and the epoch simply never ends.
+    # sample_num_per_epoch == 0 deliberately means "use the whole training set"
+    # and is resolved just above, so anything reaching 0 here is a real
+    # misconfiguration (sample_num_per_epoch positive but smaller than
+    # world_size * batch_size, or batch_size too large for the utterance count).
+    assert epoch_iter >= 1, (
+        "epoch_iter is 0: sample_num_per_epoch={} // world_size={} // "
+        "batch_size={}. The training loop would never reach its last step and "
+        "would hang silently. Raise dataset_args.sample_num_per_epoch to at "
+        "least world_size * batch_size, or lower dataloader_args.batch_size."
+        .format(sample_num_per_epoch, world_size, batch_size))
 
     # Load log_df if exists, or create empty
     val_log_path = os.path.join(configs['exp_dir'], "val_log.csv")
@@ -328,8 +381,18 @@ def train(config='conf/config.yaml', **kwargs):
     projection = get_projection(configs['projection_args'])
     model  = SpeakerModel(model, projection)
 
-    # Determine checkpoint to load (model_ckpt takes priority over checkpoint)
-    ckpt_to_load = configs.get('model_ckpt', None) or checkpoint
+    # Pick what to initialise from. Order matters: the checkpoint found in
+    # exp_dir (any stage, including the large-margin fine-tune stage) wins, and
+    # model_ckpt is only the cold-start fallback. The old order was reversed,
+    # and since every lm.yaml sets model_ckpt, an interrupted fine-tune resumed
+    # from the pretrain weights instead of its own last epoch: the backbone and
+    # head were re-initialised while start_epoch still came from the newest file
+    # in models/, so it silently redid the epochs it had already done (and for a
+    # 1-5 epoch fine-tune, threw the whole run away). Bootstrapping a fresh
+    # fine-tune into an empty exp_dir still works, because then `checkpoint` is
+    # None. Use `checkpoint:` in the config, not model_ckpt, to force a specific
+    # starting file -- that pin takes priority over both.
+    ckpt_to_load = checkpoint or configs.get('model_ckpt', None)
 
     if ckpt_to_load is not None:
         logger.info('Load initial model from {}'.format(ckpt_to_load))

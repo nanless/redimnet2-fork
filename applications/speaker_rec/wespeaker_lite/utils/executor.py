@@ -158,13 +158,6 @@ def run_epoch(dataloader,
             width=10,
             style='grid'))
 
-import numpy as np
-from sklearn import metrics
-from six.moves import range
-from scipy.optimize import brentq
-from sklearn.metrics import roc_curve
-from scipy.interpolate import interp1d
-
 # https://stackoverflow.com/questions/28339746/equal-error-rate-in-python
 def EER(y, y_score):
     """
@@ -178,16 +171,6 @@ def EER(y, y_score):
     thresh = interp1d(fpr, thresholds)(eer)
     return eer, thresh.item()
 
-def cos_sim_mat(x0,x1):
-    """
-    x0 shape : (N,D)
-    x1 shape : (M,D)
-    D - dimensionality of embeddings
-    """
-    x0n = x0 / (np.linalg.norm(x0,axis=-1,keepdims=True)+1e-12)
-    x1n = x1 / (np.linalg.norm(x1,axis=-1,keepdims=True)+1e-12)
-    return np.sum(x0n[:,None,:]*x1n[None,:,:],axis=-1)
-
 def get_lr(opt):
     for g in opt.param_groups:
         return g['lr']
@@ -197,6 +180,15 @@ def get_wd(opt):
         return g['weight_decay']
 
 def wraped_all_gather(tensor,group=None):
+    # torch.distributed.nn.functional.all_gather is shape-sensitive: the
+    # collective matches on the flight size, so every rank must pass a tensor
+    # with an identical shape or the ranks block on each other forever (NCCL
+    # has no timeout on a mismatched size). Both call sites below are safe
+    # today: the validation loaders use torch's DistributedSampler, which pads
+    # each replica to the same length, so the per-rank batch shapes agree. The
+    # invariant breaks if the validation set has fewer trials than ranks (a
+    # rank gets an empty batch and the shapes diverge), so keep the trial count
+    # above world_size when changing the validation protocol.
     with torch.no_grad():
         gathered_tensors = all_gather(tensor, group)
     return torch.stack(gathered_tensors)
