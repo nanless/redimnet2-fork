@@ -327,14 +327,23 @@ def get_random_chunk(data, chunk_len):
         else:  # np.array
             data = data.copy()
     else:
-        # Tile-and-crop, for input shorter than chunk_len. Not dead code:
-        # parse_raw_fast_and_filter always hands this function at least
-        # chunk_len samples (it reads chunk_len * 1.1, and speed perturb only
-        # shortens to chunk_len), so the training chunk path never lands here.
-        # The noise path inside add_reverb_noise_gain does: it asks for a full
-        # chunk of noise, and 298 of the 930 MUSAN noise files are shorter than
-        # a 6 s chunk, so this branch runs on a large share of noisy samples.
-        # Looping the noise keeps the augmentation from failing on short files.
+        # Tile-and-crop, for input shorter than chunk_len. Not dead code, but
+        # note which callers actually reach it:
+        #
+        #   * Training chunking (parse_raw_fast_and_filter) never does: it reads
+        #     chunk_len * 1.1 samples and speed perturb only shortens back to
+        #     chunk_len, so the input is always >= chunk_len here.
+        #   * The current recipes do not either. They use the composable
+        #     Sequential/OneOf tree from dataset/augs.py, whose CustomNoise pads
+        #     short noise via its own _crop_or_pad helper.
+        #   * The legacy add_reverb_noise_gain path does, and it is the reason
+        #     this branch is kept: it requests a full chunk of noise, and 298 of
+        #     the 930 MUSAN noise files are shorter than a 6 s chunk. Without the
+        #     tile, short noise files would come back undersized and the later
+        #     `audio + scale * noise` would fail on mismatched shapes.
+        #
+        # Keep it: removing it would break that legacy path (and any future
+        # caller that hands in an undersized buffer) for no gain.
         repeat_factor = chunk_len // data_len + 1
         repeat_shape = repeat_factor if len(data_shape) == 1 else (
             repeat_factor, 1)
