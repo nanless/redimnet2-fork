@@ -156,23 +156,29 @@
 - `prepare_data.py` 默认阶段不含 `lmdb`；只有有人显式传入 `--stages lmdb` 才会构建那种旧格式。  
 - 代码里仍保留读 LMDB 的能力，只为兼容旧配置；**新实验不要依赖它。**
 
-本机约定的增强目录（可以是软链接，指向共享盘上的真实数据）：
+本机约定的增强目录（是软链接，指向共享盘上的真实数据）：
 
 ```text
-/data/wespeaker_data/raw/musan/music
-/data/wespeaker_data/raw/musan/noise
-/data/wespeaker_data/raw/musan/speech
-/data/wespeaker_data/raw/rirs/simulated_rirs
+/root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
+/root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
+/root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
+/root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
 ```
 
 说明：`prepare_data.py` 若从官方压缩包解压 RIRS，原始目录名可能是 `raw/RIRS_NOISES/simulated_rirs`。  
-脚本会再准备好配置里用的 `raw/rirs/simulated_rirs`（通常是软链接），避免路径对不上。
+脚本会再准备好配置里用的 `raw/rirs/simulated_rirs`（通常是软链接），避免路径对不上。  
+数这些目录里的 wav 个数时记得跟随软链接（`find -L`）；不加 `-L` 会数成 0。
+
+**关于配置里写的 `/data/wespeaker_data/...`：** 本机没有 `/data` 这个目录，
+但全部 18 份配方仍按 `/data/wespeaker_data/...` 写。开训前必须先建软链接或另写本地覆盖文件。
+两种做法、以及完整的开训前检查清单，见 `docs/07-本机数据与开训检查.md`。
 
 ---
 
 ## 6. 本机数据现状（供写报告、开训前核对）
 
-下面数字以 **2026-10-13** 前后在本机核对为准。若以后又拷贝或重转数据，请重新计数后再改文档。
+下面数字以 **2026-10-13 到 10-14** 在本机核对为准。若以后又拷贝或重转数据，请重新计数后再改文档。  
+（本轮核对同时更正了两处过时说法：`/data` 路径在本机不存在、旧 VoxCeleb 树其实是齐的。）
 
 ### 6.1 请以哪套 VoxCeleb 为准
 
@@ -190,11 +196,19 @@
 - 说明文件：同级目录下的 `VoxCeleb约定主目录说明.txt`（写清以哪套 VoxCeleb 为准）  
 - 拷贝与转换记录：`checkpoints/reports/voxceleb_copy_status.txt`
 
-不要再把下面这类**不完整**的旧树当成训练主数据：
+**关于下面这棵旧树，要改口了：**
 
 ```text
 /aispeech-cfs/voiceprint/data/voxceleb/vox2/wav
 ```
+
+以前这里写的是"不完整，别再当训练主数据"。但在 2026-10-13 到 10-14 实测，
+**这棵旧树的计数与约定主目录完全一致**（各 6,112 个说话人目录、1,128,246 句，
+抽查文件大小逐字节相同）。所以"少一截"的旧状态现在不成立 —— 可能是后来补齐了，
+也可能当初描述的是更早的时刻。**不要再写它"不完整"。**
+
+按 `VoxCeleb约定主目录说明.txt` 的约定，仍建议以约定主目录为准；
+但不能再说旧树差一截。实测细节见 `docs/07-本机数据与开训检查.md` 第 5 节。
 
 ### 6.2 数量核对（期望值）
 
@@ -208,21 +222,31 @@
 | CN-Celeb2 | 1,996 个说话人；flac 与 wav 各约 **524,787** 句 | 混合线用 |
 | VoxBlink2 | `audio/` 下约 **111,284** 个说话人目录；已有解压完成标记 | 混合线用；全量句数若要写进报告需再统计 |
 
-### 6.3 训练入口是否齐（截至写本文时）
+### 6.3 训练入口是否齐（截至 2026-10-13 实测）
 
-| 项目 | 是否齐 |
-|------|--------|
-| `/data/wespeaker_data/vox2_dev/data.list` 与 `utt2spk`（各 1,092,009 行） | 齐 |
-| `/data/wespeaker_data/raw/musan/...` 与 `raw/rirs/simulated_rirs` | 齐 |
-| `/data/wespeaker_data/vox1-test/`（验证用试验列表及用到的 wav） | 齐（按试验列表链接了用到的句子；不是单独官方 test 小包的每一个文件都链全，但不影响按 `veri_test2.txt` 验证） |
-| `/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/` | **还没有**；混合线要先跑第 3.2 节的脚本 |
+**先记住一件事：本机没有 `/data` 目录。** 下表左列写的是配方里的路径，
+右列"齐"指的是**共享盘上真实存在的那份**，不是 `/data/...` 这个字符串本身可读。
+
+共享盘上的真实位置是：
+
+```text
+/root/group-shared/voiceprint/data/wespeaker_data/
+```
+
+| 项目（配方里的路径） | 共享盘上是否齐 | 说明 |
+|------|------|------|
+| `/data/wespeaker_data/vox2_dev/data.list` 与 `utt2spk` | 齐 | 各 1,092,009 行；说话人 5,994 |
+| `/data/wespeaker_data/raw/musan/...` 与 `raw/rirs/simulated_rirs` | 齐 | 是软链接，分别落到共享盘的 musan 与 RIRS 目录 |
+| `/data/wespeaker_data/vox1-test/` | 齐 | 试验列表 37,611 行；按列表链接了用到的 4,708 个 wav，逐条核对无缺失 |
+| `/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/` | **还没有** | 混合线要先跑第 3.2 节的脚本；连中间产物 `vb2_full` / `cnc2_full` 也没有 |
 
 因此：
 
-- **只练 VoxCeleb2：数据表和增强目录已经齐，配置也已改成读原始音频。**  
-- **混合线：原始语料基本齐，还缺混合后的 `mix_join` / `mix_join_lm` 样本清单。**
+- **只练 VoxCeleb2：数据表和增强目录都齐，但开训前必须先处理 `/data` 路径问题**（建软链接或另写覆盖文件）。
+- **混合线：原始语料基本齐，还缺混合后的 `mix_join` / `mix_join_lm` 样本清单，现在开不了训。**
 
-更细的检查表见：`checkpoints/reports/05-训练数据检查.md`（若与本文冲突，以重新计过数的结果为准，并同时改两处）。
+更细的检查表见：`checkpoints/reports/05-训练数据检查.md` 与 `docs/07-本机数据与开训检查.md`
+（若与本文冲突，以重新计过数的结果为准，并同时改这几处）。
 
 ---
 
@@ -297,8 +321,11 @@ checkpoints/reports/
 | `AGENTS.md` | 本文：文字习惯 + 训练/数据事实 |
 | `docs/README.md` | 中文导读总入口 |
 | `docs/01-background.md` … `06-glossary-faq.md` | 背景、结构、代码、训练、复现、术语 |
+| `docs/07-本机数据与开训检查.md` | 本机数据在哪、`/data` 路径问题怎么办、开训前逐条检查 |
 | `checkpoints/reports/README.md` | 官方权重复现评测入口 |
 | `checkpoints/reports/05-训练数据检查.md` | 训练语料核对表 |
+| `scripts/eval_vox1_checkpoints.py` | 用官方权重测 VoxCeleb1-O/E/H 的等错误率 |
+| `scripts/eval_ood_checkpoints.py` | 用官方权重测域外试验（Vox1-B、VOICES、CN-Celeb） |
 | `applications/speaker_rec/examples/vox2/README.md` | 只练 VoxCeleb2 的操作说明 |
 | `applications/speaker_rec/examples/vb2_vox2_cnc2/README.md` | 混合数据线的操作说明 |
 

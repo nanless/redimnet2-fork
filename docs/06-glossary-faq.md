@@ -1,6 +1,6 @@
 # 06 · 术语表与常见问题
 
-上一篇：[实验配方与复现](05-recipes-and-repro.md) · 回到：[中文导读首页](README.md)
+上一篇：[本机数据与开训检查](07-本机数据与开训检查.md) · [实验配方与复现](05-recipes-and-repro.md) · 回到：[中文导读首页](README.md)
 
 ---
 
@@ -14,11 +14,13 @@
 | **B0–B6** | ReDimNet2 从轻到重的规格；由 `C` / `stages_setup` 等决定 |
 | **Chunk / num_frms** | 训练时随机裁的固定长度片段；帧数约等于秒数×100（10 ms hop） |
 | **CN-Celeb / CNC2** | 中文说话人数据集；混合配方中的 `C_` 命名空间 |
-| **data.list** | 每行 JSON：`key` / `wav` / `spk` |
+| **data.list** | 训练用的样本清单，每行一条 JSON。字段是 `key` 样本编号、`spk` 说话人、`wav` 音频绝对路径 |
+| **dataset_dir** | 增强用的噪声与混响目录；当前配方直接读文件夹，不用键值库 |
 | **DDP / torchrun** | 多 GPU 数据并行启动方式 |
 | **dual_agg** | stage 内 2D→1D 与 1D-att 双路上采样再聚合 |
 | **EER** | 等错误率；FAR=FRR 时的错误率，越低越好 |
 | **Embedding** | 固定维说话人向量；本仓库常见 192 维 |
+| **exp_dir** | 实验输出目录，权重、日志与验证表都写在这里 |
 | **FAR / FRR** | 虚警率 / 拒识率 |
 | **GMAC** | 乘加次数量级，衡量算力 |
 | **LM / do_lm** | Large-Margin fine-tuning；大间隔微调阶段 |
@@ -98,6 +100,42 @@
 ### Q12. 和原版 WeSpeaker 什么关系？
 
 `wespeaker_lite` 是面向本仓库的轻量训练栈：数据协议改成 `raw_fast` JSONL，骨干对接 `redimnet2`，保留 WeSpeaker 风格的 DDP 训练与 Vox1 试验评估习惯。
+
+### Q13. 改了配置里的某个键，训练却没反应？
+
+先怀疑这个键根本不生效。已确认**训练代码里没有任何地方读**下面这几个键（详表见 [04 第 8 节](04-训练流程.md)）：
+
+- `gpus` —— 用哪几张卡由命令行参数决定（`launch.sh` 的第二个位置参数、以及 `CUDA_VISIBLE_DEVICES`）。
+  注意 `vox2/recipes/redimnet2/b3/lm.yaml` 里写着 `gpus: [0]`，它不会把训练限制在单卡。
+- `grad_accum_steps` —— 训练栈没有实现梯度累积，每步都直接反向与更新。
+- `eval_step_interval` —— 验证是按轮触发的，不是按步。
+- `scheduler_args.scale_ratio` —— 启动时被 `卡数 × 每卡批大小 / 64` 覆盖。
+- `projection_args.num_class` —— 被实际读到的说话人表覆盖（见 Q5）。
+
+还有 `fbank_args` 里的 `num_mel_bins`、`dither` 在数据侧也不起作用，梅尔前端由 `model_args` 里的 `F`、`hop_length`、`spec_params` 决定。
+
+### Q14. 大间隔微调中断了，重新启动能接着训吗？
+
+**不能，会从头开始。** 微调配置里写了 `model_ckpt` 指向主训练的权重，而训练代码的逻辑是"配置给了 `model_ckpt` 就优先用它"，所以重启时骨干和分类头都会**重新从主训练权重初始化**，只有起始轮号来自最新的那份文件。
+
+微调本身只训 5 轮（vox2 线）或 1 轮（混合线），建议一次跑完；一旦中断，清空 `exp_dir` 重跑更稳妥。主训练不写 `model_ckpt`，不受这个影响，中断后正常续训。细节见 [04 第 6 节](04-训练流程.md)。
+
+### Q15. `num_avg` 是取最后 N 轮的权重平均吗？
+
+**不是。** 代码里没有做任何参数平均。`num_avg`（默认 10）只决定"保留最后这几轮的权重文件别删掉"，以及让完整版评测在最后这几轮开启。训练结束建的 `final_model.pt` 直接软链到最后一轮的那份权重。
+
+### Q16. 我自己训出来的权重，能直接用 `scripts/eval_*.py` 评测吗？
+
+**不能直接喂，键名对不上。** 两套检查点的键名不同：
+
+- **官方发布的权重**：顶层就 `model_config` 和 `state_dict` 两个键，`state_dict` 的键名直接对应 `ReDimNet2Wrap`。
+- **训练栈存下来的权重**：是 `SpeakerModel` 的权重，键名带 `backbone.`（骨干）和 `projection.`（损失头）前缀。
+
+两个评测脚本要求前者。要用自己的权重，得先把 `backbone.` 前缀剥掉、丢掉 `projection.*`，再包成含 `model_config` 的字典。另外脚本**不做重采样**，喂进去的音频必须是 16 kHz，采样率不对会直接报错。
+
+### Q17. 训练输出把盘写满了？
+
+本机**容器根只剩约 2 GB**，训练日志和 `exp/` 下的权重默认很容易落到那里。把 `exp_dir` 改到共享盘，或改到 `/dev/shm`（本机约 325 GB）。完整的数据现状与磁盘余量见 [07 本机数据与开训检查](07-本机数据与开训检查.md)。
 
 ---
 

@@ -44,7 +44,7 @@ The training environment must also contain the dependencies imported by
 python-fire, and tableprint).
 
 Training performs VoxCeleb1-O validation every epoch. The preparation script
-therefore creates `/data/wespeaker_data/vox1-test` with `veri_test2.txt` and
+therefore creates `/root/group-shared/voiceprint/data/wespeaker_data/vox1-test` with `veri_test2.txt` and
 `wav/<speaker>/<video>/<utterance>.wav`; this path can be used directly as
 `validation.vox1`.
 
@@ -59,7 +59,7 @@ extraction markers, WAVs, and list files are reused.
 export HF_TOKEN=...  # if required by the VoxCeleb2 source
 
 python applications/speaker_rec/examples/vox2/scripts/prepare_data.py \
-  --data-root /data/wespeaker_data
+  --data-root /root/group-shared/voiceprint/data/wespeaker_data
 ```
 
 The complete VoxCeleb2 dev set is checked against 1,092,009 utterances and
@@ -74,7 +74,7 @@ For archives already on disk:
 
 ```bash
 python applications/speaker_rec/examples/vox2/scripts/prepare_data.py \
-  --data-root /data/wespeaker_data \
+  --data-root /root/group-shared/voiceprint/data/wespeaker_data \
   --vox2-archive /archives/vox2_aac_1.zip \
   --vox2-archive /archives/vox2_aac_2.zip \
   --vox1-test-archive /archives/vox1_test_wav.zip \
@@ -89,7 +89,7 @@ an existing WAV tree. Existing WAV files are used directly:
 
 ```bash
 python applications/speaker_rec/examples/vox2/scripts/prepare_data.py \
-  --data-root /data/wespeaker_data \
+  --data-root /root/group-shared/voiceprint/data/wespeaker_data \
   --vox2-source /datasets/voxceleb2/dev/aac \
   --vox1-test-source /datasets/voxceleb1/test \
   --vox1-protocol /datasets/voxceleb1/test/veri_test2.txt \
@@ -112,7 +112,7 @@ An interrupted LMDB build is not assumed valid. Rerun with `--rebuild-lmdb`:
 
 ```bash
 python applications/speaker_rec/examples/vox2/scripts/prepare_data.py \
-  --data-root /data/wespeaker_data \
+  --data-root /root/group-shared/voiceprint/data/wespeaker_data \
   --stages lmdb \
   --rebuild-lmdb
 ```
@@ -120,7 +120,7 @@ python applications/speaker_rec/examples/vox2/scripts/prepare_data.py \
 The relevant output layout is:
 
 ```text
-/data/wespeaker_data/
+/root/group-shared/voiceprint/data/wespeaker_data/
 ├── vox1-test/
 │   ├── wav/<speaker>/<video>/<utterance>.wav
 │   └── veri_test2.txt
@@ -149,12 +149,22 @@ recipes augment from **raw** MUSAN/RIRS via `Sequential` + `dataset_dir`
 (LMDB / `noise_lmdb_file` / `reverb_lmdb_file` / `lmdb_to_ram` are optional
 legacy only and are **not** used by these recipes). The base recipes use
 generic `/data/wespeaker_data` defaults. Create a small local overlay for
-machine-specific paths instead of editing every recipe. For example,
-`/tmp/vox2-ptn.local.yaml`:
+machine-specific paths instead of editing every recipe. The overlay and the
+`--data-root` examples below already carry this machine's real data location.
+For example, `/tmp/vox2-ptn.local.yaml`:
+
+> **Note on this machine:** there is no `/data` directory here. The data lives on
+> the shared filesystem at `/root/group-shared/voiceprint/data/wespeaker_data/`.
+> The paths below have been updated to that real location, so they work as
+> written. The base recipe files themselves still say `/data/wespeaker_data/...`
+> and are **not reachable as written** — which is exactly why the overlay exists.
+> If you prefer the recipes to work unmodified, create the symlink first:
+> `mkdir -p /data && ln -s /root/group-shared/voiceprint/data/wespeaker_data /data/wespeaker_data`
+> See `docs/07-本机数据与开训检查.md` for the full pre-training checklist.
 
 ```yaml
-train_data: /data/wespeaker_data/vox2_dev/data.list
-train_label: /data/wespeaker_data/vox2_dev/utt2spk
+train_data: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/data.list
+train_label: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/utt2spk
 exp_dir: exp/vox2/redimnet2_b3_conv_att/ptn
 
 # Only needed if your MUSAN/RIRS roots differ from the recipe defaults.
@@ -168,25 +178,25 @@ dataset_args:
       prob: 0.8
       augmentors:
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/music
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
         snr: [2, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/noise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
         snr: [0, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/speech
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
         snr: [7, 18]
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
       file_pattern: '**/*.wav'
       prob: 0.2
 
 validation:
-  vox1: /data/wespeaker_data/vox1-test
+  vox1: /root/group-shared/voiceprint/data/wespeaker_data/vox1-test
 ```
 
 The overlay is recursively merged into the base recipe, so unspecified model,
@@ -236,8 +246,8 @@ After PTN reaches epoch 120, create `/tmp/vox2-lm.local.yaml` with the same
 data, augmentation, and validation overrides, plus stage-specific paths:
 
 ```yaml
-train_data: /data/wespeaker_data/vox2_dev/data.list
-train_label: /data/wespeaker_data/vox2_dev/utt2spk
+train_data: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/data.list
+train_label: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/utt2spk
 exp_dir: exp/vox2/redimnet2_b3_conv_att/lm
 model_ckpt: exp/vox2/redimnet2_b3_conv_att/ptn/models/model_120.pt
 
@@ -251,25 +261,25 @@ dataset_args:
       prob: 0.8
       augmentors:
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/music
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
         snr: [2, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/noise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
         snr: [0, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/speech
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
         snr: [7, 18]
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
       file_pattern: '**/*.wav'
       prob: 0.2
 
 validation:
-  vox1: /data/wespeaker_data/vox1-test
+  vox1: /root/group-shared/voiceprint/data/wespeaker_data/vox1-test
 ```
 
 Then launch the matching LM recipe:

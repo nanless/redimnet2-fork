@@ -27,6 +27,10 @@ flowchart TB
 | 改网络结构做实验 | `redimnet2/redimnet2.py` + `layers/` |
 | 改增强 / 损失 / 优化器 | `applications/speaker_rec/wespeaker_lite/` |
 | 改数据与超参复现论文 | `applications/speaker_rec/examples/**/recipes/**/*.yaml` |
+| **核对发布的权重和官方表差多少** | `scripts/eval_vox1_checkpoints.py`、`scripts/eval_ood_checkpoints.py` |
+
+注意最后一行：这两个脚本在仓库根目录 `scripts/` 下，不在 `applications/` 里。
+它们不训练，只加载 `checkpoints/pretrained/` 里的权重算等错误率，结果与官方数字对比后写成表格。
 
 ---
 

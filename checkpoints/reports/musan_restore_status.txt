@@ -58,3 +58,21 @@ Tool:     aria2c -x16 -s16 -c（在此前不完整下载上续传）
 wespeaker 路径（2026-10-13 后续）：
   /data/wespeaker_data -> /root/group-shared/voiceprint/data/wespeaker_data
   raw/musan -> .../noise/musan/musan  (music/noise/speech = 660/930/426)
+
+== 复核更正（2026-10-14）==
+上面那两行"软链接已建立"的说法**不成立，请以下面为准**：
+
+  实测 ls -d /data 报 "No such file or directory"。
+  本机**没有 /data 这个目录**，因此
+  /data/wespeaker_data       不存在
+  /data/wespeaker_data/raw/musan  不存在
+
+  上面两行只是"若要按 yaml 原路径用可以这样建"的计划，当时并未执行；
+  记录下来时应写成未执行，不要写成既成事实。
+
+MUSAN 音频本身的实测结果不变，仍然齐全：
+  /root/group-shared/voiceprint/data/noise/musan/musan/{music,noise,speech}
+  = 660 / 930 / 426，合计 2016 wav
+
+要按配方原路径用，开训前需自己建软链接或改 yaml，做法见：
+  docs/07-本机数据与开训检查.md

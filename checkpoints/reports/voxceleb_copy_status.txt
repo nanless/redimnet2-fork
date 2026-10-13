@@ -11,7 +11,13 @@ vox1 wav: /root/group-shared/voiceprint/data/speech/speaker_verification/voxcele
 来源压缩包：/aispeech-cfs/voiceprint/data/voxceleb_hf/vox2/
   rsync -> downloads/: vox2_aac_1.zip, vox2_aac_2.zip, vox2_test_aac.zip,
                        vox2_meta.csv, vox2_dev_txt.zip, vox2_test_txt.zip
-  不要用：/aispeech-cfs/voiceprint/data/voxceleb/vox2/wav（句数不完整）
+
+  原先这里写着「不要用：/aispeech-cfs/voiceprint/data/voxceleb/vox2/wav（句数不完整）」。
+  2026-10-14 复核后更正该说法：那棵旧树实测 6112 个说话人目录 / 1128246 句，
+  与本文 DEST 的约定主目录完全一致，抽查文件大小也逐字节相同。
+  所以「句数不完整」的旧状态现在不成立（可能后来补齐了，也可能当初描述的是更早时刻）。
+  仍建议按约定主目录 DEST 为准，但不要再写旧树缺数据。
+  实测明细见 docs/07-本机数据与开训检查.md 第 5 节。
 
 句数核对（实测 / 期望）：
 vox2-dev wav: 1092009 / expected 1092009 => 检查通过

@@ -38,13 +38,13 @@ VoxCeleb1-test, raw MUSAN, and RIRS:
 
 ```bash
 python applications/speaker_rec/examples/vox2/scripts/prepare_data.py \
-  --data-root /data/wespeaker_data
+  --data-root /root/group-shared/voiceprint/data/wespeaker_data
 ```
 
 For this example the important outputs are:
 
 ```text
-/data/wespeaker_data/
+/root/group-shared/voiceprint/data/wespeaker_data/
 |-- vox2_dev/
 |   |-- data.list
 |   `-- utt2spk
@@ -61,8 +61,8 @@ For this example the important outputs are:
 ```
 
 The combined recipes use **raw** MUSAN and RIRS via `dataset_dir` (not LMDB):
-`/data/wespeaker_data/raw/musan/{music,noise,speech}` and
-`/data/wespeaker_data/raw/rirs/simulated_rirs`.
+`/root/group-shared/voiceprint/data/wespeaker_data/raw/musan/{music,noise,speech}` and
+`/root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs`.
 
 ### CN-Celeb2
 
@@ -75,14 +75,14 @@ The OpenSLR page publishes CN-Celeb2 as three split files:
 `cn-celeb2_v2.tar.gzac`. After download, extract them into one root:
 
 ```bash
-mkdir -p /data/cnceleb2
-cat /archives/cn-celeb2_v2.tar.gz{aa,ab,ac} | tar -xzf - -C /data/cnceleb2
+mkdir -p /root/group-shared/voiceprint/data/speech/speaker_verification/cnceleb
+cat /archives/cn-celeb2_v2.tar.gz{aa,ab,ac} | tar -xzf - -C /root/group-shared/voiceprint/data/speech/speaker_verification/cnceleb
 ```
 
 The expected training layout is:
 
 ```text
-/data/cnceleb2/CN-Celeb2_flac/data/<speaker>/<utterance>.flac
+/root/group-shared/voiceprint/data/speech/speaker_verification/cnceleb/CN-Celeb2_flac/data/<speaker>/<utterance>.flac
 ```
 
 ### VoxBlink2
@@ -95,7 +95,7 @@ Prepare or convert the delivered corpus so the audio root contains WAV files
 below speaker directories:
 
 ```text
-/data/voxblink2/audio/<speaker>/.../*.wav
+/root/group-shared/voiceprint/data/speech/speaker_verification/VoxBlink2/audio/<speaker>/.../*.wav
 ```
 
 This example does not include VoxBlink2 download, extraction, or conversion
@@ -107,16 +107,16 @@ Generate per-source `data.list` / `utt2spk` and the joined PTN mix:
 
 ```bash
 applications/speaker_rec/examples/vb2_vox2_cnc2/scripts/prepare_vox2_vb2_cnc2_data.sh \
-  --vox2-list /data/wespeaker_data/vox2_dev \
-  --vb2-root /data/voxblink2 \
-  --cnc2-root /data/cnceleb2 \
-  --output-root /data/wespeaker_data/vox2_vb2_cnc2_v0
+  --vox2-list /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev \
+  --vb2-root /root/group-shared/voiceprint/data/speech/speaker_verification/VoxBlink2 \
+  --cnc2-root /root/group-shared/voiceprint/data/speech/speaker_verification/cnceleb \
+  --output-root /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0
 ```
 
 Outputs:
 
 ```text
-/data/wespeaker_data/vox2_vb2_cnc2_v0/
+/root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/
 |-- cnc2_full/
 |   |-- data.list
 |   `-- utt2spk
@@ -137,10 +137,10 @@ directories and joins the survivors with the same `A_`, `B_`, `C_` prefixes:
 
 ```bash
 applications/speaker_rec/examples/vb2_vox2_cnc2/scripts/prepare_vox2_vb2_cnc2_lm_data.sh \
-  --vox2-list /data/wespeaker_data/vox2_dev \
-  --vb2-list /data/wespeaker_data/vox2_vb2_cnc2_v0/vb2_full \
-  --cnc2-list /data/wespeaker_data/vox2_vb2_cnc2_v0/cnc2_full \
-  --output-root /data/wespeaker_data/vox2_vb2_cnc2_v0 \
+  --vox2-list /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev \
+  --vb2-list /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/vb2_full \
+  --cnc2-list /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/cnc2_full \
+  --output-root /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0 \
   --min-duration 5.0 \
   --duration-workers 32
 ```
@@ -148,7 +148,7 @@ applications/speaker_rec/examples/vb2_vox2_cnc2/scripts/prepare_vox2_vb2_cnc2_lm
 If your VoxBlink2 package includes a duration parquet, pass it explicitly:
 
 ```bash
-  --vb2-durations /data/voxblink2/durations.parquet
+  --vb2-durations /root/group-shared/voiceprint/data/speech/speaker_verification/VoxBlink2/durations.parquet
 ```
 
 Otherwise durations are inferred into each list directory as
@@ -157,7 +157,7 @@ Otherwise durations are inferred into each list directory as
 Outputs:
 
 ```text
-/data/wespeaker_data/vox2_vb2_cnc2_v0/
+/root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/
 |-- vox2_lm/
 |-- vb2_lm/
 |-- cnc2_lm/
@@ -172,13 +172,25 @@ Use `mix_join_lm/data.list` and `mix_join_lm/utt2spk` for LM training.
 
 The copied recipes keep the source experiment schedule and model defaults, with
 generic `/data/...` paths. Use a local overlay instead of editing the recipes in
-place.
+place. The overlay and command examples below already carry this machine's real
+data location.
+
+> **Note on this machine:** there is no `/data` directory here. The data lives on
+> the shared filesystem at `/root/group-shared/voiceprint/data/wespeaker_data/`.
+> The paths below have been updated to that real location, so they work as
+> written. The recipe files themselves still say `/data/...` and are **not
+> reachable as written** — which is why the overlay exists. If you prefer them to
+> work unmodified, create the symlink first:
+> `mkdir -p /data && ln -s /root/group-shared/voiceprint/data/wespeaker_data /data/wespeaker_data`
+> The `mix_join/` and `mix_join_lm/` lists do not exist yet either; run the two
+> preparation scripts in this README first.
+> See `docs/07-本机数据与开训检查.md` for the full pre-training checklist.
 
 For PTN, create `/tmp/vb2_vox2_cnc2-ptn.local.yaml`:
 
 ```yaml
-train_data: /data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/data.list
-train_label: /data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/utt2spk
+train_data: /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/data.list
+train_label: /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/utt2spk
 exp_dir: exp/vb2_vox2_cnc2/redimnet2_b3/ptn
 
 dataset_args:
@@ -190,20 +202,20 @@ dataset_args:
       prob: 0.8
       augmentors:
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/music
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
         snr: [2, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/noise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
         snr: [0, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/speech
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
         snr: [7, 18]
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
       prob: 0.2
     - aug_type: OneOf
       prob: 0.25
@@ -214,7 +226,7 @@ dataset_args:
         prob: 1.0
 
 validation:
-  vox1: /data/wespeaker_data/vox1-test
+  vox1: /root/group-shared/voiceprint/data/wespeaker_data/vox1-test
 ```
 
 The overlay merge replaces YAML lists, so include the full `aug_setup` tree when
@@ -245,8 +257,8 @@ After PTN finishes, create `/tmp/vb2_vox2_cnc2-lm.local.yaml`. The example
 below is for b3:
 
 ```yaml
-train_data: /data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join_lm/data.list
-train_label: /data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join_lm/utt2spk
+train_data: /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join_lm/data.list
+train_label: /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join_lm/utt2spk
 exp_dir: exp/vb2_vox2_cnc2/redimnet2_b3/lm
 model_ckpt: exp/vb2_vox2_cnc2/redimnet2_b3/ptn/models/model_110.pt
 spk2id_map_path: exp/vb2_vox2_cnc2/redimnet2_b3/ptn/spk2id.json
@@ -260,20 +272,20 @@ dataset_args:
       prob: 0.8
       augmentors:
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/music
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
         snr: [2, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/noise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
         snr: [0, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/speech
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
         snr: [7, 18]
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
       prob: 0.2
     - aug_type: OneOf
       prob: 0.25
@@ -284,7 +296,7 @@ dataset_args:
         prob: 1.0
 
 validation:
-  vox1: /data/wespeaker_data/vox1-test
+  vox1: /root/group-shared/voiceprint/data/wespeaker_data/vox1-test
 ```
 
 Launch LM:
