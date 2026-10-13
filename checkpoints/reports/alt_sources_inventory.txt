@@ -32,8 +32,12 @@ Note: 体积来自 find -printf '%s' / ls -lah；未做全量校验和。
     vox2_test_aac.zip
   可选再加 vox2_dev_txt.zip + vox2_meta.csv。
   优先用两个已拼好的 aac zip，不必再 cat 分卷。
-  不要把 /aispeech-cfs/voiceprint/data/voxceleb/vox2/wav 当作主数据来源——
-  那里解压出来的树不完整（开发集句数比 WeSpeaker 期望少约 2.4%；见 05-训练数据检查.md）。
+
+  更正（2026-10-14）：下面原先写"不要把 /aispeech-cfs/.../voxceleb/vox2/wav 当作
+  主数据来源——那里解压出来的树不完整"。实测该树 6112 个说话人目录 / 1128246 句，
+  与约定主目录完全一致，抽查文件大小逐字节相同，"不完整"的说法现在不成立。
+  仍建议按约定主目录为准，但不要再写这棵树缺数据。
+  实测明细见 docs/07-本机数据与开训检查.md 第 5 节。
 
 ================================================================================
 1) /aispeech-cfs/voiceprint/data/voxceleb_hf/
@@ -113,11 +117,12 @@ Under /root/group-shared/voiceprint/data (maxdepth 3)：
 其他缺失 / 不完整项（不含 VoxBlink2）
 ================================================================================
 本扫 + 此前 05 核对（注意：部分项在 2026-10-13 晚间已补齐，以 05 与 musan_restore 为准）：
-  - CFS voxceleb/ 上解出的 Vox2 wav：句数不完整
+  - CFS voxceleb/ 上解出的 Vox2 wav：**2026-10-14 复测为完整**
+    （6112 说话人目录 / 1128246 句，与约定主目录一致）；此前"句数不完整"的记录已过时
   - MUSAN speech：盘点当时主树缺；完整 426 在 unused/；
     当时新下的 musan.tar.gz 仍不完整/损坏（.aria2）——之后已用 OpenSLR 恢复
-  - /data/wespeaker_data 下的样本清单与旧 LMDB：本文件未查
-    （路径当时曾报不存在；晚间复检见 05-训练数据检查.md）
+  - /data/wespeaker_data 下的样本清单：**本机不存在 /data 目录**，
+    真实位置是 /root/group-shared/voiceprint/data/wespeaker_data/（见 docs/07）
   - CN-Celeb / RIRS：本文件未重核；05 报告写为检查通过
   - group-shared maxdepth 3 下未发现完整 Vox2 归档
 

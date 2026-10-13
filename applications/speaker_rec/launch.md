@@ -29,3 +29,12 @@ torchrun --nnodes=1:1 --nproc_per_node="$NUM_GPUS" --rdzv-backend=static \
 
 `MASTER_ADDR` and `MASTER_PORT` can be overridden in the environment. Training
 auto-resumes from the newest `model_*.pt` in the configured `exp_dir/models/`.
+
+> **Caveat for the large-margin fine-tuning stage.** The `lm` recipes set
+> `model_ckpt`, which takes priority over the auto-detected checkpoint
+> (`train.py`: `ckpt_to_load = configs.get('model_ckpt', None) or checkpoint`).
+> So restarting an `lm` run **re-initializes backbone and projection head from
+> the PTN weights again**; only the starting epoch number comes from the newest
+> file. PTN runs do not set `model_ckpt` and resume normally. If an `lm` run is
+> interrupted, prefer clearing `exp_dir` and starting over. See
+> `docs/04-训练流程.md` section 6.
