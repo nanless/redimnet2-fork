@@ -88,14 +88,38 @@ def write_outputs(df: pd.DataFrame, out_dir: str) -> None:
     s = df['spk'].map(json.dumps)
     w = df['wav'].map(json.dumps)
     data_lines = '{"key": ' + k + ', "spk": ' + s + ', "wav": ' + w + '}'
-    with open(data_path, 'w') as f:
-        f.write('\n'.join(data_lines.tolist()))
-        f.write('\n')
-
     utt_lines = df['key'] + ' ' + df['spk']
-    with open(utt_path, 'w') as f:
-        f.write('\n'.join(utt_lines.tolist()))
-        f.write('\n')
+
+    # 先写临时文件、全部成功后再原子改名。
+    #
+    # 这个脚本是同一批数据准备脚本里唯一"直接就地截断写"的（兄弟脚本
+    # gen_datalists.py 与 join_datalists.py 都是 tmp + os.replace）。
+    # 就地写的后果：中途被打断（Ctrl-C、磁盘满）会在目标位置留下
+    # 只有一半的 data.list，而 `prepare_vox2_vb2_cnc2_lm_data.sh` 的判断是
+    # "文件存在就跳过"，于是半截数据会被当成完整结果一直复用。
+    # 两张表也要一起改名，否则会出现 data.list 是新的、utt2spk 是旧的这种错配。
+    data_tmp = data_path + '.tmp'
+    utt_tmp = utt_path + '.tmp'
+    try:
+        with open(data_tmp, 'w') as f:
+            f.write('\n'.join(data_lines.tolist()))
+            f.write('\n')
+            f.flush()
+            os.fsync(f.fileno())
+        with open(utt_tmp, 'w') as f:
+            f.write('\n'.join(utt_lines.tolist()))
+            f.write('\n')
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(data_tmp, data_path)
+        os.replace(utt_tmp, utt_path)
+    except BaseException:
+        for tmp in (data_tmp, utt_tmp):
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        raise
 
     print(f"  Wrote {data_path} ({len(df):,} lines)")
     print(f"  Wrote {utt_path}  ({len(df):,} lines)")
@@ -121,8 +145,20 @@ def main():
                     help='Drop utterances longer than this (seconds)')
     ap.add_argument('--min-utts-per-speaker', type=int, default=0,
                     help='If >0, drop speakers left with fewer surviving utts')
-    ap.add_argument('--drop-missing', action='store_true', default=True,
+    # 这一对开关：默认丢掉"查不到时长"的句子，但可以显式关掉来看看到底是哪些。
+    # 之前只有一个 `--drop-missing`（action=store_true 且 default=True），
+    # 等于永远开着、没法关，help 里写"(default: on)"也不准确。
+    ap.add_argument('--drop-missing', dest='drop_missing', action='store_true',
+                    default=True,
                     help='Drop utts with no duration entry (default: on)')
+    ap.add_argument('--keep-missing', dest='drop_missing', action='store_false',
+                    help='Keep utts whose duration could not be read '
+                         '(they will fail the min-duration test and be dropped '
+                         'unless --min-duration 0) '
+                         '[overrides --drop-missing]')
+    ap.add_argument('--max-drop-frac', type=float, default=0.01,
+                    help='Abort if more than this fraction of utts have no '
+                         'duration entry (default: 0.01 = 1%%)')
     ap.add_argument('--seed', type=int, default=42,
                     help='Unused; accepted for CLI symmetry with sibling scripts')
     args = ap.parse_args()
@@ -156,6 +192,18 @@ def main():
         else:
             print(msg)
     if args.drop_missing:
+        n_missing = int(df['duration'].isna().sum())
+        if n_missing:
+            frac = n_missing / max(len(df), 1)
+            # 丢一点点是正常的（个别文件读不出头信息）；
+            # 丢掉一大片说明时长表和这份清单对不上（比如换了数据却复用了旧表），
+            # 那种情况必须停下来，而不是静默地把训练集砍掉一大块。
+            if frac > args.max_drop_frac:
+                raise SystemExit(
+                    f"查不到时长的句子占了 {frac:.1%}（{n_missing:,}/{len(df):,} 条），"
+                    f"超过阈值 {args.max_drop_frac:.1%}。这通常意味着 --durations "
+                    f"指向了与 --in-dir 不匹配的时长表，请先确认两者是同一份数据；"
+                    f"确实要强行继续就调大 --max-drop-frac。")
         df = df[df['duration'].notna()].reset_index(drop=True)
 
     print()

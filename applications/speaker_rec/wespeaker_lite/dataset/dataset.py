@@ -111,6 +111,21 @@ class DistributedSampler:
                 random.Random(self.epoch).shuffle(data)
             data = data[self.rank::self.world_size]
         data = data[self.worker_id::self.num_workers]
+        # 说明（实测过，不是猜测）：`data[rank::world_size]` 对**最后一个 rank**
+        # 才是整除的，前面的 rank 会多出 1 条。以本机 VoxCeleb2 开发集
+        # （1,092,009 条）为例：
+        #     8 卡: rank0 136,502 条，其余 rank 各 136,501 条
+        #     4 卡: rank0 273,003 条，其余各 273,002 条
+        #     2 卡: rank0 546,005 条，其余各 546,004 条
+        # 也就是每个 rank 之间最多差 1 条。
+        #
+        # 这**不影响训练**：训练循环按 `epoch_iter` 截断
+        # （`executor.run_epoch` 里 `if (i + 1) == epoch_iter: break`），
+        # 而 `epoch_iter` 取的是 `总数 // world_size // batch_size`，
+        # 比任何 rank 的实际条数都小，所以多出来的那一条永远读不到。
+        #
+        # 之所以不改成"均匀切分"：这是老实验依赖的行为，改了会让已有实验
+        # 看到的数据顺序变化。只在注释里说清，不动代码。
         return data
 
 

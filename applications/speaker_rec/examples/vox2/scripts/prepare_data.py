@@ -998,6 +998,24 @@ def make_lmdb(
         ) from error
 
     entries = read_scp(scp_path)
+
+    def _safe_rmtree(target: Path, what: str) -> None:
+        """Remove a build directory, but refuse to follow a symlink.
+
+        `shutil.rmtree` on a path that is itself a symlink removes the
+        *target's* contents on modern Python, so a stray
+        `data_root/musan/lmdb -> /some/real/tree` link would make
+        `--rebuild-lmdb` delete data nobody meant to delete. Removing the link
+        itself is what the caller wants; refuse anything else.
+        """
+        if target.is_symlink():
+            raise RuntimeError(
+                f"refusing to delete {what} {target}: it is a symbolic link "
+                f"pointing at {os.readlink(target)}. Remove the link yourself "
+                f"if that is really what you want."
+            )
+        shutil.rmtree(target)
+
     if lmdb_complete(output, len(entries)):
         log(f"[lmdb] cached: {output}")
         return
@@ -1006,7 +1024,7 @@ def make_lmdb(
             raise RuntimeError(
                 f"Incomplete LMDB exists at {output}; rerun with --rebuild-lmdb"
             )
-        shutil.rmtree(output)
+        _safe_rmtree(output, "existing LMDB directory")
 
     temporary = output.with_name(output.name + ".tmp")
     if temporary.exists():
@@ -1015,7 +1033,7 @@ def make_lmdb(
                 f"Interrupted LMDB build exists at {temporary}; "
                 "rerun with --rebuild-lmdb"
             )
-        shutil.rmtree(temporary)
+        _safe_rmtree(temporary, "interrupted LMDB build")
 
     total_bytes = sum(audio.stat().st_size for _, audio in entries)
     map_size = max(1 << 30, int(total_bytes * 1.25) + (256 << 20))
