@@ -66,22 +66,49 @@ redimnet2/
 
 ### `ReDimNet2Wrap`
 
-- **输入**：`(B, samples)`，16 kHz。  
+- **输入**：`(B, samples)`，16 kHz；可选第二个参数 `lengths`，见下。  
 - **输出**：`(B, embed_dim)`。  
 - **重要参数**：`feat_type`、`embed_dim`、`pooling_func`、`hop_length`、`spec_params`、以及透传给骨干的 `C`、`F`、`stages_setup`…  
+
+#### 支持一个 batch 里长度不同的音频
+
+签名是 `forward(self, x, lengths=None)`。`x` 是**补齐到同一长度**的波形，
+`lengths` 是每条的真实采样点数（张量、列表或数组都行，形状 `(B,)`）。
+
+```python
+# 两条长度不同的音频，补到同长后一次前向
+x = torch.zeros(2, T); x[0, :n0] = wav0; x[1, :n1] = wav1
+emb = model(x, lengths=torch.tensor([n0, n1]))   # (2, 192)
+```
+
+- **不传 `lengths` 时行为与从前逐位一致**（20 个发布权重实测差值为 0），
+  所以老用法一行都不用改。
+- 传了 `lengths` 之后，补零的那些帧在池化与前端归一化里会被排除掉。
+  **这一点很关键**：如果只是把短的补零凑成一批、却不传 `lengths`，
+  同一说话人的余弦会掉到 0.14 左右（实测），结果等于错的。
+- 补齐只影响同批内较短的那些条；不补齐的那条不受影响。
+
+> 长度不是某个倍数的整数倍时，从前会被静默丢掉最多 3 帧（约 30 毫秒）。
+> 现在改成先补齐再处理，不再丢有效帧。
 
 `feat_type` 常见取值：
 
 | 值 | 含义 |
 |----|------|
 | `pt` / `pt_mel` | torchaudio Mel |
-| `tf` / `tf_mel` | TF 实现的 Mel（训练 recipe 里常见） |
-| `tf_spec` | 更偏谱图的 TF 前端 |
+| `tf` / `tf_mel` | TF 实现的 Mel（**20 个发布权重全用这个**） |
+| `tf_spec` | 更偏谱图的 TF 前端（**当前是坏的**，频点数与骨干配置对不上） |
+| `pt_stft` | 引用了不存在的类（**当前构造就会失败**） |
 
 ### `ReDimNet2`
 
-- 纯骨干：吃 `(B,1,F,T)`（或等价），吐出融合后的特征图。  
+- 纯骨干，签名是 `forward(self, inp, mask=None)`：吃 `(B,1,F,T)`（或等价），
+  吐出融合后的特征图；`mask` 是帧级的 `(B, T')` 张量，`None` 表示全有效。  
 - 旋钮：`stages_setup`、`block_1d_type`、`block_2d_type`、`dual_agg`、`agg_gnorm`、`fm_weigthing_type`、`causal` 等。详见 [02](02-architecture.md)。
+
+`mask` 会跟着时间维一起降采样与上采样，具体在 `layers/masking.py` 里
+（那里也放了感知掩码的卷积、上采样、分组归一化几个包装类，名字与参数名保持不变，
+所以已发布权重的键名不受影响）。
 
 ### 训练侧别名
 
