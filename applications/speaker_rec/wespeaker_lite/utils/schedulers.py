@@ -235,7 +235,8 @@ class ExponentialDecayPlateauWithWarmup(BaseClass):
                  decay_rate = 0.5,
                  staircase = True,
                  warm_from_zero = False,
-                 lr_scaling = "legacy"):
+                 lr_scaling = "legacy",
+                 decay_to_final_lr = False):
         super().__init__(optimizer, num_epochs, epoch_iter, initial_lr, final_lr,
                          warm_up_epoch, scale_ratio, warm_from_zero,
                          lr_scaling=lr_scaling)
@@ -244,6 +245,12 @@ class ExponentialDecayPlateauWithWarmup(BaseClass):
         self.decay_steps = decay_epochs * epoch_iter
         self.decay_rate = decay_rate
         self.staircase = staircase
+        # `final_lr` used to be accepted but never read: the decay was driven by
+        # `decay_rate` alone, so a recipe setting `final_lr` got no such value.
+        # Keep that as the default (old recipes must not change), and let a new
+        # recipe opt in with `decay_to_final_lr: true`, which rescales the decay
+        # so the schedule actually lands on `final_lr` at the last step.
+        self.decay_to_final_lr = decay_to_final_lr
 
     def get_current_lr(self):
         step = self.current_iter
@@ -253,7 +260,34 @@ class ExponentialDecayPlateauWithWarmup(BaseClass):
         else:
             # Exponential decay phase
             decay_steps_adjusted = step - (self.warmup_steps + self.plateau_steps)
-            if self.staircase:
+            if self.decay_to_final_lr:
+                # 让**最后一步**刚好落到 final_lr。
+                #
+                # 做法：先算整段衰减要走多少步（从平台结束到最后一步），
+                # 再把 decay_rate 摊到每一步上 —— 相当于保持"每隔 decay_steps
+                # 乘一次 decay_rate"的形状，但把 decay_rate 换成能达到 final_lr 的等效值。
+                total_decay_steps = max(1, self.max_iter -
+                                        (self.warmup_steps + self.plateau_steps))
+                # 注意：返回值最后还要再乘一次 `lr_coeff`，所以这里换算时
+                # 必须把目标先除掉 `lr_coeff`，否则最终值会差一个 lr_coeff 的因子
+                # （实测就是差了 scale_ratio 倍）。
+                end_coeff = self.get_multi_process_coeff()
+                target = self.final_lr
+                if end_coeff > 0:
+                    target = self.final_lr / end_coeff
+                if self.initial_lr > 0 and target > 0:
+                    n_periods = total_decay_steps / self.decay_steps
+                    eff_rate = (target / self.initial_lr) ** (1.0 / n_periods)
+                else:
+                    eff_rate = self.decay_rate
+                if self.staircase:
+                    current_lr = self.initial_lr * (
+                        eff_rate ** (decay_steps_adjusted // self.decay_steps))
+                else:
+                    current_lr = self.initial_lr * math.exp(
+                        (decay_steps_adjusted / self.decay_steps) *
+                        math.log(eff_rate))
+            elif self.staircase:
                 current_lr = self.initial_lr * (self.decay_rate ** (decay_steps_adjusted // self.decay_steps))
             else:
                 current_lr = self.initial_lr * math.exp((decay_steps_adjusted / self.decay_steps) * math.log(self.decay_rate))

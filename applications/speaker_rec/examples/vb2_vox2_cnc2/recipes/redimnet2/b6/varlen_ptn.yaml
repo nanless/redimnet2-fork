@@ -219,6 +219,8 @@ scheduler_args:
   # 不加这行会退回老行为：学习率会被乘上 卡数×每卡批大小/64。
   lr_scaling: base_lr
   final_lr: 1.0e-4
+  # 让调度末端真的落到 final_lr（不加这行则 final_lr 是死配置，从不被读取）。
+  decay_to_final_lr: true
   warm_up_epoch: 8
   warm_from_zero: true
   plateau_epochs: 45
