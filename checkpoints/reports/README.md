@@ -23,6 +23,7 @@
 | 3 | [03-域外试验结果.md](03-域外试验结果.md) | Vox1-B、VOICES、CN-Celeb（6 个混合数据训练的型号） |
 | 4 | [04-数据与复现步骤.md](04-数据与复现步骤.md) | 评测数据路径、命令、目录里有什么文件 |
 | 5 | [05-训练数据检查.md](05-训练数据检查.md) | 训练语料是否齐全（Vox2 / MUSAN / RIRS / CNC2 等） |
+| 6 | [06-数据审计报告.md](06-数据审计报告.md) | 8 份样本清单共 3,782 万行**逐行**核对的结果；以及三处「文档与磁盘不符」的问题 |
 
 可交互汇总页（Cursor Canvas，表 + 图）：  
 `~/.cursor/projects/.../canvases/redimnet2-eval-alignment.canvas.tsx`  

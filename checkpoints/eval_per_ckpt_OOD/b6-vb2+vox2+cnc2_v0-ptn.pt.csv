@@ -1,2 +1,2 @@
-CN-Celeb,VOICES,Vox1-B,checkpoint,delta-CN-Celeb,delta-VOICES,delta-Vox1-B,official-CN-Celeb,official-VOICES,official-Vox1-B
-4.823,4.302,1.507,b6-vb2+vox2+cnc2_v0-ptn.pt,0.503,0.002,-0.003,4.32,4.3,1.51
+deprecated,cnc_protocol,CN-Celeb,VOICES,Vox1-B,checkpoint,delta-CN-Celeb,delta-VOICES,delta-Vox1-B,official-CN-Celeb,official-VOICES,official-Vox1-B
+YES-use-eval_ood_all.csv-instead,concat-STALE,4.823,4.302,1.507,b6-vb2+vox2+cnc2_v0-ptn.pt,0.503,0.002,-0.003,4.32,4.3,1.51
