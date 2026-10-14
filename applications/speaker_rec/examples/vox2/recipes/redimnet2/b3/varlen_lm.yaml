@@ -1,3 +1,5 @@
+# 这是对应固定长度配方的变长版本：只多了 dataset_args.bucketing 与
+# dataset_args.varlen 两个块，并把 exp_dir 换个名字。其余训练设置与固定长度版一致。
 compile_backbone:
   mode: default
 data_type: raw_fast
@@ -7,42 +9,41 @@ dataloader_args:
   num_workers: 16
   pin_memory: false
   prefetch_factor: 2
+# gpus: removed - not read by the training code; the number of GPU processes
+# comes from launch.sh's second argument (and CUDA_VISIBLE_DEVICES). The old
+# `gpus: [0]` here never restricted training to one GPU.
 dataset_args:
+  # ── 变长训练新增：长度分桶（训练策略，与模型层无关）──
+  # 把长度接近的样本放进同一批，缩小补齐比例；关掉这一块就回到固定长度行为。
+  bucketing:
+    enable: true
+    bucket_count: 6
+    bucket_width_sec: 1.0
+    shuffle_buckets: true
   aug_setup:
     aug_type: Sequential
+    prob: 0.6
     augmentors:
     - aug_type: OneOf
+      prob: 0.8
       augmentors:
       - aug_type: CustomNoise
         dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
+        snr: [2, 12]
         prob: 1.0
-        snr:
-        - 2
-        - 12
       - aug_type: CustomNoise
         dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
+        snr: [0, 12]
         prob: 1.0
-        snr:
-        - 0
-        - 12
       - aug_type: CustomNoise
-        babble: true
         dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
+        snr: [7, 18]
+        babble: true
         prob: 1.0
-        snr:
-        - 7
-        - 18
-      prob: 0.8
     - aug_type: Reverb
       dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
       file_pattern: '**/*.wav'
       prob: 0.2
-    prob: 0.6
-  bucketing:
-    bucket_count: 6
-    bucket_width_sec: 1.0
-    enable: true
-    shuffle_buckets: true
   fbank_args:
     dither: 1.0
     frame_length: 25
@@ -55,15 +56,21 @@ dataset_args:
   shuffle_args:
     shuffle_size: 2500
   speed_perturb: false
+  # ── 变长训练新增：不再强制截成固定长度 ──
+  # 每条按自己的真实长度送入模型（右侧补零凑批，并回传真实长度给掩码）。
+  # min_sec / max_sec 是可变长度路径的时长范围；max_batch_sec 限制一批的总秒数。
   varlen:
     enable: true
-    max_batch_sec: 900.0
-    max_sec: 6.0
     min_sec: 2.0
+    max_sec: 6.0
+    max_batch_sec: 900.0
 do_lm: true
 enable_amp: true
 eval_dur: 8.0
 exp_dir: exp/redimnet2/b3/conv_att/varlen_lm
+# gpus: removed - not read by the training code; the number of GPU processes
+# comes from launch.sh's second argument (and CUDA_VISIBLE_DEVICES). The old
+# `gpus: [0]` here never restricted training to one GPU.
 log_batch_interval: 25
 loss: CrossEntropyLoss
 loss_args: {}
