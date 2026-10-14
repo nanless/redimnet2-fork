@@ -18,6 +18,7 @@
 import io
 # import kaldiio
 import json
+import sys
 import resampy
 import warnings
 import logging
@@ -39,6 +40,45 @@ import torchaudio.compliance.kaldi as kaldi
 
 AUDIO_FORMAT_SETS = set(['flac', 'mp3', 'm4a', 'ogg', 'opus', 'wav', 'wma'])
 
+# ── dropped-sample counters ──────────────────────────────────────────
+# Samples dropped by the readers below used to be invisible: the only signal
+# was a `logging.warning`, and bin/train.py raises the root logger's level to
+# CRITICAL, which suppresses WARNING records entirely. A data.list / spk2id
+# mismatch or a corrupt audio file therefore shrank the training set with no
+# trace. These counters make every drop observable: the first few of each kind
+# are printed to stderr, and report_drop_counters() prints a summary. stderr is
+# not filtered by the logging level, so this survives train.py's CRITICAL.
+# Counters are per-process, so with num_workers>0 each worker reports its own.
+DROP_COUNTERS = {
+    'short_audio': 0,       # read returned None (clip shorter than min_duration)
+    'read_failed': 0,       # exception while reading/decoding the audio
+    'vad_unsupported': 0,   # line carries a 'vad' key this reader cannot use
+    'unknown_spk': 0,       # spk missing from spk2id (would have been label -1)
+}
+
+# Print at most this many occurrences of each kind, to surface a problem
+# without flooding stderr when a data list is systematically broken.
+DROP_PRINT_LIMIT = 5
+
+
+def _drop_counter_incr(name, detail=None):
+    """Count one dropped sample and print the first few occurrences to stderr."""
+    DROP_COUNTERS[name] = DROP_COUNTERS.get(name, 0) + 1
+    if DROP_COUNTERS[name] <= DROP_PRINT_LIMIT:
+        msg = f"[dataset][DROP:{name}]"
+        if detail is not None:
+            msg += f" {detail}"
+        print(msg, file=sys.stderr, flush=True)
+
+
+def report_drop_counters(prefix="[dataset] dropped-sample summary"):
+    """Print the accumulated drop counters to stderr (visible at any log level)."""
+    active = {k: v for k, v in DROP_COUNTERS.items() if v}
+    if not active:
+        return
+    parts = ", ".join(f"{k}={v}" for k, v in sorted(active.items()))
+    print(f"{prefix}: {parts}", file=sys.stderr, flush=True)
+
 
 
 
@@ -56,15 +96,29 @@ def read_audio_section(fp,
     # `samplerate`, resampling on the fly if the file differs. The returned
     # rate is always `samplerate`.
     #
-    # extend_to_duration=True (the training path): the requested window is
-    # chunk_len * 1.1 (the caller's speed-perturb margin), and for clips
-    # shorter than that the tail is looped -- np.pad(..., 'wrap') -- until the
-    # window is full. How often that triggers depends on the chunk window:
+    # extend_to_duration=True (the fixed-length training path): the requested
+    # window is chunk_len * 1.1 (the caller's speed-perturb margin), and for
+    # clips shorter than that the tail is looped -- np.pad(..., 'wrap') -- until
+    # the window is full. How often that triggers depends on the chunk window:
     # VoxCeleb2 clips are at least 3.97 s, so a ptn window (2.02 s, target
     # 2.22 s) never wraps (0%), while an lm window (6.02 s, target 6.62 s)
-    # wraps on ~58% of clips, duplicating ~24% of the samples on those clips.
+    # wraps on ~61% of clips, duplicating ~24% of the samples on those clips.
+    # Measured on VoxCeleb2 dev, stratified across speakers (every 5th-20th
+    # speaker, 2-3 clips each, ~900-2400 clips). Stratification matters:
+    # data.list is grouped by speaker and clip length varies by speaker, so a
+    # contiguous first-N-lines slice under-reports (~58%). Note P(wrap) equals
+    # the share of clips shorter than the 6.62 s target (once the clip is at
+    # least that long the uniform start can no longer run off the end); that
+    # share is ~61% and the bare 6.02 s window is ~52-56%.
     # WeSpeaker upstream behaves the same way; this is deliberate and must not
     # be turned into zeros or dropped, as that would change training.
+    #
+    # duration=None plus extend_to_duration=False (the variable-length training
+    # path) is the escape hatch from that looped padding: read the clip's own
+    # audio and return it at whatever length it happens to have, so a short
+    # utterance stays short instead of being stretched with copies of itself.
+    # Callers on that path must pass an explicit start_time, since there is no
+    # window to pick a random offset within.
     #
     # No Path(fp).exists() pre-check: sf.SoundFile already raises on a missing
     # file (callers handle that identically), and the explicit stat() was a
@@ -109,7 +163,14 @@ def read_audio_section(fp,
     # target rate. This was previously the same name as the source-frame count
     # above while meaning a different unit, which is what let the stale `sr`
     # slip into the return value.
-    out_frames = int(samplerate * duration)
+    #
+    # duration=None (the variable-length path) means "keep whatever the clip
+    # has", so there is no output length to count towards and nothing to pad:
+    # `out_frames` becomes the number of samples actually read, which makes the
+    # two lines below no-ops. They are still executed rather than branched
+    # around so the fixed-length path keeps exactly the same sequence of
+    # operations it had before this escape hatch existed.
+    out_frames = len(samples) if duration is None else int(samplerate * duration)
     if extend_to_duration:
         shortage = out_frames - len(samples)
         if shortage > 0:
@@ -170,16 +231,25 @@ def parse_raw_fast_and_filter(
             min_len = int(frame_shift / 1000 * min_num_frames * sample_rate)
 
             ext_spd_pert_dur = (chunk_len/sample_rate) * 1.1
+            # Keep the requested minimum duration: read_audio_section returns
+            # (None, None) for a too-short clip and would otherwise clobber
+            # `sample_rate` with None, which the drop message below needs.
+            min_duration_sec = min_len/sample_rate
 
             waveform, sample_rate = read_audio_section(wav_file,
                         samplerate=sample_rate,
-                        min_duration=min_len/sample_rate,
+                        min_duration=min_duration_sec,
                         duration=ext_spd_pert_dur, # Extended for speed perturb
                         start_time=None,
                         extend_to_duration=True)
 
             if waveform is None:
-                print(f"Skipping waveform : {obj}")
+                # Clip shorter than min_duration: dropped. print() to stderr, not
+                # logging.warning, because train.py pins the root logger to
+                # CRITICAL and would swallow the warning.
+                _drop_counter_incr(
+                    'short_audio',
+                    f"shorter than {min_duration_sec:.2f}s: {obj}")
                 continue
 
             waveform = waveform[:int(ext_spd_pert_dur*sample_rate)]
@@ -207,6 +277,114 @@ def parse_raw_fast_and_filter(
             yield sample
         except Exception as ex:
             traceback.print_exc()
+            # Also count it: same reason as above, a logging.warning is
+            # suppressed by train.py's CRITICAL root level.
+            _drop_counter_incr(
+                'read_failed',
+                f"{type(ex).__name__}: {ex} | {obj}")
+            logging.warning('Failed to read & filter {}'.format(str(obj)))
+
+
+def parse_raw_fast_varlen(
+        data,
+        min_sec=1.0,
+        max_sec=8.0,
+        data_type='raw_fast',
+        min_num_frames=100,
+        frame_shift=10,
+    ):
+    """ Read a clip's own audio for the variable-length training path.
+
+        This is the variable-length sibling of `parse_raw_fast_and_filter`.
+        The fixed-length path reads a window of `chunk_len * 1.1` seconds and
+        loops the tail of short clips to fill it, so every sample leaves this
+        stage with the same number of samples; this one instead returns each
+        clip at whatever length it really has, and the batch is zero padded
+        later by `collate_varlen`.
+
+        Clips longer than `max_sec` are trimmed to a random `max_sec`-long
+        window, so the length distribution is capped but no sample is stretched
+        or dropped outright. Clips shorter than `min_sec` are dropped.
+
+        Args:
+            data: Iterable[str], str is a json line has key/wav/spk
+            min_sec: clips shorter than this are dropped
+            max_sec: upper bound on the emitted length, in seconds
+
+        Returns:
+            Iterable[{key, spk, path, wav, sample_rate, num_samples}]
+    """
+    assert data_type == 'raw_fast'
+    assert max_sec > min_sec, (min_sec, max_sec)
+
+    for sample in data:
+        assert 'src' in sample
+        json_line = sample['src']
+        try:
+            obj = json.loads(json_line)
+        except Exception as e:
+            logging.warning(f"Failed to parse json line: {json_line}")
+            raise e
+        assert 'key' in obj
+        assert 'wav' in obj
+        assert 'spk' in obj
+        key = obj['key']
+        wav_file = obj['wav']
+        spk = obj['spk']
+        try:
+            sample_rate = 16_000
+
+            # duration=None keeps the clip at its own length: read_audio_section
+            # then reads from `start_time` (which must be explicit, since there
+            # is no window to pick a random offset within) to the end of the
+            # file, without the `np.pad(..., 'wrap')` tail loop.
+            waveform, sample_rate = read_audio_section(wav_file,
+                        samplerate=sample_rate,
+                        duration=None,
+                        min_duration=min_sec,
+                        start_time=0.0,
+                        extend_to_duration=False)
+
+            if waveform is None:
+                # Silent drop before; count it so it is visible (see
+                # DROP_COUNTERS: train.py's CRITICAL level hides warnings).
+                _drop_counter_incr(
+                    'short_audio',
+                    f"shorter than {min_sec:.2f}s: {obj}")
+                continue
+
+            max_samples = int(max_sec * sample_rate)
+            if len(waveform) > max_samples:
+                # Trim to a random window of at most max_sec. Reusing
+                # get_random_chunk keeps the "random offset, clone the result"
+                # behaviour identical to the fixed-length path.
+                waveform = get_random_chunk(waveform, max_samples)
+
+            if len(waveform) < int(min_sec * sample_rate):
+                _drop_counter_incr(
+                    'short_audio',
+                    f"shorter than {min_sec:.2f}s after read: {obj}")
+                continue
+
+            waveform = torch.from_numpy(np.ascontiguousarray(waveform))
+            waveform = waveform.unsqueeze(0).float()
+
+            if 'vad' in obj:
+                raise NotImplementedError(
+                    "'vad' segments are not supported by this reader")
+
+            sample = dict(key=key,
+                          spk=spk,
+                          path=wav_file,
+                          wav=waveform,
+                          sample_rate=sample_rate,
+                          num_samples=waveform.size(-1))
+            yield sample
+        except Exception as ex:
+            traceback.print_exc()
+            _drop_counter_incr(
+                'read_failed',
+                f"{type(ex).__name__}: {ex} | {obj}")
             logging.warning('Failed to read & filter {}'.format(str(obj)))
 
 
@@ -248,13 +426,29 @@ def spk_to_id(data, spk2id):
         Returns:
             Iterable[{key, wav/feat, label}]
     """
+    # A speaker that is absent from spk2id used to be emitted with label = -1.
+    # That is worse than a plain bad label: under speed perturbation
+    # speed_perturb() adds num_spks * speed_idx, so -1 becomes num_spks - 1 or
+    # 2 * num_spks - 1 -- both of which ARE valid speaker ids -- and the sample
+    # is silently trained as a real, wrong speaker (label corruption that is
+    # invisible in the loss curve).
+    #
+    # We drop such samples rather than raising: a label/data-list mismatch is
+    # usually a partial data problem (one corpus in a mixed list not yet
+    # regenerated, a speaker dropped by filtering), and aborting a multi-day
+    # training run on it is worse than training on the remaining samples. The
+    # count is reported through DROP_COUNTERS so the mismatch is still visible;
+    # if the count is large, fix data.list/utt2spk instead of ignoring it.
     for sample in data:
         assert 'spk' in sample
         if sample['spk'] in spk2id:
-            label = spk2id[sample['spk']]
+            sample['label'] = spk2id[sample['spk']]
         else:
-            label = -1
-        sample['label'] = label
+            _drop_counter_incr(
+                'unknown_spk',
+                f"spk={sample['spk']!r} key={sample.get('key')!r} "
+                f"not in spk2id ({len(spk2id)} speakers); sample dropped")
+            continue
         yield sample
 
 
@@ -382,6 +576,38 @@ def random_chunk(data, chunk_len, data_type='shard/raw/feat'):
             wav = get_random_chunk(wav, chunk_len)
             sample['wav'] = wav.unsqueeze(0)
         yield sample
+
+def random_chunk_range(data, min_sec=1.0, max_sec=3.0):
+    """ Random chunk each sample to a length drawn in [min_sec, max_sec]
+
+        Variable-length sibling of `random_chunk`. The chunk length varies per
+        sample, so the emitted waveforms still differ in length and the batch
+        must be padded by `collate_varlen`. Samples already shorter than the
+        drawn length are left as they are -- growing them would need the same
+        tail loop the variable-length path exists to avoid.
+
+        Args:
+            data: Iterable[{key, wav, label}]
+            min_sec: lower bound of the drawn chunk length, in seconds
+            max_sec: upper bound of the drawn chunk length, in seconds
+
+        Returns:
+            Iterable[{key, wav, label, num_samples}]
+    """
+    assert max_sec >= min_sec, (min_sec, max_sec)
+    for sample in data:
+        assert 'key' in sample
+        assert 'wav' in sample
+        sample_rate = sample['sample_rate']
+        wav = sample['wav'][0]
+        target = int(random.uniform(min_sec, max_sec) * sample_rate)
+        target = max(1, target)
+        if len(wav) > target:
+            wav = get_random_chunk(wav, target)
+        sample['wav'] = wav.unsqueeze(0)
+        sample['num_samples'] = wav.size(-1)
+        yield sample
+
 
 def norm_rir(rir_audio):
     return rir_audio / np.sqrt(np.sum(rir_audio**2))
@@ -535,7 +761,13 @@ def add_reverb_noise_gain(data,
                     sample_cat = 'speech' if cat == 'bubble' else cat
                     min_num, max_num = numnoise[cat]
                     if min_num < max_num:
-                        num_noises = np.random.randint(min_num, max_num)
+                        # numnoise ranges are inclusive ([3, 7] means 3..7
+                        # noises, the same inclusive convention as the snr
+                        # ranges right above). np.random.randint is exclusive on
+                        # the upper bound, so the old call never produced
+                        # max_num: bubble only ever drew {3,4,5,6}. +1 restores
+                        # the documented range.
+                        num_noises = np.random.randint(min_num, max_num + 1)
                     else:
                         num_noises = max_num
 

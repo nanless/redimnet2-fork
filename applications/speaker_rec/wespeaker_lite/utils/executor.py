@@ -105,15 +105,36 @@ def run_epoch(dataloader,
         # print(f"wav : {wav.size()}")
         targets = targets.long().to(device)
 
+        # Variable-length path: collate_varlen zero pads the batch and carries
+        # the real sample count per utterance. Padded batches need those counts
+        # so the front end and the pooling layer leave the padding out of their
+        # statistics. Fixed-length batches have no `lengths` key and the model
+        # is called exactly as before.
+        lengths = batch.get('lengths', None)
+        if lengths is not None:
+            lengths = lengths.long().to(device)
+
         with torch.cuda.amp.autocast(enabled=enable_amp):
             target_mask = None
             if mix_aug is not None:
                 num_classes = model.module.projection.out_features
                 target_mask = to_ohe(num_classes, targets)
-                wav, target_mask = mix_aug(wav, target_mask)
+                if lengths is None:
+                    wav, target_mask = mix_aug(wav, target_mask)
+                else:
+                    # Mixing two utterances of different true lengths is only
+                    # meaningful on the padded view, so the mixture's real
+                    # length is the longer of the two, not the padded width.
+                    wav, target_mask = mix_aug(wav, target_mask)
+                    perm_len = lengths[torch.randperm(lengths.size(0),
+                                                      device=lengths.device)]
+                    lengths = torch.maximum(lengths, perm_len)
                 # targets = None
 
-            outputs = model(wav)  # (embed_a,embed_b) in most cases
+            if lengths is None:
+                outputs = model(wav)  # (embed_a,embed_b) in most cases
+            else:
+                outputs = model(wav, lengths=lengths)
             embeds = outputs[-1] if isinstance(outputs, tuple) else outputs
             # outputs = model.module.projection.float()(embeds.float(), targets)
 
@@ -277,7 +298,11 @@ def eval_epoch(
         protocol['scr_avg'] = (protocol['scr0']+protocol['scr1'])/2
 
         # eer, _ = EER(protocol.label.values,protocol.score.values)
-        new_row[f"{val_ds_name}-eer-fl"] = np.around(EER(protocol.label.values,protocol.scr0.values)[0]*100,3)
+        # Full eval path: Vox1TestEvalDataset hands back 5 chunks of 3 s each
+        # (chunk_len_sec=3.0, num_chunks=5). `scr0` averages the first chunk of
+        # every chunk pair, i.e. one 3-second crop per utterance -- it is not a
+        # full-length number either, so it is named after what it measures.
+        new_row[f"{val_ds_name}-eer-3s"] = np.around(EER(protocol.label.values,protocol.scr0.values)[0]*100,3)
         new_row[f"{val_ds_name}-eer-tta"] = np.around(EER(protocol.label.values,protocol.scr1.values)[0]*100,3)
         new_row[f"{val_ds_name}-eer-avg"] = np.around(EER(protocol.label.values,protocol.scr_avg.values)[0]*100,3)
 
@@ -369,10 +394,15 @@ def eval_epoch_simple(
         # protocol['scr_avg'] = (protocol['scr0']+protocol['scr1'])/2
 
         # eer, _ = EER(protocol.label.values,protocol.score.values)
+        # The dataset here is Vox1TestEvalDatasetSimple with start_time=0.0 and
+        # duration=configs['eval_dur'] (8.0 s), so this number is a fixed
+        # first-8-seconds window, NOT the full utterance. It used to be reported
+        # as `-eer-fl` ("full length"), which was simply wrong about what it
+        # measured; `-eer-8s` says what it is.
         try:
-            new_row[f"{val_ds_name}-eer-fl"] = np.around(EER(protocol.label.values,protocol.scr0.values)[0]*100,3)
+            new_row[f"{val_ds_name}-eer-8s"] = np.around(EER(protocol.label.values,protocol.scr0.values)[0]*100,3)
         except:
-            new_row[f"{val_ds_name}-eer-fl"] = -1
+            new_row[f"{val_ds_name}-eer-8s"] = -1
         # new_row[f"vox1-eer-tta"] = np.around(EER(protocol.label.values,protocol.scr1.values)[0]*100,3)
         # new_row[f"vox1-eer-avg"] = np.around(EER(protocol.label.values,protocol.scr_avg.values)[0]*100,3)
 

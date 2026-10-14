@@ -21,6 +21,7 @@ import copy
 import time
 import shutil
 import logging
+import functools
 import traceback
 import pandas as pd
 from pathlib import Path
@@ -37,11 +38,11 @@ import yaml
 from torch.utils.data import DataLoader
 
 import wespeaker_lite.utils.schedulers as schedulers
-from wespeaker_lite.dataset.dataset import Dataset, Vox1TestEvalDataset, Vox1TestEvalDatasetSimple, collate_func_single, collate_func_mult
+from wespeaker_lite.dataset.dataset import Dataset, Vox1TestEvalDataset, Vox1TestEvalDatasetSimple, collate_func_single, collate_func_mult, collate_varlen, BucketedLengthDataset, is_varlen_enabled
 from wespeaker_lite.models.projections import get_projection
 from wespeaker_lite.models.mix_augs import Cutmix, Mixup, MixCutUp, OverlapMix
 from wespeaker_lite.models.speaker_model import get_speaker_model, SpeakerModel
-from wespeaker_lite.utils.checkpoint import save_checkpoint
+from wespeaker_lite.utils.checkpoint import save_checkpoint, extract_state_dict
 from wespeaker_lite.utils.executor import run_epoch, eval_epoch, eval_epoch_simple
 from wespeaker_lite.utils.file_utils import read_table
 from wespeaker_lite.utils.utils import get_logger, parse_config_or_kwargs, set_seed, \
@@ -275,6 +276,7 @@ def train(config='conf/config.yaml', **kwargs):
 
     # For right shuffle
     seed_worker(0)
+    varlen_enabled = is_varlen_enabled(ds_args_runtime)
     train_dataset = Dataset(configs['data_type'],
                             configs['train_data'],
                             ds_args_runtime,
@@ -297,12 +299,62 @@ def train(config='conf/config.yaml', **kwargs):
     # workers per epoch means each one re-reads the sampler on its first
     # __iter__ and picks up the new epoch. The cost is one fork per epoch,
     # amortised over epoch_iter steps of real audio loading.
+    #
+    # The variable-length switch only changes two things here, and only when
+    # dataset_args.varlen.enable is true:
+    #   * the dataset yields clips of differing true lengths, so the loader
+    #     needs collate_varlen to zero pad them and hand over `lengths`;
+    #   * optional length bucketing wraps the dataset so one batch is drawn
+    #     from a single length bucket.
+    # With the switch off, `collate_fn` stays unset and the default torch
+    # stacking collate runs exactly as before, which is what keeps every
+    # recipe written before this feature unchanged.
+    batch_size = configs['dataloader_args']['batch_size']
+    collate_fn = None
+    loader_batch_size = batch_size
+    if varlen_enabled:
+        varlen_cfg = ds_args_runtime.get('varlen', {}) or {}
+        collate_fn = functools.partial(
+            collate_varlen,
+            max_batch_sec=varlen_cfg.get('max_batch_sec', None),
+            sample_rate=ds_args_runtime.get('resample_rate', 16000))
+        bucket_cfg = ds_args_runtime.get('bucketing', None) or {}
+        if isinstance(bucket_cfg, dict) and bucket_cfg.get('enable', False):
+            print(f"BUCKETING : enabled, {bucket_cfg}")
+            train_dataset = BucketedLengthDataset(
+                train_dataset,
+                batch_size=batch_size,
+                num_workers=dataloader_args.get('num_workers', 1),
+                bucket_count=int(bucket_cfg.get('bucket_count', 8)),
+                bucket_width_sec=float(bucket_cfg.get('bucket_width_sec', 1.0)),
+                shuffle_buckets=bool(bucket_cfg.get('shuffle_buckets', True)))
+            # The bucketing dataset already assembles batches of exactly
+            # `batch_size` samples, drawn from one length bucket. `batch_size`
+            # must therefore be None here: with the recipe's batch_size the
+            # DataLoader would gather batch_size *more* of those batches into
+            # one step, producing batch_size**2 samples from mixed buckets --
+            # 64 instead of 8 at the default settings -- which silently throws
+            # away the whole point of bucketing.
+            #
+            # `drop_last` has to go with it: torch rejects
+            # `batch_size=None` together with `drop_last`, and the flag has no
+            # meaning here anyway, since the batches handed over are already
+            # exactly `batch_size` long.
+            loader_batch_size = None
+        else:
+            print(f"BUCKETING : disabled")
+
+    loader_args = {k: v for k, v in dataloader_args.items() if k != 'batch_size'}
+    if loader_batch_size is None:
+        loader_args.pop('drop_last', None)
+
     train_dataloader = DataLoader(train_dataset,
                                   worker_init_fn=seed_worker if configs['dataloader_args'].get(
                                       'seed_worker', False) else None,
-                                  **dataloader_args)
+                                  collate_fn=collate_fn,
+                                  batch_size=loader_batch_size,
+                                  **loader_args)
 
-    batch_size = configs['dataloader_args']['batch_size']
     if configs['dataset_args'].get('sample_num_per_epoch', 0) > 0:
         sample_num_per_epoch = configs['dataset_args']['sample_num_per_epoch']
     else:
@@ -394,9 +446,31 @@ def train(config='conf/config.yaml', **kwargs):
     # starting file -- that pin takes priority over both.
     ckpt_to_load = checkpoint or configs.get('model_ckpt', None)
 
+    # Optimizer / GradScaler state found in the checkpoint, restored further down
+    # once both objects exist. Reported on every rank because every rank owns its
+    # own optimizer instance and all of them need the momentum buffers back.
+    resume_optimizer_state = None
+    resume_scaler_state = None
+
     if ckpt_to_load is not None:
-        logger.info('Load initial model from {}'.format(ckpt_to_load))
-        state_dict = torch.load(ckpt_to_load)
+        # print() rather than logger: the root logger is pinned to CRITICAL at
+        # the top of this file, so every logger.info() here is discarded and
+        # would make a resume's diagnostics invisible exactly when they matter.
+        print('Load initial model from {}'.format(ckpt_to_load))
+        raw_checkpoint = torch.load(ckpt_to_load, map_location='cpu', weights_only=False)
+        # Accepts both layouts: the bare state dict written by older versions of
+        # save_checkpoint (and the published weight files), and the dict format
+        # that additionally carries optimizer/scaler/epoch.
+        state_dict, ckpt_extra = extract_state_dict(raw_checkpoint)
+        resume_optimizer_state = ckpt_extra.get('optimizer')
+        resume_scaler_state = ckpt_extra.get('scaler')
+        print('checkpoint format: {} (keys: {})'.format(
+            'training dict' if ckpt_extra else 'bare state_dict',
+            ', '.join(sorted(ckpt_extra.keys())) if ckpt_extra else 'state_dict only'))
+        if ckpt_extra.get('epoch') is not None:
+            # Informational only: start_epoch is derived from the model_N.pt
+            # filename, which is authoritative for both layout variants.
+            print('checkpoint records epoch: {}'.format(ckpt_extra['epoch']))
 
         # Load backbone (everything except projection head)
         loading_res = model.load_state_dict(
@@ -547,6 +621,56 @@ def train(config='conf/config.yaml', **kwargs):
 
     scaler = torch.cuda.amp.GradScaler(enabled=configs['enable_amp'])
 
+    # Restore optimizer / scaler state here, not next to the weight load: the
+    # optimizer is built after the model is `.cuda()`-ed and DDP-wrapped, so at
+    # model-load time there is no optimizer object to load into yet. That
+    # ordering is fine because the state dict is keyed by a per-parameter index,
+    # not by name or device, so it survives the move.
+    #
+    # Caveat worth knowing: the optimizer holds the parameters *in place*
+    # (`.cuda()` moves storage, and DDP never re-parameterises), so the parameter
+    # order the optimizer sees now is the same order as when it was saved. The
+    # risk is a changed config: the two param groups are backbone vs projection,
+    # so editing `optimizer_args`, the weight-decay multipliers or the projection
+    # type makes the saved groups line up with different tensors, and
+    # `load_state_dict` will silently load mismatched momentum rather than raise.
+    # That is why the restore is skipped for the cold start from `model_ckpt`
+    # (there is nothing to restore) and only triggered by a real resume.
+    if resume_optimizer_state is not None:
+        try:
+            optimizer.load_state_dict(resume_optimizer_state)
+            n_buffers = sum(1 for s in optimizer.state.values()
+                            if 'momentum_buffer' in s)
+            print('resume: restored optimizer state from {} '
+                  '({} momentum buffers, momentum={}, nesterov={})'.format(
+                      ckpt_to_load, n_buffers,
+                      optimizer.param_groups[0].get('momentum'),
+                      optimizer.param_groups[0].get('nesterov')))
+        except (ValueError, KeyError) as e:
+            # Different param-group count or shape (e.g. the projection head was
+            # rebuilt for new classes). Trainable, just without momentum history.
+            print('resume: could NOT restore optimizer state from {} ({}); '
+                  'continuing with a freshly initialised optimizer'.format(
+                      ckpt_to_load, e))
+    else:
+        print('resume: checkpoint carries no optimizer state; momentum buffers '
+              'start empty (expected for pre-fix checkpoints and for the '
+              'model_ckpt cold start)')
+
+    if resume_scaler_state is not None:
+        try:
+            scaler.load_state_dict(resume_scaler_state)
+            print('resume: restored GradScaler state from {} '
+                  '(loss scale={})'.format(ckpt_to_load,
+                                           scaler.state_dict().get('scale')))
+        except (ValueError, KeyError, RuntimeError) as e:
+            print('resume: could NOT restore GradScaler state from {} ({}); '
+                  'continuing with a freshly initialised scaler'.format(
+                      ckpt_to_load, e))
+    elif configs['enable_amp']:
+        print('resume: checkpoint carries no GradScaler state; AMP loss scale '
+              'restarts from its default')
+
     training_loop(
         start_epoch, configs, train_dataset, train_dataloader, epoch_iter,
         ddp_model, model, criterion, optimizer, scaler, scheduler, margin_scheduler,
@@ -609,7 +733,12 @@ def training_loop(
         if rank == 0:
             curr_ckpt = os.path.join(model_dir, 'model_{}.pt'.format(epoch))
             prev_ckpt = os.path.join(model_dir, 'model_{}.pt'.format(max(epoch - 1, 0)))
-            save_checkpoint(model, curr_ckpt)
+            # Save optimizer + scaler alongside the weights so a resume does not
+            # throw away SGD momentum (all recipes use momentum 0.9 + nesterov)
+            # and the AMP loss scale. The filename stays model_<epoch>.pt because
+            # the resume scan above matches that pattern; the write is atomic.
+            save_checkpoint(model, curr_ckpt, optimizer=optimizer, scaler=scaler,
+                            epoch=epoch)
             if not (max(epoch - 1, 0) % configs['save_epoch_interval'] == 0
                     or max(epoch - 1, 0) >= configs['num_epochs'] - configs['num_avg']):
                 Path(prev_ckpt).unlink()
@@ -630,11 +759,18 @@ def training_loop(
 
 def _run_validation(val_dls_dict, val_type, epoch, configs, rank, log_df, eval_func_kwargs):
     """Extract validation loop to avoid 3x duplication."""
+    # First epoch that counts as the end-of-training stretch: the last `num_avg`
+    # epochs. Clamped at 1 because `num_avg` (10) exceeds `num_epochs` for every
+    # LM recipe (num_epochs=5), where `num_epochs - num_avg` is -5 and the
+    # comparison below was true for every epoch. That was invisible while
+    # `full_val` stayed False; with it enabled, LM runs would have run the slow
+    # full validation on all 5 epochs instead of just the final stretch.
+    full_val_from_epoch = max(1, configs['num_epochs'] - configs['num_avg'])
     tot_new_row = {}
     for val_name, val_dls in val_dls_dict.items():
         (valid_dataloader_fast, valid_dataloader_full) = val_dls
-        if ((epoch % configs['save_epoch_interval'] == 0) or (epoch >= configs[
-                    'num_epochs'] - configs['num_avg'])) and configs.get('full_val', False):
+        if ((epoch % configs['save_epoch_interval'] == 0)
+                or (epoch >= full_val_from_epoch)) and configs.get('full_val', False):
             if rank == 0:
                 print(f"EVAL FULL")
             new_row = eval_epoch(valid_dataloader_full, val_ds_name=val_name,
