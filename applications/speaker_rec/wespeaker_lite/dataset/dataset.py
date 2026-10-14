@@ -613,11 +613,25 @@ class BucketedLengthDataset(IterableDataset):
         in_flight = 0  # samples held by this worker across all buckets
         stream = iter(self.dataset)
         exhausted = False
-        # Split the stream across DataLoader workers the same way the rest of
-        # the stack does: the workers are identical forks of one iterable, so
-        # each one takes every `num_workers`-th sample and together they cover
-        # it once.
-        cursor = 0
+        # 这里**不要再按 DataLoader worker 切一次流**。
+        #
+        # 内层的 `DataList.sampler.sample()` 已经做过 worker 分片了
+        # （`data[self.worker_id::self.num_workers]`），每个 worker 拿到的本来就是
+        # 「每 num_workers 条取一条」的子流。之前这里又按
+        # `cursor % num_workers_effective == worker_id` 过滤了一遍，
+        # 于是每个 worker 只剩自己那 1/num_workers，合起来只有 1/num_workers 的语料。
+        #
+        # 实测（160 条清单、batch_size=8、读到 40 批为止，统计出现过多少个不同样本）：
+        #     num_workers=1  普通 160 / 分桶 160
+        #     num_workers=2  普通 160 / 分桶  80
+        #     num_workers=4  普通 160 / 分桶  40
+        #     num_workers=8  普通 160 / 分桶  20
+        # 丢失比例正好 1/num_workers。而配方里 num_workers 是 16，
+        # 也就是说开了分桶之后每个 epoch 实际只看到约 1/16 的语料。
+        # 丢掉的是固定步长、不是随机，所以损失曲线照样正常下降，
+        # 只有收敛变慢——从日志上几乎看不出。
+        #
+        # 所以这里直接消费内层给的流，不再过滤。
 
         while True:
             if not exhausted and not any(full):
@@ -642,10 +656,6 @@ class BucketedLengthDataset(IterableDataset):
                     except StopIteration:
                         exhausted = True
                         break
-                    mine = (cursor % num_workers_effective) == worker_id
-                    cursor += 1
-                    if not mine:
-                        continue
                     width = int(sample.get('num_samples', sample['wav'].size(-1)))
                     sec = width / float(sample.get('sample_rate', 16000))
                     b = bucket_index(sec, bucket_width_sec, bucket_count)
