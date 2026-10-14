@@ -403,11 +403,15 @@ class ReDimNet2(nn.Module):
                 x_2d = up_2d(x_pre)
                 x_1d = up_1d(blk_1d(x_pre))
             else:
-                # The 1D branch re-zeroes internally; the `up_2d` branch needs
-                # the re-zeroing because its `to1d` is a reshape only.
+                # 两个上采样分支各自会**改变时间长度**（`MaskResample(stt)` 把时间维
+                # 放大 stt 倍），所以各自都会返回与自己输出对齐的新掩码。
+                # 这里必须接收并佩戴它们，不能再拿上采样之前那个（已经按 stt 降过采样、
+                # 长度差 stt 倍的）`mask` 去 `rezero`——那样长度对不上，
+                # 会直接抛 "The size of tensor a (196) must match ... (98)"。
+                # 这个分支只有在 `dual_agg=True` 且传了掩码时才会走到。
                 x_pre, mask = pre(prev_outs_1d, mask)
-                x_2d, _ = up_2d(x_pre, mask)
-                x_2d = rezero(x_2d, mask)
+                x_2d, mask_2d = up_2d(x_pre, mask)
+                x_2d = rezero(x_2d, mask_2d)
                 x_1d, _ = up_1d(blk_1d(x_pre), mask)
             return [x_2d, x_1d]
         stage = getattr(self,f'stage{stage_ind}')
@@ -443,7 +447,14 @@ class ReDimNet2(nn.Module):
                 if mask is not None:
                     # 掩码必须跟着一起截，否则会与特征图错位，
                     # 后面的统计量就会把真实帧误当补零帧排除掉。
-                    mask = mask[:, :, :T_keep]
+                    #
+                    # 注意这里要用 `...`（省略号）把最后那维留出来。
+                    # 掩码到这一步已经是 4 维的 `(B,1,1,T)`，写 `mask[:, :, :T_keep]`
+                    # 切的是**第 2 维**——那一维是频率轴、长度是 1——等于什么都没做：
+                    # 输入被截短了、掩码没截，两者就错位了。
+                    # （今天走不到这里，因为 ReDimNet2Wrap 已经提前把两者一起截到
+                    #  time_stride 的整数倍；但这是一颗留着的地雷，改成 `...` 才是对的。）
+                    mask = mask[..., :T_keep]
             if mask is None:
                 x = self.stem(inp)
                 if self.agg_gnorm:
