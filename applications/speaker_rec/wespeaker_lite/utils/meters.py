@@ -96,3 +96,23 @@ class ClassErrorMeter:
         if self.n == 0:
             return [float('nan')]
         return [100.0 * self.n_correct / self.n]
+
+
+class _MeterNamespace:
+    """The `meter` attribute the training loop reaches the meters through.
+
+    `executor.run_epoch` calls `tnt.meter.AverageValueMeter()` /
+    `tnt.meter.ClassErrorMeter()`, which is how the meters were reached when
+    this module stood in for torchnet's package layout (`torchnet.meter.X`).
+    When torchnet was dropped the two classes moved to the top level of this
+    module and the `meter` name went with it, so every run died on
+    `AttributeError: module '...meters' has no attribute 'meter'` before the
+    first optimizer step. Keeping the attribute here restores the documented
+    drop-in path without moving the classes.
+    """
+
+    AverageValueMeter = AverageValueMeter
+    ClassErrorMeter = ClassErrorMeter
+
+
+meter = _MeterNamespace()
