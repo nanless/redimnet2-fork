@@ -148,7 +148,7 @@ to that tree and the generated `vox2_dev/wav` directory is not used.
 recipes augment from **raw** MUSAN/RIRS via `Sequential` + `dataset_dir`
 (LMDB / `noise_lmdb_file` / `reverb_lmdb_file` / `lmdb_to_ram` are optional
 legacy only and are **not** used by these recipes). The base recipes use
-generic `/data/wespeaker_data` defaults. Create a small local overlay for
+generic `/root/group-shared/voiceprint/data/wespeaker_data` defaults. Create a small local overlay for
 machine-specific paths instead of editing every recipe. The overlay and the
 `--data-root` examples below already carry this machine's real data location.
 For example, `/tmp/vox2-ptn.local.yaml`:
@@ -156,10 +156,10 @@ For example, `/tmp/vox2-ptn.local.yaml`:
 > **Note on this machine:** there is no `/data` directory here. The data lives on
 > the shared filesystem at `/root/group-shared/voiceprint/data/wespeaker_data/`.
 > The paths below have been updated to that real location, so they work as
-> written. The base recipe files themselves still say `/data/wespeaker_data/...`
+> written. The base recipe files themselves still say `/root/group-shared/voiceprint/data/wespeaker_data/...`
 > and are **not reachable as written** — which is exactly why the overlay exists.
 > If you prefer the recipes to work unmodified, create the symlink first:
-> `mkdir -p /data && ln -s /root/group-shared/voiceprint/data/wespeaker_data /data/wespeaker_data`
+> `mkdir -p /data && ln -s /root/group-shared/voiceprint/data/wespeaker_data /root/group-shared/voiceprint/data/wespeaker_data`
 > See `docs/07-本机数据与开训检查.md` for the full pre-training checklist.
 
 ```yaml

@@ -37,8 +37,8 @@ exp_dir: exp/vox2_vb2_cnc2/b3_gnorm_110ep/lm
 model_ckpt: exp/vox2_vb2_cnc2/b3_gnorm_110ep/ptn_ha/models/model_110.pt
 spk2id_map_path: exp/vox2_vb2_cnc2/b3_gnorm_110ep/ptn_ha/spk2id.json
 
-train_data: /data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join_lm/data.list
-train_label: /data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join_lm/utt2spk
+train_data: /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join_lm/data.list
+train_label: /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join_lm/utt2spk
 
 dataloader_args:
   batch_size: 48
@@ -69,20 +69,20 @@ dataset_args:
       prob: 0.8
       augmentors:
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/music
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
         snr: [2, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/noise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
         snr: [0, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/speech
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
         snr: [7, 18]
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
       file_pattern: '**/*.wav'
       prob: 0.2
     - aug_type: OneOf
@@ -164,4 +164,4 @@ eval_dur: 8.0
 log_batch_interval: 25
 val_type: local
 validation:
-  vox1: /data/wespeaker_data/vox1-test
+  vox1: /root/group-shared/voiceprint/data/wespeaker_data/vox1-test

@@ -25,10 +25,10 @@ set -e
 #
 # Usage:
 #   ./scripts/prepare_vox2_vb2_cnc2_data.sh \
-#       --vox2-list /data/wespeaker_data/vox2_dev \
-#       --vb2-root  /data/voxblink2 \
-#       --cnc2-root /data/cnceleb2 \
-#       --output-root /data/wespeaker_data/vox2_vb2_cnc2_v0
+#       --vox2-list /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev \
+#       --vb2-root  /root/group-shared/voiceprint/data/speech/speaker_verification/VoxBlink2 \
+#       --cnc2-root /root/group-shared/voiceprint/data/speech/speaker_verification/cnceleb \
+#       --output-root /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0
 # =============================================================================
 
 VOX2_LIST=""        # dir containing existing data.list + utt2spk

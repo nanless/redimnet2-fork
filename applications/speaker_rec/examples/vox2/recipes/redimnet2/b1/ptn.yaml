@@ -16,20 +16,20 @@ dataset_args:
       prob: 0.8
       augmentors:
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/music
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
         snr: [2, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/noise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
         snr: [0, 12]
         prob: 1.0
       - aug_type: CustomNoise
-        dataset_dir: /data/wespeaker_data/raw/musan/speech
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
         snr: [7, 18]
         babble: true
         prob: 1.0
     - aug_type: Reverb
-      dataset_dir: /data/wespeaker_data/raw/rirs/simulated_rirs
+      dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
       file_pattern: '**/*.wav'
       prob: 0.2
   fbank_args:
@@ -116,8 +116,8 @@ scheduler_args:
   warm_from_zero: true
   warm_up_epoch: 6
 seed: 42
-train_data: /data/wespeaker_data/vox2_dev/data.list
-train_label: /data/wespeaker_data/vox2_dev/utt2spk
+train_data: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/data.list
+train_label: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/utt2spk
 val_type: local
 validation:
-  vox1: /data/wespeaker_data/vox1-test
+  vox1: /root/group-shared/voiceprint/data/wespeaker_data/vox1-test

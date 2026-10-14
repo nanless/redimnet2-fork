@@ -27,10 +27,10 @@ set -e
 #
 # Usage:
 #   ./scripts/prepare_vox2_vb2_cnc2_lm_data.sh \
-#       --vox2-list /data/wespeaker_data/vox2_dev \
-#       --vb2-list  /data/wespeaker_data/vox2_vb2_cnc2_v0/vb2_full \
-#       --cnc2-list /data/wespeaker_data/vox2_vb2_cnc2_v0/cnc2_full \
-#       --output-root /data/wespeaker_data/vox2_vb2_cnc2_v0 \
+#       --vox2-list /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev \
+#       --vb2-list  /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/vb2_full \
+#       --cnc2-list /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/cnc2_full \
+#       --output-root /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0 \
 #       --min-duration 5.0
 # =============================================================================
 

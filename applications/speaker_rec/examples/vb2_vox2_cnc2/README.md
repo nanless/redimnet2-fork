@@ -181,7 +181,7 @@ data location.
 > written. The recipe files themselves still say `/data/...` and are **not
 > reachable as written** — which is why the overlay exists. If you prefer them to
 > work unmodified, create the symlink first:
-> `mkdir -p /data && ln -s /root/group-shared/voiceprint/data/wespeaker_data /data/wespeaker_data`
+> `mkdir -p /data && ln -s /root/group-shared/voiceprint/data/wespeaker_data /root/group-shared/voiceprint/data/wespeaker_data`
 > The `mix_join/` and `mix_join_lm/` lists do not exist yet either; run the two
 > preparation scripts in this README first.
 > See `docs/07-本机数据与开训检查.md` for the full pre-training checklist.
