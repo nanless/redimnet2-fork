@@ -80,22 +80,41 @@ fi
 
 # Which Python runs the helper scripts.
 #
-# Do NOT hard-code `python3`: on a machine with several environments the one on
-# PATH is often NOT the one that has pandas/pyarrow installed, and the helpers
-# then die with "ModuleNotFoundError: No module named 'pandas'". Default to the
-# interpreter running this shell if it has pandas, otherwise `python3`, and let
-# `--python` / $PYTHON_BIN override.
+# These helpers need pandas / pyarrow, which live in this repo's own conda
+# environment (named `redimnet2` on this machine). Do NOT hard-code `python3`:
+# on a machine with several environments the one on PATH is often a different
+# one, and the helpers then die with "ModuleNotFoundError: No module named
+# 'pandas'" — an error that looks like a data problem but is not.
+#
+# Resolution order:
+#   1. --python <path>            (CLI flag)
+#   2. $PYTHON_BIN                (environment variable)
+#   3. $REDIMNET2_PYTHON          (explicit interpreter path)
+#   4. the conda environment named by $REDIMNET2_ENV (default: `redimnet2`)
+#   5. `python` / `python3` on PATH, if it can import pandas+pyarrow
 resolve_python() {
     if [ -n "$PYTHON_BIN" ]; then echo "$PYTHON_BIN"; return; fi
-    local cand=""
-    if command -v python >/dev/null 2>&1; then cand="$(command -v python)"; fi
-    if [ -n "$cand" ] && "$cand" -c 'import pandas, pyarrow' >/dev/null 2>&1; then
-        echo "$cand"; return
+    if [ -n "${REDIMNET2_PYTHON:-}" ] && [ -x "$REDIMNET2_PYTHON" ]; then
+        echo "$REDIMNET2_PYTHON"; return
     fi
-    if command -v python3 >/dev/null 2>&1 && python3 -c 'import pandas, pyarrow' >/dev/null 2>&1; then
-        echo "python3"; return
-    fi
-    echo "python3"
+    local env_name="${REDIMNET2_ENV:-redimnet2}" cand
+    for cand in "$HOME/miniforge3/envs/$env_name/bin/python" \
+                "$HOME/miniconda3/envs/$env_name/bin/python" \
+                "$HOME/anaconda3/envs/$env_name/bin/python" \
+                "/opt/conda/envs/$env_name/bin/python"; do
+        if [ -x "$cand" ] && "$cand" -c 'import pandas, pyarrow' >/dev/null 2>&1; then
+            echo "$cand"; return
+        fi
+    done
+    for cand in python python3; do
+        if command -v "$cand" >/dev/null 2>&1 && \
+           "$cand" -c 'import pandas, pyarrow' >/dev/null 2>&1; then
+            echo "$cand"; return
+        fi
+    done
+    echo "ERROR: 找不到装了 pandas/pyarrow 的 Python。" >&2
+    echo "       请用 --python <解释器路径> 或 REDIMNET2_ENV=<环境名> 指定。" >&2
+    exit 1
 }
 PYTHON_BIN="$(resolve_python)"
 
