@@ -64,6 +64,7 @@ while [[ $# -gt 0 ]]; do
         --min-utts-per-speaker) MIN_UTTS="$2"; shift 2;;
         --duration-workers) DURATION_WORKERS="$2"; shift 2;;
         --seed)             SEED="$2"; shift 2;;
+        --python)           PYTHON_BIN="$2"; shift 2;;
         *) echo "Unknown option: $1"; exit 1;;
     esac
 done
@@ -95,6 +96,27 @@ for d in "$VOX2_LIST" "$VB2_LIST" "$CNC2_LIST"; do
     fi
 done
 
+# Which Python runs the helper scripts.
+#
+# Do NOT hard-code `python3`: on a machine with several environments the one on
+# PATH is often NOT the one that has pandas/pyarrow installed, and the helpers
+# then die with "ModuleNotFoundError: No module named 'pandas'". Default to the
+# interpreter running this shell if it has pandas, otherwise `python3`, and let
+# `--python` / $PYTHON_BIN override.
+resolve_python() {
+    if [ -n "$PYTHON_BIN" ]; then echo "$PYTHON_BIN"; return; fi
+    local cand=""
+    if command -v python >/dev/null 2>&1; then cand="$(command -v python)"; fi
+    if [ -n "$cand" ] && "$cand" -c 'import pandas, pyarrow' >/dev/null 2>&1; then
+        echo "$cand"; return
+    fi
+    if command -v python3 >/dev/null 2>&1 && python3 -c 'import pandas, pyarrow' >/dev/null 2>&1; then
+        echo "python3"; return
+    fi
+    echo "python3"
+}
+PYTHON_BIN="$(resolve_python)"
+
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$OUTPUT_ROOT"
 
@@ -120,7 +142,7 @@ ensure_durations() {
         echo "    durations present: $parquet" 1>&2
     else
         echo "    inferring durations (soundfile, $DURATION_WORKERS workers) -> $parquet" 1>&2
-        python3 "$SCRIPTS_DIR/infer_durations_sf.py" "$listdir/data.list" \
+        "$PYTHON_BIN" "$SCRIPTS_DIR/infer_durations_sf.py" "$listdir/data.list" \
             --num-workers "$DURATION_WORKERS" \
             --output "$parquet" 1>&2
     fi
@@ -155,7 +177,7 @@ filter_one() {
         return
     fi
     echo "[filter $name] $listdir  (min ${MIN_DUR}s) -> $outdir"
-    python3 "$SCRIPTS_DIR/filter_datalist_by_duration.py" \
+    "$PYTHON_BIN" "$SCRIPTS_DIR/filter_datalist_by_duration.py" \
         --in-dir "$listdir" \
         --durations "$durations" \
         --out-dir "$outdir" \
@@ -181,7 +203,7 @@ if [ -f "$MIX_LM/data.list" ]; then
     echo "         (delete $MIX_LM/data.list to force a rebuild)"
 else
     echo "[STEP 4] Verbatim-joining filtered sources (A_/B_/C_)..."
-    python3 "$SCRIPTS_DIR/join_datalists.py" \
+    "$PYTHON_BIN" "$SCRIPTS_DIR/join_datalists.py" \
         --source "vc2:A:$VOX2_LM" \
         --source "vb2:B:$VB2_LM" \
         --source "cnc2:C:$CNC2_LM" \

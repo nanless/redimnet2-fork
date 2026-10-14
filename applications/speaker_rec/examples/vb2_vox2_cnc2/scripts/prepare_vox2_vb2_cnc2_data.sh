@@ -78,6 +78,27 @@ if [ ! -d "$CNC2_ROOT/CN-Celeb2_flac/data" ]; then
     exit 1
 fi
 
+# Which Python runs the helper scripts.
+#
+# Do NOT hard-code `python3`: on a machine with several environments the one on
+# PATH is often NOT the one that has pandas/pyarrow installed, and the helpers
+# then die with "ModuleNotFoundError: No module named 'pandas'". Default to the
+# interpreter running this shell if it has pandas, otherwise `python3`, and let
+# `--python` / $PYTHON_BIN override.
+resolve_python() {
+    if [ -n "$PYTHON_BIN" ]; then echo "$PYTHON_BIN"; return; fi
+    local cand=""
+    if command -v python >/dev/null 2>&1; then cand="$(command -v python)"; fi
+    if [ -n "$cand" ] && "$cand" -c 'import pandas, pyarrow' >/dev/null 2>&1; then
+        echo "$cand"; return
+    fi
+    if command -v python3 >/dev/null 2>&1 && python3 -c 'import pandas, pyarrow' >/dev/null 2>&1; then
+        echo "python3"; return
+    fi
+    echo "python3"
+}
+PYTHON_BIN="$(resolve_python)"
+
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "================================================================"
@@ -108,7 +129,7 @@ if [ -f "$CNC2_LISTS/data.list" ]; then
     echo "[STEP 2] CN-Celeb2 datalist already exists at $CNC2_LISTS — skipping"
 else
     echo "[STEP 2] Generating CN-Celeb2 datalist..."
-    python3 "$SCRIPTS_DIR/gen_datalists.py" "$CNC2_ROOT" "$CNC2_LISTS" \
+    "$PYTHON_BIN" "$SCRIPTS_DIR/gen_datalists.py" "$CNC2_ROOT" "$CNC2_LISTS" \
         --audio-subdir CN-Celeb2_flac/data \
         --exts .flac
 fi
@@ -122,7 +143,7 @@ if [ -f "$VB2_LISTS/data.list" ]; then
     echo "[STEP 3] VB2 datalist already exists at $VB2_LISTS — skipping"
 else
     echo "[STEP 3] Generating full VB2 datalist (no filter)..."
-    python3 "$SCRIPTS_DIR/gen_datalists.py" "$VB2_ROOT" "$VB2_LISTS" \
+    "$PYTHON_BIN" "$SCRIPTS_DIR/gen_datalists.py" "$VB2_ROOT" "$VB2_LISTS" \
         --audio-subdir audio
 fi
 echo ""
@@ -142,7 +163,7 @@ if [ -f "$MIX_DIR/data.list" ]; then
     echo "         (delete $MIX_DIR/data.list to force a rebuild)"
 else
     echo "[STEP 5] Joining all sources..."
-    python3 "$SCRIPTS_DIR/join_datalists.py" \
+    "$PYTHON_BIN" "$SCRIPTS_DIR/join_datalists.py" \
         --source "vc2:A:$VOX2_LIST" \
         --source "vb2:B:$VB2_LISTS" \
         --source "cnc2:C:$CNC2_LISTS" \
