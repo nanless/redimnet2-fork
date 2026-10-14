@@ -30,7 +30,8 @@ from torch import Tensor
 import torch.nn.functional as F
 from collections import OrderedDict
 from typing import Iterable, Optional
-from redimnet2.layers.layernorm import LayerNorm
+from redimnet2.layers.layernorm import LayerNorm, MaskedLayerNorm
+from redimnet2.layers.masking import rezero
 
 #------------------------------------------
 #           ConvNeXtV2 block
@@ -86,6 +87,14 @@ WSConvNd = {
 # https://github.com/facebookresearch/ConvNeXt/blob/main/models/convnext.py
 # https://github.com/facebookresearch/ConvNeXt-V2/blob/main/models/convnextv2.py
 class ConvNeXtLikeBlock(nn.Module):
+    """ConvNeXt-V2 style depthwise block.
+
+    `mask_aware = True` lets the enclosing `MaskSequential` thread the frame
+    mask through instead of re-zeroing blindly after the block.
+    """
+
+    mask_aware = True
+
     def __init__(self, C, dim=2, kernel_sizes=[(3,3),], Gdiv=1, padding='same',
                  activation='gelu', dilation=1, norm='bn',
                  norm_placement='mid', ws=False):
@@ -108,7 +117,10 @@ class ConvNeXtLikeBlock(nn.Module):
         if norm == 'bn':
             self.norm = BatchNormNd[dim](norm_C)
         elif norm == 'ln':
-            self.norm = LayerNorm(norm_C, data_format='channels_first')
+            # `channels_first` LayerNorm normalizes over both the channels and
+            # the time axis, so on a padded batch it must be told which frames
+            # are real; the 1D ConvNeXt blocks rely on this.
+            self.norm = MaskedLayerNorm(norm_C, eps=1e-6, data_format='channels_first')
         else:
             raise NotImplementedError(f"Unknown norm: {norm!r}")
 
@@ -121,8 +133,15 @@ class ConvNeXtLikeBlock(nn.Module):
 
         self.pwconv1 = Conv(C * len(kernel_sizes), C, 1) # pointwise/1x1 convs, implemented with linear layers
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         skip = x
+        if mask is not None:
+            # The input may carry non-zero values in the padded frames left by
+            # an earlier pointwise layer (a 1x1 convolution, a LayerNorm over
+            # the channel axis, an upsample, ...).  Re-zero before the depthwise
+            # convolutions read those positions.
+            x = rezero(x, mask)
+            skip = x
         if self.norm_placement == 'pre':
             x = self.norm(x)
         x = torch.cat([dwconv(x) for dwconv in self.dwconvs],dim=1)
@@ -133,4 +152,10 @@ class ConvNeXtLikeBlock(nn.Module):
         if self.norm_placement == 'post':
             x = self.norm(x)
         x = skip + x
-        return x
+        # The depthwise convolutions read the neighbouring frames, and
+        # `norm='mid'` (used throughout the 1D branch) also normalizes over the
+        # time axis, so the padded frames must be re-zeroed before this block
+        # returns for the next time-mixing layer to see exact zeros.
+        if mask is None:
+            return x
+        return rezero(x, mask), mask

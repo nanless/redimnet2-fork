@@ -65,3 +65,36 @@ class LayerNorm(nn.Module): # ⚡
         
     def extra_repr(self) -> str:
         return ", ".join([f"{k}={v}" for k,v in {"C" : self.C, "data_format" : self.data_format, "eps" : self.eps}.items()])
+
+
+class MaskedLayerNorm(LayerNorm):
+    """``LayerNorm`` whose `channels_first` statistics ignore padded frames.
+
+    In that mode `LayerNorm` reduces over both the channel and the time axes,
+    so on a padded batch the padded frames would otherwise shift the statistics
+    of the real ones.  This is a plain `LayerNorm` subclass, so parameter names
+    and checkpoint keys are unchanged.
+    """
+
+    mask_aware = True
+
+    def forward(self, x, mask=None):
+        if mask is None or self.data_format != "channels_first":
+            if mask is None:
+                return super().forward(x)
+            return super().forward(x), mask
+        # x is (B, C, ..., T); reduce over every axis except the batch one.
+        from redimnet2.layers.masking import as_mask_like
+        m = as_mask_like(x, mask)
+        dims = tuple(range(1, x.ndim))
+        count = m.sum(dim=dims, keepdim=True).clamp_min(1.0)
+        u = (x * m).sum(dim=dims, keepdim=True) / count
+        s = ((x - u) ** 2 * m).sum(dim=dims, keepdim=True) / count
+        x = (x - u) / torch.sqrt(s + self.eps)
+        w = self.weight
+        b = self.bias
+        for _ in range(x.ndim - 2):
+            w = w.unsqueeze(-1)
+            b = b.unsqueeze(-1)
+        x = w * x + b
+        return x * m, mask

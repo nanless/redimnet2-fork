@@ -24,6 +24,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from redimnet2.layers.masking import rezero
+
 #------------------------------------------
 #     ReDimNet main structural modules
 #------------------------------------------
@@ -72,7 +74,41 @@ class to2d_tfopt(nn.Module):
     def extra_repr(self) -> str:
         return f"f={self.f},c={self.c}"
 
+class MaskedTo1d(nn.Module):
+    """``to1d`` that forwards the frame mask unchanged (time stays last)."""
+
+    mask_aware = True
+
+    def __init__(self):
+        super().__init__()
+        self.inner = to1d()
+
+    def forward(self, x, mask=None):
+        out = self.inner(x)
+        if mask is None:
+            return out
+        return out, mask
+
+
+class MaskedTo2d(nn.Module):
+    """``to2d`` that forwards the frame mask unchanged (time stays last)."""
+
+    mask_aware = True
+
+    def __init__(self, f, c):
+        super().__init__()
+        self.inner = to2d(f=f, c=c)
+
+    def forward(self, x, mask=None):
+        out = self.inner(x)
+        if mask is None:
+            return out
+        return out, mask
+
+
 class weigth1d(nn.Module):
+    mask_aware = True
+
     def __init__(self, N, C, sequential=False,
                  requires_grad=True):
         super().__init__()
@@ -81,7 +117,9 @@ class weigth1d(nn.Module):
         self.w = nn.Parameter(torch.zeros(1,N,C,1),
                               requires_grad=requires_grad)
 
-    def forward(self, xs):
+    def forward(self, xs, mask=None):
+        # Softmax over the path axis; the padded frames then must not take part
+        # in the fusion, which the caller arranges by re-zeroing them.
         w = F.softmax(self.w,dim=1)
         if not self.sequential:
             xs = torch.cat([t.unsqueeze(1) for t in xs],dim=1)
@@ -93,7 +131,9 @@ class weigth1d(nn.Module):
                 s += t*w[:,i,:,:]
             x = s
             # x = sum([t*w[:,i,:,:] for i,t in enumerate(xs)])
-        return x
+        if mask is None:
+            return x
+        return rezero(x, mask), mask
 
     def extra_repr(self) -> str:
         return f"w={tuple(self.w.size())},sequential={self.sequential}"

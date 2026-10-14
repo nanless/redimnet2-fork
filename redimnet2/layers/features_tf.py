@@ -27,6 +27,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from scipy.signal import windows
 
+from redimnet2.layers.masking import (
+    MaskSequential,
+    frame_mask_from_sample_mask,
+    mask_mean,
+    mask_var,
+)
+
 def hz2mel(hz):
     """Convert a value in Hertz to Mels
     :param hz: a value in Hz. This can also be a numpy array, conversion proceeds element-wise.
@@ -76,6 +83,11 @@ def get_filterbanks(low_freq: int = 20,
     return np.vstack([np.zeros((1, nfilt)), mel_weights_matrix])[:, :].astype('float32')
 
 class SpectralFeaturesTF(nn.Module):
+    # Takes `(inputs, mask)` and returns `(feat, frame_mask)`: this module is
+    # where a sample-level mask becomes a frame-level one, so the enclosing
+    # `MaskSequential` must not re-zero with the sample-level mask after it.
+    mask_aware = True
+
     def __init__(self,
                  frame_length: int = 400,
                  frame_step: int = 160,
@@ -203,29 +215,56 @@ class SpectralFeaturesTF(nn.Module):
             self.register_buffer('melbanks_pt', 
                                  torch.from_numpy(linear_to_mel_weight_matrix).permute(1,0,2).float())
 
-    def forward(self, inputs):
+    def forward(self, inputs, mask=None):
         # inputs.size() : (bs,1,T)
         dtype = inputs.dtype
         inputs = inputs.float()
         if inputs.ndim == 2:
             inputs = inputs.unsqueeze(1)
-            
+
+        pad = self.shift // 2
+        sample_mask = None
+        if mask is not None:
+            sample_mask = mask.reshape(inputs.size(0), 1, inputs.size(-1)).to(inputs.dtype)
+
         if self.normalize_signal:
-            inputs = (inputs - inputs.mean(dim=2, keepdims=True)) /\
-                     (inputs.std(dim=2, keepdims=True, unbiased=False) + self.eps)
-            
-        real_part = F.conv1d(inputs, self.real_kernel_pt, stride=self.shift, padding=self.shift//2)
-        imag_part = F.conv1d(inputs, self.image_kernel_pt, stride=self.shift, padding=self.shift//2)
+            if sample_mask is None:
+                inputs = (inputs - inputs.mean(dim=2, keepdims=True)) /\
+                         (inputs.std(dim=2, keepdims=True, unbiased=False) + self.eps)
+            else:
+                mean = mask_mean(inputs, sample_mask, dim=2)
+                var = mask_var(inputs, sample_mask, dim=2, mean=mean)
+                inputs = (inputs - mean) / (torch.sqrt(var.clamp_min(0.0)) + self.eps)
+
+        if sample_mask is not None:
+            # The invariant the whole masked path relies on: the padded region
+            # is exactly zero when it reaches a time-mixing layer.  An earlier
+            # `NormalizeAudio` or `NormalizeAudio`-style module leaves the
+            # padded samples at a non-zero offset, so re-zero them here.
+            inputs = inputs * sample_mask
+
+        real_part = F.conv1d(inputs, self.real_kernel_pt, stride=self.shift, padding=pad)
+        imag_part = F.conv1d(inputs, self.image_kernel_pt, stride=self.shift, padding=pad)
+
+        # Frame-level mask, derived from the sample mask with exactly the
+        # geometry of the framing convolution.  Positions outside the signal
+        # are the convolution's own zero padding, so a frame that reaches them
+        # is still valid; see `frame_mask_from_sample_mask`.
+        frame_mask = None
+        if sample_mask is not None:
+            frame_mask = frame_mask_from_sample_mask(
+                sample_mask, self.length, self.shift, pad=pad)
 
         if self.features == 'complex':
-            return [real_part, imag_part]
-        
+            return [real_part, imag_part] if frame_mask is None else \
+                   ([real_part, imag_part], frame_mask)
+
         fft = torch.square(real_part) + torch.square(imag_part)
         if self.sqrt_real_imag:
             fft = torch.sqrt(fft)
-            
+
         feat = fft.clip(self.eps, 1/self.eps)
-        
+
         if self.fft_mode == 'log':
             feat = torch.log(feat)
 
@@ -238,11 +277,20 @@ class SpectralFeaturesTF(nn.Module):
                 feat = mel_spectrograms
 
         if self.normalize_spectrogram:
-            feat = (feat - feat.mean(dim=(1, 2), keepdims=True)) /\
-                    (feat.std(dim=(1, 2), keepdims=True, unbiased=False) + self.eps)
+            if mask is None:
+                feat = (feat - feat.mean(dim=(1, 2), keepdims=True)) /\
+                        (feat.std(dim=(1, 2), keepdims=True, unbiased=False) + self.eps)
+            else:
+                m4 = frame_mask.unsqueeze(1)
+                mean = mask_mean(feat, m4, dim=(2, 3))
+                var = mask_var(feat, m4, dim=(2, 3), mean=mean)
+                feat = (feat - mean) / (torch.sqrt(var.clamp_min(0.0)) + self.eps)
         if self.return_img:
             feat = feat[:,None,:,:]
-        return feat.to(dtype)
+        feat = feat.to(dtype)
+        if mask is None:
+            return feat
+        return feat, frame_mask.to(dtype)
 
 class LogSpec(nn.Module):
     def __init__(self,eps:float=1e-10):
@@ -253,17 +301,36 @@ class LogSpec(nn.Module):
         return x.clip(self.eps,1e+8).log()
     
 class NormalizeAudio(nn.Module):
+    """Per-utterance zero-mean unit-variance normalization of the waveform."""
+    mask_aware = True
+
     def __init__(self,eps:float=1e-10):
         super().__init__()
         self.eps = eps
-        
-    def forward(self,x):
-        if x.ndim == 2:
+
+    def forward(self,x,mask=None):
+        squeeze = x.ndim == 2
+        if squeeze:
             x = x.unsqueeze(1)
-        return ((x - x.mean(dim=2, keepdims=True)) /\
-                     (x.std(dim=2, keepdims=True, unbiased=False) + self.eps)).squeeze(1)
+        if mask is None:
+            x = (x - x.mean(dim=2, keepdims=True)) /\
+                     (x.std(dim=2, keepdims=True, unbiased=False) + self.eps)
+        else:
+            # Statistics come from the real samples only: padding must not
+            # change the mean or the standard deviation of the utterance.
+            m = mask.reshape(x.size(0), 1, x.size(-1)).to(x.dtype)
+            mean = mask_mean(x, m, dim=2)
+            var = mask_var(x, m, dim=2, mean=mean)
+            x = (x - mean) / (torch.sqrt(var.clamp_min(0.0)) + self.eps)
+        if squeeze:
+            x = x.squeeze(1)
+        if mask is None:
+            return x
+        return x, mask
 
 class PreEmphasis(torch.nn.Module):
+    mask_aware = True
+
     def __init__(self, coef: float = 0.97):
         super().__init__()
         self.coef = coef
@@ -271,11 +338,17 @@ class PreEmphasis(torch.nn.Module):
             'flipped_filter', torch.FloatTensor([-self.coef, 1.]).unsqueeze(0).unsqueeze(0)
         )
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         if x.ndim == 2:
             x = x.unsqueeze(1)
         x = F.pad(x, (1, 0), 'reflect')
-        return F.conv1d(x, self.flipped_filter).squeeze(1)
+        x = F.conv1d(x, self.flipped_filter).squeeze(1)
+        if mask is None:
+            return x
+        # The leading sample is built by reflection from real data, not by
+        # padding, so the output at every position is computable and the mask
+        # passes through unchanged.
+        return x, mask
 
 class FbankAug(nn.Module):
     def __init__(self, freq_mask_width = (0, 8), time_mask_width = (0, 10), freq_start_bin=0):
@@ -330,8 +403,10 @@ class TFMelBanks(nn.Module):
         time_mask_width = (0, 10),
         eps = 1e-8
     ):
-        super(TFMelBanks, self).__init__()
-        self.torchfbank = torch.nn.Sequential(
+        super().__init__()
+        self._kernel_length = win_length
+        self._hop = hop_length
+        self.torchfbank = MaskSequential(
             NormalizeAudio(eps) if norm_signal else nn.Identity(),
             PreEmphasis() if do_preemph else nn.Identity(),
             
@@ -363,17 +438,35 @@ class TFMelBanks(nn.Module):
         else:
             self.specaug = nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         xdtype = x.dtype
         x = x.float()
+        base_mask = mask
         with torch.no_grad():
-            with torch.amp.autocast("cuda", enabled=False):
-                x = self.torchfbank(x)+self.eps
-                x = x.log()   
-                x = x - torch.mean(x, dim=-1, keepdim=True)
+            with torch.amp.autocast(x.device.type, enabled=False):
+                if mask is None:
+                    x = self.torchfbank(x)+self.eps
+                    x = x.log()
+                    x = x - torch.mean(x, dim=-1, keepdim=True)
+                else:
+                    x, mask = self.torchfbank(x, mask)
+                    # Re-zero the padded frames: the per-bin mean subtraction
+                    # below leaves them at a non-zero offset, and the backbone's
+                    # stem convolves over the time axis, so a non-zero padded
+                    # region would leak into the real frames.
+                    x = torch.log(x + self.eps) * mask
+                    # Per-frequency-bin mean over the real frames only.  Doing
+                    # it after the log (rather than inside the front end)
+                    # reproduces the reference arithmetic exactly.
+                    x = (x - mask_mean(x, mask, dim=-1)) * mask
                 if self.training:
                     x = self.specaug(x)
-        return x.to(xdtype)
+        x = x.to(xdtype)
+        if base_mask is None:
+            return x
+        # `self.specaug` (if enabled) shortens or zeros frames but never changes
+        # the frame count, so the frame mask stays valid.
+        return x, mask.to(xdtype)
 
 class TFSpectrogram(nn.Module):
     def __init__(self, 
@@ -403,7 +496,9 @@ class TFSpectrogram(nn.Module):
     ):
         super(TFSpectrogram, self).__init__()
         self.num_apply_spec_aug = num_apply_spec_aug
-        self.spectrogram = torch.nn.Sequential(
+        self._kernel_length = win_length
+        self._hop = hop_length
+        self.spectrogram = MaskSequential(
             NormalizeAudio() if norm_signal else nn.Identity(),            
             PreEmphasis() if do_preemph else nn.Identity(),            
             
@@ -443,16 +538,26 @@ class TFSpectrogram(nn.Module):
         else:
             self.specaug = nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         xdtype = x.dtype
         x = x.float()
+        base_mask = mask
         with torch.no_grad():
-            with torch.cuda.amp.autocast(enabled=False):
-                x = self.spectrogram(x)+self.eps
-                x = x.log()   
-                x = x - torch.mean(x, dim=-1, keepdim=True)
+            with torch.amp.autocast(x.device.type, enabled=False):
+                if mask is None:
+                    x = self.spectrogram(x)+self.eps
+                    x = x.log()
+                else:
+                    x, mask = self.spectrogram(x, mask)
+                    x = torch.log(x + self.eps) * mask
+                    x = x - mask_mean(x, mask, dim=-1)
                 if self.training:
                     for _ in range(self.num_apply_spec_aug):
                         x = self.specaug(x)
+                # `pool_freqs` pools the frequency axis only, so the frame mask
+                # survives it unchanged.
                 x = self.pool_freq(x.unsqueeze(1))
-        return x.to(xdtype)
+        x = x.to(xdtype)
+        if base_mask is None:
+            return x
+        return x, mask.to(xdtype)

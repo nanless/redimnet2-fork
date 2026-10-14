@@ -9,6 +9,8 @@ import torch.nn.functional as F
 from collections import OrderedDict
 from typing import Iterable, Optional
 
+from redimnet2.layers.masking import rezero
+
 #-------------------------------------------------------------
 # Rotary positional embeddings
 #-------------------------------------------------------------
@@ -99,8 +101,13 @@ class MultiHeadAttention(nn.Module):
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
-    def forward(self,hidden_states: torch.Tensor) -> torch.Tensor:
-        """Input shape: Batch x Time x Channel"""
+    def forward(self,hidden_states: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Input shape: Batch x Time x Channel
+
+        `key_padding_mask` is a `(batch, time)` bool tensor that is True on the
+        padded frames; their keys and values are dropped so that a padded batch
+        sees exactly the same attention as a lone, unpadded utterance.
+        """
         bsz, tgt_len, _ = hidden_states.size()
 
         # get query proj
@@ -125,6 +132,17 @@ class MultiHeadAttention(nn.Module):
 
         src_len = key_states.size(1)
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2)) * self.scaling
+        if key_padding_mask is not None:
+            # Drop the padded keys from the attention scores, and zero their
+            # values so a padded query position returns 0 rather than NaN.
+            pad = key_padding_mask.to(torch.bool).reshape(bsz, src_len)
+            attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
+            attn_weights = attn_weights.masked_fill(pad.view(bsz, 1, 1, src_len), float('-inf'))
+            attn_weights = attn_weights.reshape(bsz * self.num_heads, tgt_len, src_len)
+            keep = (~pad).to(value_states.dtype).view(bsz, 1, src_len, 1)
+            value_states = value_states.view(
+                bsz, self.num_heads, src_len, self.head_dim) * keep
+            value_states = value_states.reshape(bsz * self.num_heads, src_len, self.head_dim)
         attn_weights = F.softmax(attn_weights, dim=-1)
 
         attn_probs = F.dropout(attn_weights, p=self.dropout, training=self.training)
@@ -265,6 +283,7 @@ class FeedForward(nn.Module):
         return hidden_states
     
 class TransformerEncoderLayer(nn.Module):
+    mask_aware = True
     def __init__(self, 
             n_state: int, 
             n_mlp : int, 
@@ -303,11 +322,17 @@ class TransformerEncoderLayer(nn.Module):
         )
         self.final_layer_norm = nn.LayerNorm(hidden_size, eps=layer_norm_eps)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, mask=None):
         if not self.channel_last:
             hidden_states = hidden_states.permute(0, 2, 1)
+        if mask is not None:
+            # `mask` is `(B, 1, T)` with 1 on real frames; the attention wants
+            # `(B, T)` with True on the padding.
+            key_padding_mask = mask[:, 0] < 0.5
+        else:
+            key_padding_mask = None
         attn_residual = hidden_states
-        hidden_states = self.attention(hidden_states)
+        hidden_states = self.attention(hidden_states, key_padding_mask)
         hidden_states = attn_residual + hidden_states
 
         hidden_states = self.layer_norm(hidden_states)
@@ -317,10 +342,15 @@ class TransformerEncoderLayer(nn.Module):
         outputs = hidden_states
         if not self.channel_last:
             outputs = outputs.permute(0, 2, 1)
-        return outputs
+        if mask is None:
+            return outputs
+        # The shift/scale above leaks the padded values in, and the residual
+        # carries them too, so re-zero the padded frames before returning.
+        return rezero(outputs, mask), mask
 
 
 class StableTransformerEncoderLayer(nn.Module):
+    mask_aware = True
     def __init__(self,
             n_state: int,
             n_mlp : int,
@@ -350,20 +380,29 @@ class StableTransformerEncoderLayer(nn.Module):
         )
         self.final_layer_norm = nn.LayerNorm(n_state, eps=ln_eps)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, mask=None):
         if not self.channel_last:
             hidden_states = hidden_states.permute(0, 2, 1)
+        if mask is not None:
+            key_padding_mask = mask[:, 0] < 0.5
+        else:
+            key_padding_mask = None
 
-        hidden_states = hidden_states + self.attention(self.layer_norm(hidden_states))
+        hidden_states = hidden_states + self.attention(self.layer_norm(hidden_states), key_padding_mask)
         hidden_states = hidden_states + self.feed_forward(self.final_layer_norm(hidden_states))
 
         outputs = hidden_states
         if not self.channel_last:
             outputs = outputs.permute(0, 2, 1)
-        return outputs
+        if mask is None:
+            return outputs
+        # `nn.LayerNorm` here normalizes over the channel axis, so a padded
+        # frame stays nonzero after it; re-zero before returning.
+        return rezero(outputs, mask), mask
 
 
 class TransformerEncoderLayerV2(nn.Module):
+    mask_aware = True
     def __init__(self,
             n_state: int,
             n_mlp: int,
@@ -399,12 +438,16 @@ class TransformerEncoderLayerV2(nn.Module):
         )
         self.final_layer_norm = nn.LayerNorm(n_state, eps=ln_eps)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, mask=None):
         if not self.channel_last:
             hidden_states = hidden_states.permute(0, 2, 1)
+        if mask is not None:
+            key_padding_mask = mask[:, 0] < 0.5
+        else:
+            key_padding_mask = None
 
         attn_residual = hidden_states
-        hidden_states = self.attention(hidden_states)
+        hidden_states = self.attention(hidden_states, key_padding_mask)
         hidden_states = attn_residual + hidden_states
         hidden_states = self.layer_norm(hidden_states)
 
@@ -414,4 +457,6 @@ class TransformerEncoderLayerV2(nn.Module):
         outputs = hidden_states
         if not self.channel_last:
             outputs = outputs.permute(0, 2, 1)
-        return outputs
+        if mask is None:
+            return outputs
+        return rezero(outputs, mask), mask

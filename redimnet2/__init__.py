@@ -27,6 +27,11 @@ def load_custom(model_name="b0", train_type="lm", dataset="vox2"):
             f"Failed to load {weight_name}: "
             f"missing_keys={load_res.missing_keys}, "
             f"unexpected_keys={load_res.unexpected_keys}")
+    # Inference mode: `BatchNorm1d` in `self.bn` (and `emb_bn` when enabled)
+    # would otherwise use batch statistics and update its running buffers, so a
+    # batch of 1 crashes and a batch of N silently computes something other
+    # than the intended embedding.
+    model.eval()
     return model
 
 

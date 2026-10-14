@@ -3,6 +3,7 @@ import torch.nn as nn
 from redimnet2.layers.layernorm import LayerNorm
 from redimnet2.layers.resblocks import ResBasicBlock
 from redimnet2.layers.convnext import ConvNeXtLikeBlock
+from redimnet2.layers.masking import as_mask_like, mask_aware_seq, rezero
 from redimnet2.layers.attention import (
     TransformerEncoderLayer,
     StableTransformerEncoderLayer,
@@ -14,6 +15,10 @@ from redimnet2.layers.attention import (
 #------------------------------------------
 
 class ConvBlock2d(nn.Module):
+    # Forwards the frame mask to the inner block, which re-zeroes its own
+    # padded frames between its two convolutions.
+    mask_aware = True
+
     _CONVNEXT_VARIANTS = {
         "convnext_like":             dict(norm='bn', norm_placement='mid', ws=False, activation='gelu'),
         "convnext_like_ln":          dict(norm='ln', norm_placement='mid', ws=False, activation='gelu'),
@@ -46,8 +51,8 @@ class ConvBlock2d(nn.Module):
         else:
             raise NotImplementedError(f"Unknown block_type: {block_type!r}")
 
-    def forward(self, x):
-        return self.conv_block(x)
+    def forward(self, x, mask=None):
+        return self.conv_block(x, mask)
 
 #------------------------------------------
 #                1D block
@@ -157,10 +162,11 @@ def build_internal_1d_tcm_block(hC, block_type, pos_ker_sz, **kwargs):
         )
     else:
         raise NotImplementedError(f"Unknown 1D block_type: {block_type!r}")
-    return tcm
+    return mask_aware_seq(tcm)
 
 
 class TimeContextBlock1d(nn.Module):
+    mask_aware = True
     def __init__(self, 
         C, 
         hC,
@@ -180,15 +186,26 @@ class TimeContextBlock1d(nn.Module):
         self.tcm = build_internal_1d_tcm_block(hC, block_type, pos_ker_sz, **kwargs)
         self.exp_dim_conv = nn.Conv1d(hC,C,1)
 
-    def forward(self,x):
+    def forward(self,x,mask=None):
         skip = x
         x = self.red_dim_conv(x)
-        x = self.tcm(x)
+        if mask is not None:
+            # `red_dim_conv` ends in a `channels_first` LayerNorm, which
+            # normalizes over the time axis, so the padded frames have to be
+            # re-zeroed before the time-context block reads them.
+            x = rezero(x, mask)
+            x, _ = self.tcm(x, mask)
+        else:
+            x = self.tcm(x)
         x = self.exp_dim_conv(x)
-        return skip + x
+        out = skip + x
+        if mask is None:
+            return out
+        return rezero(out, mask), mask
 
 
 class SymmetricalDWMixer(nn.Module):
+    mask_aware = True
     def __init__(self, C: int, F: int, hC: int, block_type='att', **kwargs):
         super().__init__()
         self.C = C
@@ -225,19 +242,29 @@ class SymmetricalDWMixer(nn.Module):
                             matrix[c, f] = math.cos(f * frequency_scale)
                 matrix.mul_(0.02)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask=None) -> torch.Tensor:
         residual = x
-        x = self.channel_reduce(x)
+        # This block funnels 2D (B,C,F,T) down to 1D and back, so the 1D frame
+        # mask has to be squeezed in to broadcast across the frequency axis.
+        m = as_mask_like(x, mask)
+        x = self.channel_reduce(rezero(x, mask) if mask is not None else x)
         x = torch.einsum('b c f t, c f -> b c t', x, self.freq_reduce_weight)
         x = x + self.freq_reduce_bias
+        if mask is not None:
+            x = rezero(x, mask)
         x = self.reduce_norm(x)
-        x = self.time_context_block(x)
+        x = self.time_context_block(x, mask) if mask is not None else self.time_context_block(x)
+        if mask is not None:
+            x = x[0]
         x = self.post_tcm_norm(x)
+        if mask is not None:
+            x = rezero(x, mask)
         x = torch.einsum('b c t, c f -> b c f t', x, self.freq_expand_weight)
         x = x + self.freq_expand_bias.unsqueeze(-1)
         x = self.channel_expand(x)
         x = self.expand_norm(x)
-        return x + residual
+        out = x + residual
+        return rezero(out, mask) if mask is not None else out
 
 
 _V2_BASE_KERNELS = (7, 19, 31, 59)
@@ -255,6 +282,7 @@ def _scale_kernels_by_stride(time_stride, base_kernels=_V2_BASE_KERNELS):
 
 
 class TimeContextBlock1dV2(nn.Module):
+    mask_aware = True
     def __init__(self,
         C,
         hC,
@@ -318,6 +346,7 @@ class TimeContextBlock1dV2(nn.Module):
             raise NotImplementedError(
                 f"TimeContextBlock1dV2 does not support block_type={block_type!r}"
             )
+        self.tcm = mask_aware_seq(self.tcm)
 
         self.exp_dim_conv = nn.Conv1d(hC, C, 1)
 
@@ -327,9 +356,16 @@ class TimeContextBlock1dV2(nn.Module):
             f"conv_kernels={self.conv_kernel_sizes}"
         )
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         skip = x
         x = self.red_dim_conv(x)
-        x = self.tcm(x)
+        if mask is not None:
+            x = rezero(x, mask)
+            x, _ = self.tcm(x, mask)
+        else:
+            x = self.tcm(x)
         x = self.exp_dim_conv(x)
-        return skip + x
+        out = skip + x
+        if mask is None:
+            return out
+        return rezero(out, mask), mask

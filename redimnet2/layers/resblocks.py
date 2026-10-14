@@ -31,6 +31,11 @@ import torch.nn.functional as F
 from collections import OrderedDict
 from typing import Iterable, Optional
 
+from redimnet2.layers.masking import (
+    MaskSequential,
+    rezero,
+)
+
 #------------------------------------------
 #       ResNet basice block (+fwSE)
 #------------------------------------------
@@ -89,20 +94,29 @@ class ResBasicBlock(nn.Module):
             self.se = nn.Identity()
             
         if outc != inc:
-            self.downsample = nn.Sequential(
+            # `MaskSequential` re-zeroes the padded frames after this residual
+            # branch, so the 1x1 downsample (which is pointwise in time) needs
+            # no mask handling of its own.
+            self.downsample = MaskSequential(
                 nn.Conv2d(inc, outc, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(outc),
             )
         else:
             self.downsample = nn.Identity()
-        
-    def forward(self, x):
+
+    def forward(self, x, mask=None):
         residual = x
+        if mask is not None:
+            # Re-zero between the two convolutions: a 3x3 'same' convolution
+            # reads the neighbour frames, so leaving the padded frames at
+            # whatever the first convolution wrote there would leak in.
+            x = rezero(x, mask)
 
         out = self.conv1pw(self.conv1(x))
         out = self.relu(out)
         out = self.bn1(out)
 
+        out = rezero(out, mask)
         out = self.conv2pw(self.conv2(out))
         out = self.bn2(out)
         out = self.se(out)
@@ -110,4 +124,8 @@ class ResBasicBlock(nn.Module):
         out += self.downsample(residual)
         out = self.relu(out)
         # print(out.size())
-        return out
+        if mask is None:
+            return out
+        # The residual add carries the padded frames through untouched, so the
+        # enclosing `MaskSequential` cannot clean them up on its own.
+        return rezero(out, mask), mask
