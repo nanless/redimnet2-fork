@@ -215,6 +215,9 @@ save_epoch_interval: 1
 scheduler: ExponentialDecayPlateauWithWarmup
 scheduler_args:
   initial_lr: 0.06
+  # 下面这一行让 initial_lr 就是**实际峰值学习率**（不随卡数/批大小变化）。
+  # 不加这行会退回老行为：学习率会被乘上 卡数×每卡批大小/64。
+  lr_scaling: base_lr
   final_lr: 1.0e-4
   warm_up_epoch: 8
   warm_from_zero: true

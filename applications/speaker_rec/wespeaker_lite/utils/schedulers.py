@@ -107,11 +107,32 @@ class BaseClass:
                  final_lr,
                  warm_up_epoch=6,
                  scale_ratio=1.0,
-                 warm_from_zero=False):
+                 warm_from_zero=False,
+                 lr_scaling="legacy"):
         '''
         warm_up_epoch: the first warm_up_epoch is the multiprocess warm-up stage
         scale_ratio: multiplied to the current lr in the multiprocess training
         process
+        lr_scaling: how `scale_ratio` is applied. Two modes:
+
+          "legacy" (default) -- `scale_ratio` multiplies the learning rate for
+              the WHOLE run, warm-up included. Every recipe written before this
+              switch relied on that, so it stays the default and those runs stay
+              reproducible bit-for-bit.
+
+          "base_lr" -- `initial_lr` / `final_lr` are taken as the ACTUAL
+              learning rates and `scale_ratio` only shapes the warm-up ramp.
+              After warm-up the coefficient is exactly 1.0, so the value written
+              in the recipe is the peak learning rate regardless of GPU count or
+              per-GPU batch size.
+
+        Why the switch exists: under "legacy", a recipe writing
+        `initial_lr: 0.1` only reaches 0.1 when world_size * batch_size == 64,
+        which no shipped recipe satisfies -- 8 GPUs on b0 gives 6.4 instead.
+        That makes the configured number impossible to read off the YAML and
+        makes single-GPU tuning not transfer. "base_lr" fixes the reading;
+        "legacy" preserves the old experiments. Choose per recipe with
+        `scheduler_args.lr_scaling`.
         '''
         self.optimizer = optimizer
         self.max_iter = num_epochs * epoch_iter
@@ -121,8 +142,20 @@ class BaseClass:
         self.current_iter = 0
         self.warm_up_iter = warm_up_epoch * epoch_iter
         self.warm_from_zero = warm_from_zero
+        if lr_scaling not in ("legacy", "base_lr"):
+            raise ValueError(
+                "lr_scaling must be 'legacy' or 'base_lr', got "
+                f"{lr_scaling!r}")
+        self.lr_scaling = lr_scaling
 
     def get_multi_process_coeff(self):
+        if self.lr_scaling == "base_lr":
+            # 预热期从 0 线性升到 1.0，预热结束后恒为 1.0，
+            # 于是配方里的 initial_lr 就是实际峰值学习率。
+            if self.current_iter < self.warm_up_iter and self.warm_from_zero:
+                return self.current_iter / self.warm_up_iter
+            return 1.0
+
         lr_coeff = 1.0 * self.scale_ratio
         if self.current_iter < self.warm_up_iter:
             if self.warm_from_zero:
@@ -174,9 +207,11 @@ class ExponentialDecrease(BaseClass):
                  final_lr,
                  warm_up_epoch=6,
                  scale_ratio=1.0,
-                 warm_from_zero=False):
+                 warm_from_zero=False,
+                 lr_scaling="legacy"):
         super().__init__(optimizer, num_epochs, epoch_iter, initial_lr,
-                         final_lr, warm_up_epoch, scale_ratio, warm_from_zero)
+                         final_lr, warm_up_epoch, scale_ratio, warm_from_zero,
+                         lr_scaling=lr_scaling)
 
     def get_current_lr(self):
         lr_coeff = self.get_multi_process_coeff()
@@ -199,8 +234,11 @@ class ExponentialDecayPlateauWithWarmup(BaseClass):
                  decay_epochs = 10,
                  decay_rate = 0.5,
                  staircase = True,
-                 warm_from_zero = False):
-        super().__init__(optimizer, num_epochs, epoch_iter, initial_lr, final_lr, warm_up_epoch, scale_ratio, warm_from_zero)
+                 warm_from_zero = False,
+                 lr_scaling = "legacy"):
+        super().__init__(optimizer, num_epochs, epoch_iter, initial_lr, final_lr,
+                         warm_up_epoch, scale_ratio, warm_from_zero,
+                         lr_scaling=lr_scaling)
         self.warmup_steps = warm_up_epoch * epoch_iter
         self.plateau_steps = plateau_epochs * epoch_iter
         self.decay_steps = decay_epochs * epoch_iter

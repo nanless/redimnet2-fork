@@ -589,6 +589,19 @@ def train(config='conf/config.yaml', **kwargs):
     configs['scheduler_args']['epoch_iter'] = optimizer_epoch_iter
     configs['scheduler_args']['scale_ratio'] = 1.0 * world_size * configs[
         'dataloader_args']['batch_size'] / 64
+    # 打印"实际会用到的学习率"，因为配方里的 `initial_lr` 未必就是它。
+    #
+    # 默认（`lr_scaling: legacy`）会把 `scale_ratio` 乘到**整个训练过程**上，
+    # 所以 `initial_lr: 0.1` 只有在 `卡数 × 每卡批大小 == 64` 时才真的等于 0.1。
+    # 老配方依赖这个行为，保持不动；新配方可以写 `scheduler_args.lr_scaling: base_lr`
+    # 让 `initial_lr` 就是实际峰值学习率（换卡数、换批大小都不变）。
+    _lr_mode = configs['scheduler_args'].get('lr_scaling', 'legacy')
+    _scale = configs['scheduler_args']['scale_ratio']
+    _init = configs['scheduler_args'].get('initial_lr')
+    if _init is not None:
+        _peak = _init if _lr_mode == 'base_lr' else _init * _scale
+        print('[lr] lr_scaling={}  配方 initial_lr={}  scale_ratio={:g}  '
+              '实际峰值学习率={:g}'.format(_lr_mode, _init, _scale, _peak))
     scheduler = getattr(schedulers,
                         configs['scheduler'])(optimizer,
                                               **configs['scheduler_args'])
