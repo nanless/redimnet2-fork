@@ -421,22 +421,34 @@ class ReDimNet2(nn.Module):
             mask = mask.unsqueeze(1)
         if not self.is_subnet:
             bs, _, _, T = inp.size()
+            # 时间维先截到降采样倍数的整数倍，这一步**两条分支完全一样**。
+            #
+            # 这里以前是：无掩码分支截断（`inp[..., :(T//stride)*stride]`），
+            # 有掩码分支补齐（`F.pad`）。两者对同一段音频会处理**不同数量的帧**：
+            # 前端输出 199 帧、time_stride=4 时，无掩码走 196 帧，有掩码走 200 帧。
+            # 于是「逐条前向」与「补齐成批 + 传 lengths」得到的向量并不等价
+            # （b0 实测余弦只有 0.978），而这两条路径本应等价，否则变长批量推理
+            # 的结果无法与逐条推理对上。
+            #
+            # 修法之所以选"统一截断"而不是"统一补齐"：无掩码分支是**已发布权重
+            # 与官方评测数字所依赖的路径**，其行为必须逐位不变（改动前后实测
+            # 最大绝对差 0.0）。统一成截断可同时满足两件事：
+            #   * 无掩码路径保持逐位一致；
+            #   * 有掩码路径与它帧数相同、激活相同（实测最大绝对差 0.0），从而等价。
+            # 被截掉的不足 time_stride 帧（最多 3 帧，约 30 毫秒）本来就是
+            # 旧行为一直丢弃的部分，不是这次新引入的损失。
+            if T % self.time_stride:
+                T_keep = (T // self.time_stride) * self.time_stride
+                inp = inp[:, :, :, :T_keep]
+                if mask is not None:
+                    # 掩码必须跟着一起截，否则会与特征图错位，
+                    # 后面的统计量就会把真实帧误当补零帧排除掉。
+                    mask = mask[:, :, :T_keep]
             if mask is None:
-                # Unchanged legacy behaviour: drop the tail that does not fit a
-                # whole time stride.  Only the masked path below avoids the loss.
-                inp = inp[:,:,:,:(T//self.time_stride)*self.time_stride] # Needed for right reshape operations
-                # print(f"T = {T} -> T = {(T//self.time_stride)*self.time_stride}")
                 x = self.stem(inp)
                 if self.agg_gnorm:
                     x = self.stem_gnorm(x)
             else:
-                # Pad up to a whole number of time strides instead of dropping
-                # the remainder, so no real frame is thrown away; the mask comes
-                # along for the ride and marks the added frames as padding.
-                rem = T % self.time_stride
-                if rem:
-                    inp = nn.functional.pad(inp, (0, self.time_stride - rem))
-                    mask = nn.functional.pad(mask, (0, self.time_stride - rem))
                 x, mask = self.stem(inp, mask)
                 if self.agg_gnorm:
                     x, mask = self.stem_gnorm(x, mask)
@@ -603,15 +615,21 @@ class ReDimNet2Wrap(nn.Module):
             if mask is not None:
                 mask = mask.unsqueeze(1)
         if mask is not None:
-            # The backbone rounds the frame count up to a whole number of time
-            # strides, adding zero frames at the end.  Pad the mask the same way
-            # here so that it stays lined up with the feature map and the extra
-            # frames are marked as padding.
+            # 时间维截到降采样倍数的整数倍，与骨干内部（无掩码分支）一致。
+            #
+            # 这里以前是补齐。补齐会让有掩码路径比无掩码路径多出最多 3 帧，
+            # 两条路径因此不等价（b0 实测余弦 0.978）。现在统一成截断：
+            # 截断掉的帧本来就是旧的无掩码路径一直丢弃的那部分，
+            # 所以两种走法帧数相同、结果一致。
             total_stride = self.backbone.time_stride
-            rem = x.size(-1) % total_stride
-            if rem:
-                x = torch.nn.functional.pad(x, (0, total_stride - rem))
-                mask = torch.nn.functional.pad(mask, (0, total_stride - rem))
+            T_keep = (x.size(-1) // total_stride) * total_stride
+            if T_keep == 0:
+                # 太短、连一个 stride 都凑不满：保留原样，
+                # 否则会把时间维截成 0 导致后面除零/空张量。
+                T_keep = x.size(-1)
+            if T_keep != x.size(-1):
+                x = x[..., :T_keep]
+                mask = mask[..., :T_keep]
         # print(f"spec : {x.size()}")
         if self.return_all_outputs:
             out, all_outs_1d = self.backbone(x, mask)
