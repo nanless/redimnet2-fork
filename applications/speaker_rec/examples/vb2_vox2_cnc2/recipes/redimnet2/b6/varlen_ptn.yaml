@@ -1,0 +1,230 @@
+# 这是对应固定长度配方的变长版本：只多了 dataset_args.bucketing 与
+# dataset_args.varlen 两个块、把 batch_size 按实测显存调小、并把 exp_dir 换个名字。
+# 其余训练设置与固定长度版一致，方便直接对照。
+# b6 PT v3: 100ep on vox2 + vb2 + cnc2 mix — HARD AUGS variant of ptn.yaml.
+#
+# Differs from ptn.yaml only in the augmentation setup. Augmentation as
+# actually in effect below:
+#   * Sequential tree (root prob 0.9) read from dataset_args.aug_setup.
+#   * OneOf (prob 0.8) over three CustomNoise branches with explicit SNR
+#     ranges — music [2, 12], noise [0, 12], speech [7, 18] with babble: true.
+#     These are per-augmentor values, not a named SNR preset.
+#   * Reverb (prob 0.2) reading RIR wavs from a raw directory via dataset_dir
+#     (no LMDB).
+#   * OneOf (prob 0.25) over LowPassAug with a single active branch,
+#     cutoff_ratio=0.6 (transition_width 0.08) — used as a spec-aug
+#     replacement while do_spec_aug stays False. A second cutoff_ratio=0.5
+#     branch is present but commented out, so only 0.6 is in effect.
+#   * CodecAug is commented out entirely and does not run.
+#
+# Schedule, model, optimizer, and training list paths are unchanged from
+# ptn.yaml (mix_join data.list / utt2spk).
+
+compile_backbone:
+  mode: default
+data_type: raw_fast
+dataloader_args:
+  batch_size: 32
+  drop_last: true
+  num_workers: 24
+  pin_memory: false
+  prefetch_factor: 2
+  seed_worker: true
+# grad_accum_steps: removed - gradient accumulation is not implemented in this
+# training stack, so the value was never read.
+dataset_args:
+  # ── 变长训练新增：长度分桶（训练策略，与模型层无关）──
+  # 把长度接近的样本放进同一批，缩小补齐比例；关掉这一块就回到固定长度行为。
+  bucketing:
+    enable: true
+    bucket_count: 6
+    bucket_width_sec: 1.0
+    shuffle_buckets: true
+  aug_setup:
+    aug_type: Sequential
+    prob: 0.9
+    augmentors:
+    - aug_type: OneOf
+      prob: 0.8
+      augmentors:
+      - aug_type: CustomNoise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
+        snr: [2, 12]
+        prob: 1.0
+      - aug_type: CustomNoise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
+        snr: [0, 12]
+        prob: 1.0
+      - aug_type: CustomNoise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
+        snr: [7, 18]
+        babble: true
+        prob: 1.0
+    - aug_type: Reverb
+      dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
+      file_pattern: '**/*.wav'
+      prob: 0.2
+    - aug_type: OneOf
+      prob: 0.25
+      augmentors:
+      # - aug_type: LowPassAug
+      #   cutoff_ratio: 0.5
+      #   transition_width: 0.08
+      #   prob: 1.0
+      - aug_type: LowPassAug
+        cutoff_ratio: 0.6
+        transition_width: 0.08
+        prob: 1.0
+    # - aug_type: CodecAug
+    #   sample_rate: 16000
+    #   prob: 0.25
+  fbank_args:
+    dither: 1.0
+    frame_length: 25
+    frame_shift: 10
+    num_mel_bins: 80
+  num_frms: 200
+  resample_rate: 16000
+  sample_num_per_epoch: 0
+  shuffle: true
+  shuffle_args:
+    shuffle_size: 2500
+  speed_perturb: true
+  # ── 变长训练新增：不再强制截成固定长度 ──
+  # 每条按自己的真实长度送入模型（右侧补零凑批，并回传真实长度给掩码）。
+  # min_sec 放到 0.5 秒：0.5 秒以上都保留，不再把短句循环复制补满。
+  varlen:
+    enable: true
+    min_sec: 0.5
+    max_sec: 6.0
+    max_batch_sec: 195.0
+enable_amp: true
+eval_dur: 8.0
+exp_dir: exp/vox2_vb2_cnc2/b6_gnorm_100ep/varlen_ptn_ha
+# gpus: removed - not read by the training code; the number of GPU processes
+# comes from launch.sh's second argument (and CUDA_VISIBLE_DEVICES).
+log_batch_interval: 25
+loss: CrossEntropyLoss
+loss_args: {}
+loss_weight_decay_mult: 0.5
+margin_scheduler: MarginScheduler
+margin_update:
+  final_margin: 0.2
+  fix_start_epoch: 30
+  increase_start_epoch: 15
+  increase_type: exp
+  initial_margin: 0.0
+  update_margin: true
+mixup_alpha: null
+model: ReDimNet2Custom
+model_args:
+  C: 64
+  F: 72
+  block_1d_type: conv+att
+  block_2d_type: basic_resnet
+  causal: none
+  compress_tconvs: true
+  emb_bn: false
+  embed_dim: 192
+  feat_type: tf
+  fm_weigthing_type: NC
+  global_context_att: true
+  group_divisor: 1
+  hop_length: 160
+  out_channels: 224
+  pooling_func: ASTP
+  return_2d_output: true
+  spec_in_channels: 1
+  spec_params:
+    do_preemph: true
+    do_spec_aug: false
+    freq_mask_width:
+    - 0
+    - 6
+    norm_signal: true
+    time_mask_width:
+    - 0
+    - 8
+  stages_setup:
+  - - - 1
+      - 1
+    - 3
+    - 3
+    - - - 3
+        - 3
+    - 64
+  - - - 2
+      - 1
+    - 4
+    - 2
+    - - - 3
+        - 3
+    - 64
+  - - - 1
+      - 2
+    - 5
+    - 2
+    - - - 3
+        - 3
+    - 48
+  - - - 2
+      - 1
+    - 5
+    - 1
+    - - - 3
+        - 3
+    - 48
+  - - - 1
+      - 2
+    - 4
+    - 0.75
+    - - - 3
+        - 3
+    - 32
+  - - - 2
+      - 1
+    - 3
+    - 0.5
+    - - - 3
+        - 3
+    - 24
+  dual_agg: false
+  agg_gnorm: true
+num_avg: 10
+# NOTE: this file sets num_epochs: 120, but exp_dir above is named
+# `b6_gnorm_100ep` and the matching lm.yaml loads model_115.pt. These three do
+# not agree — confirm which epoch the official result used before relying on
+# them.
+num_epochs: 120
+optimizer: SGD
+optimizer_args:
+  lr: 0.06
+  momentum: 0.9
+  nesterov: true
+  weight_decay: 2.0e-05
+projection_args:
+  do_lm: false
+  easy_margin: false
+  embed_dim: 192
+  lanbuda: 0.7
+  margin_type: C
+  project_type: sphereface2
+  scale: 32.0
+  t: 3
+save_epoch_interval: 1
+scheduler: ExponentialDecayPlateauWithWarmup
+scheduler_args:
+  initial_lr: 0.06
+  final_lr: 1.0e-4
+  warm_up_epoch: 8
+  warm_from_zero: true
+  plateau_epochs: 45
+  decay_epochs: 10
+  decay_rate: 0.5
+  staircase: false
+seed: 42
+train_data: /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/data.list
+train_label: /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/utt2spk
+val_type: local
+validation:
+  vox1: /root/group-shared/voiceprint/data/wespeaker_data/vox1-test
