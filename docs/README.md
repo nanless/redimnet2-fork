@@ -18,6 +18,7 @@
 | 如何准备数据、跑 B0→B6？ | [05 实验配方与复现](05-recipes-and-repro.md) |
 | **本机数据在哪、开训前要处理什么？** | [05 第 2 节](05-recipes-and-repro.md) 与 [07 本机数据与开训前检查](07-本机数据与开训检查.md) |
 | EER、PTN、LM、ASTP 是什么？ | [06 术语表与 FAQ](06-glossary-faq.md) |
+| 想让一批里各句长度不同、少补点零？ | [08 变长训练与长度分桶](08-变长训练与长度分桶.md) |
 | 官方权重复现得怎样？EER 差多少？ | [评测报告入口](../checkpoints/reports/README.md) |
 
 ---
@@ -155,6 +156,7 @@ flowchart LR
 | 04 训练 | `applications/speaker_rec/wespeaker_lite/**` |
 | 05 复现 | `applications/speaker_rec/examples/**` |
 | 07 本机数据 | `AGENTS.md` 第 3、6 节、`checkpoints/reports/05-训练数据检查.md` |
+| 08 变长训练与长度分桶 | `wespeaker_lite/dataset/{dataset,processor}.py`、`utils/executor.py` |
 | 评测报告 | `checkpoints/eval_*.csv`、`checkpoints/reports/**` |
 
 ---
