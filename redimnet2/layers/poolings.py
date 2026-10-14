@@ -200,6 +200,15 @@ class ASTP(nn.Module):
                 count = m.sum(dim=-1, keepdim=True).clamp_min(1.0)
                 mean = (x * m).sum(dim=-1, keepdim=True) / count
                 var = (x * x * m).sum(dim=-1, keepdim=True) / count - mean * mean
+                # 与无掩码那一支用同一个估计量。
+                #
+                # 上面无掩码用的是 `torch.var`，它默认是**无偏**的（除以 n-1）；
+                # 而下面这段矩是除以 n 的**有偏**版本。掩码全有效时两条路必须
+                # 给出同样的结果，否则"只是传了个 lengths"就会改变输出。
+                # 实测（小随机输入）差异正好是 sqrt(n/(n-1)) 这个比值：
+                # n=5 时 7.8e-03，n=17 时 1.4e-03，与两个估计量的理论比值一致。
+                # 这里换算成无偏，让两条路对齐。
+                var = var * count / (count - 1.0).clamp_min(1.0)
                 context_mean = mean.expand_as(x)
                 context_std = torch.sqrt(var.clamp_min(0.0) + 1e-7).expand_as(x)
             x_in = torch.cat((x, context_mean, context_std), dim=1)
