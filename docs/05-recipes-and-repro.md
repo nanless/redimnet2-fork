@@ -25,29 +25,26 @@
 
 脚本：`applications/speaker_rec/examples/vox2/scripts/prepare_data.py`
 
-### 先弄清一件事：配置里写的路径可能不是本机路径
+### 关于路径：配方里现在写的是本机的真实路径
 
-仓库里 18 份配方、本文档、以及 `AGENTS.md` 默认都写 `/data/wespeaker_data/...`。
-但在本机核对时，**`/data` 这个目录并不存在**，数据实际在共享盘上：
+仓库里 18 份配方原先统一写 `/data/wespeaker_data/...`，但本机**没有 `/data` 目录**，
+照原样跑会在读样本清单那一步失败。现在配方已经改成真实位置：
 
 ```text
 /root/group-shared/voiceprint/data/wespeaker_data/
 ```
 
-`/root/group-shared` 是指向 `/shared/group-shared` 的软链接。
+（`/root/group-shared` 是指向 `/shared/group-shared` 的软链接，两者是同一块盘。）
 
-所以照文档直接启动，训练会在**读样本清单那一步**失败。开训前先二选一：
+所以本机可以直接启动，**不需要再建 `/data` 软链接**。配方里涉及的路径逐条核过：
+样本清单、语句到说话人表、验证集目录、以及四种增强目录都真实存在。
 
-```bash
-# 做法一：建软链接，让配置里的 /data/... 变得可达
-mkdir -p /data
-ln -s /root/group-shared/voiceprint/data/wespeaker_data /data/wespeaker_data
+### 换机器时怎么改路径
 
-# 做法二：不建软链接，改写本地覆盖文件里所有路径（推荐给只想跑单条线的人）
-```
-
-仓库里**没有任何脚本会替你建这个软链接**。做法二要把 `train_data`、`train_label`、
-`validation.vox1`、以及增强用的 MUSAN / RIRS 目录一起改掉，见第 4 节。
+不建议直接改配方，而是写一份本地覆盖文件交给 `--config_overrides`
+（模板见第 4 节）。这样拉取上游更新时不会冲突。要覆盖的有五处：
+`train_data`、`train_label`、`validation.vox1`，以及增强用的 MUSAN 与 RIRS 目录
+（后两者在 `dataset_args.aug_setup` 里，**要整段替换**，只改一半容易指到旧数据）。
 
 ### 阶段默认值
 
@@ -336,7 +333,7 @@ flowchart TB
 
 **vox2**
 
-- **配置里的 `/data/wespeaker_data/...` 在本机不存在**（本机没有 `/data`）→ 见第 2 节，先建软链接或改覆盖文件。这是最常见的第一个坎。  
+- **配方里的路径已经是本机真实位置**，本机可直接启动；换机器时用覆盖文件改路径（见第 2 节）。  
 - **`exp_dir` 落在容器根上，几个轮次就把盘写满** → 改到共享盘或 `/dev/shm`。  
 - HF 下载失败 → 准备本地 archive/source，跳过 download。  
 - Vox2 缺卷导致计数断言失败。  

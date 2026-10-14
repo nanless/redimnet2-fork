@@ -175,15 +175,15 @@ generic `/data/...` paths. Use a local overlay instead of editing the recipes in
 place. The overlay and command examples below already carry this machine's real
 data location.
 
-> **Note on this machine:** there is no `/data` directory here. The data lives on
-> the shared filesystem at `/root/group-shared/voiceprint/data/wespeaker_data/`.
-> The paths below have been updated to that real location, so they work as
-> written. The recipe files themselves still say `/data/...` and are **not
-> reachable as written** — which is why the overlay exists. If you prefer them to
-> work unmodified, create the symlink first:
-> `mkdir -p /data && ln -s /root/group-shared/voiceprint/data/wespeaker_data /root/group-shared/voiceprint/data/wespeaker_data`
-> The `mix_join/` and `mix_join_lm/` lists do not exist yet either; run the two
-> preparation scripts in this README first.
+> **Note on this machine:** there is no `/data` directory here, and the recipes
+> no longer assume one. Every recipe already points at the real shared-filesystem
+> location `/root/group-shared/voiceprint/data/wespeaker_data/`, so they work as
+> written and **no symlink is needed**. The overlay below is only for changing
+> paths on a different machine, or for pointing `exp_dir` somewhere other than
+> the recipe default. Do not create a `/data` symlink: nothing requires it, and
+> the recipe paths do not use it.
+> The `mix_join/` and `mix_join_lm/` sample lists still have to be generated; run
+> the two preparation scripts in this README first.
 > See `docs/07-本机数据与开训检查.md` for the full pre-training checklist.
 
 For PTN, create `/tmp/vb2_vox2_cnc2-ptn.local.yaml`:

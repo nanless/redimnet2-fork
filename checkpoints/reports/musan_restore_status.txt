@@ -35,14 +35,17 @@ Tool:     aria2c -x16 -s16 -c（在此前不完整下载上续传）
   /root/group-shared/voiceprint/data/noise/unused/musan/speech/  (426 wav)
 
 == 配方路径对应 ==
-混合线 yaml（vb2_vox2_cnc2）期望读：
+【以下是对当时情况的记录，现在已经不适用，保留只为追溯】
+混合线 yaml（vb2_vox2_cnc2）当时期望读：
   /data/wespeaker_data/raw/musan/{music,noise,speech}
 
 本机实际音频在：
   /root/group-shared/voiceprint/data/noise/musan/musan/{music,noise,speech}
 
-说明：写本记录时 /data/wespeaker_data/raw/musan 还不存在。
-若要按 yaml 原路径用，可：
+说明：写本记录时 /data/wespeaker_data/raw/musan 还不存在，当时写下了下面这套
+"建 /data 软链接"的办法。**这套办法现在已经不需要了**：18 份配方已经改成直接写
+真实位置（/root/group-shared/voiceprint/data/wespeaker_data/raw/musan/...），
+本机不需要建任何 /data 软链接。下面几行只作历史记录。
   mkdir -p /data/wespeaker_data/raw
   ln -s /root/group-shared/voiceprint/data/noise/musan/musan /data/wespeaker_data/raw/musan
 （或改 yaml 里的 dataset_dir）。当时未建软链接（可选；/data 当时不在）。
