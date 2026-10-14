@@ -1,0 +1,163 @@
+# 这是在对应的 varlen 配方上再打开「按语音活动边界取片段」的版本：
+# 比 varlen 配方只多了 dataset_args.vad_segments 一个块，并把 exp_dir 换个名字。
+# 其余训练设置与 varlen 版一致，方便和 varlen（随机位置切）对照。
+compile_backbone:
+  mode: default
+data_type: raw_fast
+dataloader_args:
+  batch_size: 40
+  drop_last: true
+  num_workers: 16
+  pin_memory: false
+  prefetch_factor: 2
+# gpus: removed - not read by the training code; the number of GPU processes
+# comes from launch.sh's second argument (and CUDA_VISIBLE_DEVICES). The old
+# `gpus: [0]` here never restricted training to one GPU.
+dataset_args:
+  # ── 变长训练新增：长度分桶（训练策略，与模型层无关）──
+  # 把长度接近的样本放进同一批，缩小补齐比例；关掉这一块就回到固定长度行为。
+  bucketing:
+    enable: true
+    bucket_count: 6
+    bucket_width_sec: 1.0
+    shuffle_buckets: true
+  aug_setup:
+    aug_type: Sequential
+    prob: 0.6
+    augmentors:
+    - aug_type: OneOf
+      prob: 0.8
+      augmentors:
+      - aug_type: CustomNoise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music
+        snr: [2, 12]
+        prob: 1.0
+      - aug_type: CustomNoise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/noise
+        snr: [0, 12]
+        prob: 1.0
+      - aug_type: CustomNoise
+        dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/musan/speech
+        snr: [7, 18]
+        babble: true
+        prob: 1.0
+    - aug_type: Reverb
+      dataset_dir: /root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs
+      file_pattern: '**/*.wav'
+      prob: 0.2
+  fbank_args:
+    dither: 1.0
+    frame_length: 25
+    frame_shift: 10
+    num_mel_bins: 80
+  num_frms: 600
+  resample_rate: 16000
+  sample_num_per_epoch: 0
+  shuffle: true
+  shuffle_args:
+    shuffle_size: 2500
+  speed_perturb: false
+  # ── 变长训练新增：不再强制截成固定长度 ──
+  # 每条按自己的真实长度送入模型（右侧补零凑批，并回传真实长度给掩码）。
+  # min_sec / max_sec 是可变长度路径的时长范围；max_batch_sec 限制一批的总秒数。
+  # ── 按语音活动边界取片段（本轮新增）──
+  # 不再从随机位置切，而是读音频旁边的分段文件（默认文件名后面补 .rttm），
+  # 从「语音段边界」到「语音段边界」挑一段，长度落在 min_sec..max_sec 之间。
+  # 需要 dataset_args.varlen.enable 同时为 true（片段长度是变化的）。
+  vad_segments:
+    enable: true
+    rttm_suffix: .rttm          # 分段文件名 = 音频文件名 + 这个后缀
+    min_sec: 1.0                # 片段允许的最短时长
+    max_sec: 6.0                # 片段允许的最长时长（与 varlen.max_sec 一致）
+    target_sec: 3.5             # 想要的时长；不写就是 (min_sec+max_sec)/2
+    pad_sec: 0.1                # 两端各留的余量，默认 0.1 秒
+    min_speech_sec: 1.0         # 片段里真实语音的下限（余量不算语音）
+    missing_policy: fallback    # 没有分段文件：fallback 退回随机切 / drop 丢掉
+    low_speech_policy: resample # 语音太少：resample 换起点重挑 / keep / drop
+    cut_policy: middle          # 单段语音长于 max_sec 时取中段（或 random）
+  varlen:
+    enable: true
+    # 短句下限放到 0.5 秒：0.5 秒以上都保留，不再像固定长度那样
+    # 把短句循环复制补满（实测 b0/b6 在 0.5 秒下算出的向量正常、不退化）。
+    # 只有连 0.5 秒都不到的片段才丢掉。
+    min_sec: 0.5
+    # 长句上限：超过 6 秒的按随机窗口截到 6 秒；6 秒以内按原样送入。
+    max_sec: 6.0
+    max_batch_sec: 244.0
+do_lm: true
+enable_amp: true
+eval_dur: 8.0
+exp_dir: exp/redimnet2/b3/conv_att/vadseg_lm
+# gpus: removed - not read by the training code; the number of GPU processes
+# comes from launch.sh's second argument (and CUDA_VISIBLE_DEVICES). The old
+# `gpus: [0]` here never restricted training to one GPU.
+log_batch_interval: 25
+loss: CrossEntropyLoss
+loss_args: {}
+margin_scheduler: MarginScheduler
+margin_update:
+  final_margin: 0.3
+  fix_start_epoch: 1
+  increase_start_epoch: 1
+  increase_type: exp
+  initial_margin: 0.3
+  update_margin: true
+mixup_alpha: null
+model: ReDimNet2Custom
+model_args:
+  C: 24
+  F: 72
+  agg_gnorm: true
+  block_1d_type: conv+att
+  block_2d_type: basic_resnet
+  causal: none
+  compress_tconvs: true
+  emb_bn: false
+  embed_dim: 192
+  feat_type: tf
+  fm_weigthing_type: NC
+  global_context_att: true
+  group_divisor: 1
+  hop_length: 160
+  pooling_func: ASTP
+  return_2d_output: true
+  spec_in_channels: 1
+  spec_params:
+    do_preemph: true
+    do_spec_aug: false
+    norm_signal: true
+model_ckpt: exp/redimnet2/b3/conv_att/ptn/models/model_120.pt
+num_avg: 10
+num_epochs: 5
+optimizer: SGD
+optimizer_args:
+  lr: 0.0001
+  momentum: 0.9
+  nesterov: true
+  weight_decay: 0.0001
+projection_args:
+  do_lm: true
+  easy_margin: false
+  embed_dim: 192
+  lanbuda: 0.7
+  margin_type: C
+  num_class: 5994
+  project_type: sphereface2
+  scale: 32.0
+  t: 3
+save_epoch_interval: 1
+scheduler: ExponentialDecrease
+scheduler_args:
+  final_lr: 2.5e-05
+  initial_lr: 0.0001
+  # 下面这一行让 initial_lr 就是**实际峰值学习率**（不随卡数/批大小变化）。
+  # 不加这行会退回老行为：学习率会被乘上 卡数×每卡批大小/64。
+  lr_scaling: base_lr
+  warm_from_zero: true
+  warm_up_epoch: 1
+seed: 42
+train_data: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/data.list
+train_label: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/utt2spk
+val_type: local
+validation:
+  vox1: /root/group-shared/voiceprint/data/wespeaker_data/vox1-test

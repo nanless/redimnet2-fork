@@ -157,7 +157,8 @@ flowchart LR
 | 04 训练 | `applications/speaker_rec/wespeaker_lite/**` |
 | 05 复现 | `applications/speaker_rec/examples/**` |
 | 07 本机数据 | `AGENTS.md` 第 3、6 节、`checkpoints/reports/05-训练数据检查.md` |
-| 08 变长训练与长度分桶 | `wespeaker_lite/dataset/{dataset,processor}.py`、`utils/executor.py` |
+| 08 变长训练与长度分桶（含按语音边界取样，第 9 节） | `wespeaker_lite/dataset/{dataset,processor}.py`、`utils/executor.py` |
+| 09 用语音活动检测给音频加时间标注 | `applications/speaker_rec/scripts/vad/**` |
 | 评测报告 | `checkpoints/eval_*.csv`、`checkpoints/reports/**` |
 
 ---

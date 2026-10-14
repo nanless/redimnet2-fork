@@ -40,6 +40,11 @@ import torchaudio.compliance.kaldi as kaldi
 
 AUDIO_FORMAT_SETS = set(['flac', 'mp3', 'm4a', 'ogg', 'opus', 'wav', 'wma'])
 
+# 判定时间是否越界时用的容差（秒）。分段文件里的时间是"起点 + 时长"加出来的，
+# 末段的终点常比文件末尾多出一个浮点尾数（实测差 5e-16），不留容差就会把这种
+# 数值毛毛雨当成真的越界。
+EDGE_EPS = 1e-6
+
 # ── dropped-sample counters ──────────────────────────────────────────
 # Samples dropped by the readers below used to be invisible: the only signal
 # was a `logging.warning`, and bin/train.py raises the root logger's level to
@@ -54,6 +59,13 @@ DROP_COUNTERS = {
     'read_failed': 0,       # exception while reading/decoding the audio
     'vad_unsupported': 0,   # line carries a 'vad' key this reader cannot use
     'unknown_spk': 0,       # spk missing from spk2id (would have been label -1)
+    'vad_no_rttm': 0,       # 按语音活动边界取样，但旁边没有分段文件（走回退策略）
+    'vad_bad_rttm': 0,      # 分段文件在，但读不出可用区间（走回退策略）
+    'vad_low_speech': 0,    # 选出的片段里真正的语音太少，丢掉或修理过
+    # 下面是"被切开/被丢掉"的计数。vad_cut_inside 比较特别：样本**没有**被
+    # 丢掉，只是切在了语音中间，所以它不进 DROP_COUNTERS 的汇总口径——
+    # 放在这里是为了让 print 出来的前几条和别的丢弃一样可见。
+    'vad_cut_inside': 0,    # 单个语音段比 max_sec 还长，只能在段内部切开
 }
 
 # Print at most this many occurrences of each kind, to surface a problem
@@ -83,6 +95,334 @@ def report_drop_counters(prefix="[dataset] dropped-sample summary"):
         return
     parts = ", ".join(f"{k}={v}" for k, v in sorted(active.items()))
     print(f"{prefix}（本进程 / 本 worker）: {parts}", file=sys.stderr, flush=True)
+
+
+# ── 按语音活动（VAD）边界取片段 ──────────────────────────────────────
+#
+# 固定长度那条路径是「从文件里随机位置切同样长的一段」，切点落在哪完全随机，
+# 经常把一句话从中间切断。这里改成：先读该音频旁边的分段文件，拿到一串
+# 「哪里在说话」的时间区间（下称语音段），再**从段边界到段边界**挑一段
+# 长度合适的片段。这样送进模型的片段要么是一整段语音，要么是连着的好几段，
+# 不会把一个字切成两半。
+#
+# 分段文件用 NIST RTTM 文本格式，只写语音段：
+#
+#     SPEAKER <文件编号> 1 <起点秒> <时长秒> <NA> <NA> <NA> <NA> <NA>
+#
+# 时间都是秒、保留三位小数。默认文件名是音频文件名后面直接补 ".rttm"
+# （`00001.wav` 对应 `00001.wav.rttm`），后缀可以用 `rttm_suffix` 改；
+# 分段也可以放在另一棵目录树里，规则见 dataset.py 的 `rttm_path_for_audio`。
+
+def report_vad_stats(prefix="[dataset] VAD 取样统计"):
+    """把按语音活动取样的计数打到 stderr（不受日志级别影响）。
+
+    计数是**按进程**的：开了 num_workers 之后每个 worker 各算各的，主进程这边
+    通常一条都看不到。没开这个功能时字典是空的，这里不打印任何东西。
+    """
+    active = {k: v for k, v in VAD_STATS.items() if v}
+    if not active:
+        return
+    parts = ", ".join(f"{k}={v}" for k, v in sorted(active.items()))
+    print(f"{prefix}（本进程 / 本 worker）: {parts}", file=sys.stderr, flush=True)
+
+
+def parse_rttm_segments(path):
+    """读分段文件，返回按起点排好序的 [(起点秒, 终点秒), ...]。
+
+    比直接 `split()` 宽松：空行跳过，字段不够的行跳过，时间读不出来的行跳过，
+    段尾用起点加时长算出来（RTTM 的时长可以写成负数表示到文件末尾，这里按
+    0 处理）。文件不存在返回 None，表示「没有分段可用」，调用方据此走回退策略；
+    文件在但一行都没读出来，返回空列表。
+    """
+    try:
+        with open(path, 'r') as f:
+            lines = f.readlines()
+    except OSError:
+        return None
+    segs = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split()
+        # 只认语音段：字段数够，且第 1 列是 SPEAKER（SPEECH 之类同样接受，
+        # 因为它们的时间字段位置一致，都是"第 4 列起点、第 5 列时长"）。
+        if len(parts) < 5:
+            continue
+        if parts[0].upper() not in ('SPEAKER', 'SPEECH'):
+            continue
+        try:
+            start = float(parts[3])
+            dur = float(parts[4])
+        except ValueError:
+            continue
+        if dur < 0:
+            dur = 0.0
+        if start < 0:
+            continue
+        end = start + dur
+        if end <= start:
+            continue
+        segs.append((start, end))
+    segs.sort(key=lambda s: (s[0], s[1]))
+    return segs
+
+
+def merge_segments(segments, gap_sec=0.0):
+    """把挨得太近或互相重叠的语音段并成一段。
+
+    `gap_sec` 是允许并起来的最大静音间隔：两段之间的空隙小于等于它就合成
+    一段（0 表示只并重叠或首尾相接的）。并起来之后，选片段就不会落在
+    「其实不算停顿」的缝隙里。
+    """
+    if not segments:
+        return []
+    out = [list(segments[0])]
+    for start, end in segments[1:]:
+        if start - out[-1][1] <= gap_sec:
+            if end > out[-1][1]:
+                out[-1][1] = end
+        else:
+            out.append([start, end])
+    return [(s, e) for s, e in out]
+
+
+def _speech_overlap_sec(choices, start, end):
+    """片段 [start, end] 与哪些语音段有交集，交集一共多少秒。"""
+    total = 0.0
+    for s, e in choices:
+        lo = max(s, start)
+        hi = min(e, end)
+        if hi > lo:
+            total += hi - lo
+    return total
+
+
+def select_vad_span(segments,
+                    min_sec,
+                    max_sec,
+                    target_sec=None,
+                    pad_sec=0.0,
+                    merge_gap_sec=0.0,
+                    cut_policy='middle',
+                    min_speech_sec=None,
+                    rng=random,
+                    clip_duration=None,
+                    stats=None):
+    """从语音段列表里挑一段「整段语音」的区间。
+
+    返回字典：`start` / `end`（秒）、`mode`、`speech_sec`、`covered`、`aligned`。
+    挑不出来返回 None。
+
+    规则（按顺序）：
+
+    1. **先合并**间隔不超过 `merge_gap_sec` 的相邻语音段（默认 0，只并重叠或
+       首尾相接的）。合并后的区间就是"可选的整段"，片段的起点终点只能落在
+       它们的边界上。
+    2. **在所有连续几段的组合里**，取总时长落在 `[min_sec, max_sec]` 且最接近
+       `target_sec`（默认取 `(min_sec + max_sec) / 2`）的那一个。也就是"每段
+       都是整段"，绝不从中间切断；同一层里有多个一样接近的起点时随机取一个。
+    3. **只能在段内部切开时**（单独一段就超过 `max_sec`）：按 `cut_policy`
+       取这一段的中间或随机一小段，并记 `mode='cut_inside'`，让调用方计数。
+       这是唯一一种会切到语音中间的情况。
+    4. **两端各留 `pad_sec` 的余量**，再裁到整条音频的范围里。余量是对称加的，
+       所以两头要么都完整加上、要么一起被截短，加完之后**仍然以语音段边界为
+       中心**（`aligned=True` 表示两头的位移相等，即对称性没被破坏）。
+    5. 片段里的真实语音少于 `min_speech_sec` 就返回 None，由调用方按
+       `low_speech_policy` 丢掉或修理。注意 `pad_sec` 加出来的余量**不算**
+       语音，它只是给分段器留的余量。
+
+    > 为什么第 1 步的 `merge_gap_sec` 不跟着 `pad_sec` 走：余量是**对称地往
+    > 两头扩**的，所以它只覆盖片段两端以外的范围，**不会**把片段内部那条静音
+    > 缝隙补上；第 2 步选中的区间若横跨缝隙，扩充之后缝隙仍在正中间。
+    > 早先的写法让 `merge_gap_sec` 默认等于 `pad_sec`，于是「扩完余量就盖住了
+    > 缝隙」的区间被并成一段，随后又按"不切段"的规则把起点放在合并后区间的
+    > 左端——而它中间那条缝隙其实还在。实测 `id03722/.../00011.wav` 就是
+    > 这样：选出 (2.060, 5.888)，而那里的语音段是 (2.26,3.36) 与
+    > (3.68,5.888)，区间正中躺着一整段 0.32 秒的静音，起点也不在任何语音段
+    > 的边界上。
+
+    Args:
+        segments: [(起点秒, 终点秒), ...]，`parse_rttm_segments` 的输出
+        min_sec / max_sec: 片段允许的时长范围
+        target_sec: 想要的时长，默认取上下限中点
+        pad_sec: 两端各留的余量秒数（可为 0）
+        cut_policy: 'middle' 取中段，'random' 随机取一小段
+        min_speech_sec: 片段内真实语音的下限，None 表示不检查
+        rng: 随机数来源（测试时可注入固定种子）
+        clip_duration: 整条音频的时长（秒）；给了就把片段裁进这个范围
+        stats: 可选字典，用来累加这次挑选的计数（mode / cut_inside 等）
+
+    Returns:
+        dict 或 None
+    """
+    segments = [s for s in segments if s[1] > s[0]]
+    if not segments:
+        return None
+    if target_sec is None:
+        target_sec = 0.5 * (min_sec + max_sec)
+    target_sec = min(max(target_sec, min_sec), max_sec)
+    if min_speech_sec is None:
+        min_speech_sec = min_sec
+    if cut_policy not in ('middle', 'random'):
+        raise ValueError(f"unknown cut_policy: {cut_policy!r}")
+
+    # 1. 合并靠得很近的段。这里的间隔阈值**不跟 pad_sec 走**：
+    # 余量是往两头对称扩的，不会补上片段内部那条缝隙，所以"扩完余量才连起来"
+    # 的区间不能被并成一段（详见上面文档说明里的实测例子）。
+    if merge_gap_sec is None:
+        merge_gap_sec = 0.0
+    choices = merge_segments(segments, gap_sec=max(0.0, merge_gap_sec))
+    if not choices:
+        return None
+
+    n = len(choices)
+    durs = [e - s for s, e in choices]
+
+    # 2. 把连续的若干个**整段**并起来，凑到最接近 `target_sec` 的那个区间。
+    #
+    #    这里要遍历所有可能的合并段数（1 段、2 段、3 段……），在全部合法区间里
+    #    取与 `target_sec` 最接近的那个，而不是"能用 1 段就停"。
+    #    两者差别很大：假设 4 段语音各约 0.7~1.4 秒，目标 3.0 秒，
+    #    "能用 1 段就停"只会给出 1.4 秒（差 1.6 秒），
+    #    而把相邻两段并起来能得到 2.6 或 3.4 秒（差 0.4 秒）——
+    #    后者才是"凑到目标时长、且每段都是整段"的本意。
+    cut_source_sec = None   # 只有 cut_inside 才会填：被切的那一整段有多长
+    best = None          # (与目标的差距, [平手项列表])
+    max_merge = max(1, min(n, 32))
+    # 平手要用容差判断，不能直接比浮点数是否相等：段的时间是「起点+时长」算出来的，
+    # 0.0+1.2 与 2.6-1.4 的表示可能差一个 ulp（实测一处是 0.0，另一处是 2.22e-16）。
+    # 按精确相等挑平手，会让本该并列的第四段永远轮不到，等于悄悄偏向靠前的语音段：
+    # 实测四段各 1.2 秒、target=1.2 时，精确比较只有前两段能轮到（60 个种子下
+    # 只出现 (0.0,1.2) 和 (1.3,2.5) 两个结果），加容差后四个平手项都能轮到。
+    tol = max(1e-9, 1e-3 * max(target_sec, 1e-9))
+    for n_merge in range(1, max_merge + 1):
+        spans = []
+        for i in range(0, n - n_merge + 1):
+            j = i + n_merge - 1
+            dur = choices[j][1] - choices[i][0]
+            if dur < min_sec or dur > max_sec:
+                continue
+            spans.append((abs(dur - target_sec), i, j))
+        if not spans:
+            continue
+        layer_best = min(s[0] for s in spans)
+        ties = [s for s in spans if s[0] <= layer_best + tol]
+        # 所有层一起比，取全局最接近的；同分时把各层的平手项并到一起。
+        if best is None or layer_best < best[0] - tol:
+            best = (layer_best, ties)
+        elif abs(layer_best - best[0]) <= tol:
+            best = (best[0], best[1] + ties)
+
+    if best is not None:
+        _, ties = best
+        _, i, j = ties[rng.randrange(len(ties))]
+        start, end = choices[i][0], choices[j][1]
+        mode = 'merge' if j > i else 'single'
+    else:
+        # 3. 没有任何组合能落进 [min_sec, max_sec]：只能从某一段内部切。
+        order = sorted(range(n), key=lambda k: durs[k])
+        k = order[-1]              # 最长的一段
+        if durs[k] < min_sec:
+            return None            # 整条音频的语音加起来都不够短
+        seg_start, seg_end = choices[k]
+        mode = 'cut_inside'
+        # 记下**被切的那一整段**有多长。注意不要拿切完之后的长度去说事：
+        # 切出来当然是 target_sec 那么长，拿它去和 max_sec 比会得出
+        # 「2.251s > 6.000s」这种自相矛盾的话。
+        cut_source_sec = durs[k]
+        if cut_policy == 'middle':
+            span = min(target_sec, durs[k])
+            start = seg_start + 0.5 * (durs[k] - span)
+        else:
+            span = min(target_sec, durs[k])
+            start = seg_start + rng.uniform(0.0, durs[k] - span)
+        end = start + span
+        if stats is not None:
+            stats['cut_inside'] = stats.get('cut_inside', 0) + 1
+
+    # 记下加余量之前的区间：它就是「算出来的语音边界」，检查/排查时看这个。
+    raw_start, raw_end = start, end
+
+    # 4. 两端留余量，再落到音频范围里。规则（这就是 `aligned` 的含义）：
+    #
+    #    * **能加就两端都加满** `pad_sec`，此时
+    #      `start == raw_start - pad_sec` 且 `end == raw_end + pad_sec`，
+    #      片段以语音段边界为中心（`aligned=True`）。
+    #    * 文件长度不够、某一头放不下时，**片段整体平移**，让放不下的那一头
+    #      贴住文件边缘，另一头的余量原样保留，片段长度不变。此时不再是
+    #      "以边界为中心"，记 `aligned=False`；但片段仍然完整覆盖那些语音段。
+    #    * 只有片段比整条音频还长，才真的夹短，也记 `aligned=False`。
+    #
+    #    为什么不做"两头各缩一半"的对称补偿：那会缩短片段，而且实测会把两个
+    #    边界**同时**推离语音段边界（片段最短只剩 3.5 秒，比目标短一截）。
+    #    平移则保证时长不受影响。
+    #
+    #    判定"有没有超出"要用一点容差 `EDGE_EPS`：分段文件里的时间是
+    #    「起点 + 时长」加出来的，末段的终点常落在文件末尾再往后一点点
+    #    （实测 `1.030 + 4.538 = 5.5680000000000005`，而文件正好 5.568 秒）。
+    aligned = True
+    if pad_sec > 0:
+        start -= pad_sec
+        end += pad_sec
+        if clip_duration is not None:
+            if start < -EDGE_EPS and end <= clip_duration + EDGE_EPS:
+                end += -start                  # 左端放不下：整体右移
+                start = 0.0
+                aligned = False
+            elif end > clip_duration + EDGE_EPS and start >= -EDGE_EPS:
+                start -= end - clip_duration   # 右端放不下：整体左移
+                end = clip_duration
+                aligned = False
+            elif start < -EDGE_EPS and end > clip_duration + EDGE_EPS:
+                aligned = False                # 两头都放不下：只能夹短
+            start = max(0.0, min(start, clip_duration))
+            end = max(0.0, min(end, clip_duration))
+        elif start < 0.0:
+            start = 0.0
+    elif clip_duration is not None:
+        start = max(0.0, min(start, clip_duration))
+        end = max(0.0, min(end, clip_duration))
+    if end <= start:
+        return None
+
+    # 5. 语音占比检查（余量不算语音）。
+    overlap = _speech_overlap_sec(choices, start, end)
+    if overlap + 1e-9 < min_speech_sec:
+        if stats is not None:
+            stats['low_speech'] = stats.get('low_speech', 0) + 1
+        return None
+
+    if stats is not None:
+        stats[mode] = stats.get(mode, 0) + 1
+
+    return dict(start=start,
+                end=end,
+                mode=mode,
+                speech_sec=overlap,
+                cut_source_sec=cut_source_sec,
+                covered=(raw_start, raw_end),
+                aligned=aligned)
+
+
+def _equal_spans(choices, target_sec, min_sec, max_sec):
+    """列出所有合法区间的 (与目标差距, 起点下标, 终点下标)，供随机取平手用。
+
+    只给测试和排查用；真正的挑选走 `select_vad_span` 里那层「按段数从少到多」
+    的循环，逻辑一致但不用把所有区间都存下来。
+    """
+    n = len(choices)
+    out = []
+    max_merge = max(1, min(n, 32))
+    for n_merge in range(1, max_merge + 1):
+        for i in range(0, n - n_merge + 1):
+            j = i + n_merge - 1
+            dur = choices[j][1] - choices[i][0]
+            if dur < min_sec or dur > max_sec:
+                continue
+            out.append((abs(dur - target_sec), i, j))
+    return out
+
 
 
 
@@ -391,6 +731,257 @@ def parse_raw_fast_varlen(
                 'read_failed',
                 f"{type(ex).__name__}: {ex} | {obj}")
             logging.warning('Failed to read & filter {}'.format(str(obj)))
+
+
+def read_audio_span(fp, samplerate, start_sec, end_sec):
+    """读音频文件在 [start_sec, end_sec) 这段时间里的波形。
+
+    与 `read_audio_section` 的区别：这里两端都是**确切的时间**，不补零也不循环
+    复制；文件末尾不够长时读到哪算哪。返回 (波形, 实际采样率)。
+    这一段是为了按语音活动边界取样专门写的：起点、终点都是算好的秒数，
+    不需要再随机挑位置，也不该被"补足到某个长度"的逻辑改动。
+    """
+    f = sf.SoundFile(fp)
+    if not f.seekable():
+        raise ValueError("Not compatible with seeking")
+    sr = f.samplerate
+    tot_dur = f.frames / sr
+    start_sec = max(0.0, float(start_sec))
+    end_sec = min(float(end_sec), tot_dur)
+    if end_sec <= start_sec:
+        return None, sr
+    start_frame = int(sr * start_sec)
+    n_frames = max(1, int(round(sr * (end_sec - start_sec))))
+    # 起点在文件末尾之后、或算出来的长度超过文件剩余部分时，都以文件为准。
+    n_frames = min(n_frames, f.frames - start_frame)
+    if n_frames <= 0:
+        return None, sr
+    f.seek(start_frame)
+    samples = f.read(n_frames)
+    if sr != samplerate:
+        samples = resampy.resample(samples, sr, samplerate)
+    return samples, samplerate
+
+
+# 按语音活动取样这一步的计数（每个进程一份；开了 num_workers 后各 worker 独立）。
+VAD_STATS = {}
+
+
+def vad_select_segment(data,
+                       rttm_suffix='.rttm',
+                       rttm_root=None,
+                       rttm_root_depth=2,
+                       audio_root=None,
+                       min_sec=1.0,
+                       max_sec=6.0,
+                       target_sec=None,
+                       pad_sec=0.1,
+                       merge_gap_sec=None,
+                       min_speech_sec=None,
+                       cut_policy='middle',
+                       low_speech_policy='resample',
+                       low_speech_retries=2,
+                       missing_policy='fallback',
+                       fallback_min_sec=None,
+                       fallback_max_sec=None,
+                       fallback_chunk_sec=3.0,
+                       read_fail_policy='fallback',
+                       stats=None):
+    """按语音活动（VAD）边界从音频里取一段完整的话。
+
+    这是 `random_chunk_range` 的替代品：不用随机位置切，而是先读音频旁边那份
+    分段文件（默认就是文件名后面补 `.rttm`），再从**语音段的边界**到**语音段的
+    边界**挑一段，长度落在 [min_sec, max_sec] 里，尽量接近 target_sec。
+    挑选规则见 `select_vad_span`。
+
+    为了能"按自己的长度"送进模型，上游必须先跑
+    `parse_raw_fast_varlen`（它给每条样本带上 `path` 和真实时长），
+    所以这一段的输入应当是变长读取的输出。
+
+    几种坏情况的处理，都可以在配置里改：
+
+    * **分段文件不在** → `missing_policy`：
+        - `fallback`（默认）：退回随机位置切一段（复用 `random_chunk_range`
+          的取法）。样本不丢，但这一条不保证落在语音边界上。
+        - `drop`：丢掉这条样本。适合"只想要干净的整段语音"的场景。
+    * **分段文件在但读不出可用区间**（空文件、时间字段坏掉）→ `missing_policy`
+      同上，计数走 `vad_bad_rttm`。
+    * **选出来的片段语音太少**（少于 `min_speech_sec`）→ `low_speech_policy`：
+        - `resample`（默认）：换一个起点再挑，最多试 `low_speech_retries` 次，
+          仍然不行就退回随机切一段。
+        - `keep`：不管语音多少，直接用。
+        - `drop`：丢掉这条样本。
+    * **单段语音比 max_sec 还长，只能在段内部切开** → 按 `cut_policy`
+      取中段或随机一小段，并计入 `vad_cut_inside`。这是唯一一种会切到
+      语音中间的情况。
+
+    与"补零凑批"的接口不变：仍然写 `num_samples`，下游 `collate_varlen`
+    照旧右侧零填充并回传 `lengths`；增广链照旧作用在这段波形上。
+    Args:
+        data: Iterable[{key, wav, label, path, sample_rate, ...}]
+        rttm_suffix: 分段文件名后缀，默认 `.rttm`（`a.wav` → `a.wav.rttm`）
+        min_sec / max_sec: 片段时长范围
+        target_sec: 想要的时长，默认取上下限中点
+        pad_sec: 两端各留的余量，默认 0.1 秒（保证不会正好切在语音的第一帧上，
+            因为挑剔一点的分段器通常会把边界前的十几毫秒也标成静音）
+        merge_gap_sec: 相邻语音段间隔小于这个值就先并成一段；默认等于 pad_sec
+        min_speech_sec: 片段里真实语音的下限，默认等于 min_sec
+        cut_policy: 'middle' | 'random'，见上
+        low_speech_policy: 'resample' | 'keep' | 'drop'，见上
+        low_speech_retries: `resample` 最多再试几次
+        missing_policy: 'fallback' | 'drop'，见上
+        fallback_min_sec / fallback_max_sec: 回退随机切时的长度范围；
+            默认分别是 min_sec 和 max(2*min_sec, target_sec)
+        fallback_chunk_sec: 拿不到音频真实长度时，随机切多长（秒）
+        read_fail_policy: 'fallback' | 'drop'，选好的片段读失败时怎么办
+        stats: 可选字典，用来累加本段的选择/回退次数（不传就用进程内那份）
+
+    Returns:
+        Iterable[{key, wav, label, sample_rate, num_samples, vad_span}]
+    """
+    if stats is None:
+        stats = VAD_STATS
+    if min_speech_sec is None:
+        min_speech_sec = min_sec
+    if merge_gap_sec is None:
+        # 默认**不**跟着 pad_sec 走，理由见 select_vad_span 的说明：
+        # 余量只扩片段两端，不会补上片段内部的静音缝隙。
+        merge_gap_sec = 0.0
+    if fallback_min_sec is None:
+        fallback_min_sec = min_sec
+    if fallback_max_sec is None:
+        fallback_max_sec = max(2.0 * min_sec, target_sec or
+                               0.5 * (min_sec + max_sec))
+    if missing_policy not in ('fallback', 'drop'):
+        raise ValueError(f"unknown missing_policy: {missing_policy!r}")
+    if low_speech_policy not in ('resample', 'keep', 'drop'):
+        raise ValueError(f"unknown low_speech_policy: {low_speech_policy!r}")
+
+    def _random_span(wav, sample_rate):
+        """回退用：随机位置切一段（和 `random_chunk_range` 同样的取法）。"""
+        target = int(random.uniform(fallback_min_sec, fallback_max_sec)
+                     * sample_rate)
+        target = max(1, target)
+        if len(wav) > target:
+            wav = get_random_chunk(wav, target)
+        return wav
+
+    for sample in data:
+        assert 'key' in sample
+        assert 'wav' in sample
+        wav = sample['wav'][0]
+        sample_rate = sample.get('sample_rate', 16000)
+        wav_path = sample.get('path', None)
+        # 这一条音频自己有多长：优先用刚读出来的波形长度（它就是真实长度），
+        # 读不到时才退回用上游给的时长。
+        clip_duration = wav.size(-1) / float(sample_rate)
+
+        segments = None
+        rttm_path = None
+        if wav_path:
+            # 这里才 import：dataset.py 在本文件之前被加载，放在模块顶层会绕成
+            # 循环 import。
+            from wespeaker_lite.dataset.dataset import rttm_path_for_audio
+            rttm_path = rttm_path_for_audio(str(wav_path), rttm_suffix,
+                                            rttm_root=rttm_root,
+                                            rttm_root_depth=rttm_root_depth,
+                                            audio_root=audio_root)
+            segments = parse_rttm_segments(rttm_path)
+
+        def _fallback(reason):
+            """回退随机切；要求 drop 就返回 True（表示这条样本丢掉）。"""
+            if missing_policy == 'drop':
+                _drop_counter_incr(reason, f"{wav_path} s={rttm_path}")
+                return True
+            stats['fallback_random'] = stats.get('fallback_random', 0) + 1
+            sample['wav'] = _random_span(wav, sample_rate).unsqueeze(0)
+            sample['num_samples'] = sample['wav'].size(-1)
+            sample['vad_span'] = None
+            sample['vad_mode'] = 'fallback_random'
+            return False
+
+        if wav_path is None:
+            if _fallback('vad_no_rttm'):
+                continue
+            yield sample
+            continue
+
+        if segments is None:
+            if _fallback('vad_no_rttm'):
+                continue
+            yield sample
+            continue
+
+        if not segments:
+            if _fallback('vad_bad_rttm'):
+                continue
+            yield sample
+            continue
+
+        span = None
+        attempts = 1
+        if low_speech_policy == 'resample':
+            attempts = 1 + max(0, int(low_speech_retries))
+        for _ in range(attempts):
+            this_min_speech = (0.0 if low_speech_policy == 'keep'
+                               else min_speech_sec)
+            span = select_vad_span(segments,
+                                   min_sec=min_sec,
+                                   max_sec=max_sec,
+                                   target_sec=target_sec,
+                                   pad_sec=pad_sec,
+                                   merge_gap_sec=merge_gap_sec,
+                                   cut_policy=cut_policy,
+                                   min_speech_sec=this_min_speech,
+                                   rng=random,
+                                   clip_duration=clip_duration,
+                                   stats=None)
+            if span is not None:
+                break
+
+        if span is None:
+            # 语音含量怎么都到不了下限：送不进模型就先丢，丢不掉就回退。
+            stats['low_speech'] = stats.get('low_speech', 0) + 1
+            if low_speech_policy == 'drop':
+                _drop_counter_incr('vad_low_speech', f"{wav_path}")
+                continue
+            if _fallback('vad_bad_rttm'):
+                continue
+            yield sample
+            continue
+
+        if span['mode'] == 'cut_inside':
+            stats['cut_inside'] = stats.get('cut_inside', 0) + 1
+            # 报的是"被切的那一整段"有多长，不是切完之后的长度；
+            # 否则会出现 2.251s > 6.000s 这种自相矛盾的话（实测踩到过）。
+            _src = span.get('cut_source_sec')
+            _src_txt = (f"{_src:.3f}s" if _src is not None else "未知")
+            _drop_counter_incr(
+                'vad_cut_inside',
+                f"{wav_path} 单段语音长 {_src_txt}，超过 max_sec={max_sec:.3f}s，"
+                f"只能在段内部切开（切出 {span['end'] - span['start']:.3f}s）")
+        stats[span['mode']] = stats.get(span['mode'], 0) + 1
+
+        chunk, _ = read_audio_span(wav_path, sample_rate,
+                                   span['start'], span['end'])
+        if chunk is None or len(chunk) == 0:
+            stats['read_failed'] = stats.get('read_failed', 0) + 1
+            if read_fail_policy == 'drop':
+                _drop_counter_incr('read_failed',
+                                   f"span read returned nothing: {wav_path}")
+                continue
+            if _fallback('read_failed'):
+                continue
+            yield sample
+            continue
+
+        sample['wav'] = torch.from_numpy(
+            np.ascontiguousarray(chunk)).unsqueeze(0).float()
+        sample['num_samples'] = sample['wav'].size(-1)
+        # 记下这一段是从哪儿来的，便于核对"片段边界就是语音段边界"。
+        sample['vad_span'] = (round(span['start'], 6), round(span['end'], 6))
+        sample['vad_mode'] = span['mode']
+        yield sample
 
 
 def shuffle(data, shuffle_size=2500):

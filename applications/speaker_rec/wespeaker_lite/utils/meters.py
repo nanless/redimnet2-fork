@@ -98,6 +98,14 @@ class ClassErrorMeter:
         return [100.0 * self.n_correct / self.n]
 
 
+import builtins
+import sys
+import types
+
+# `meter` 命名空间在进程里只保留一份，名字固定（见下面 _MetersModule 的说明）。
+_METER_SINGLETON_ATTR = '_wespeaker_lite_meter_singleton'
+
+
 class _MeterNamespace:
     """The `meter` attribute the training loop reaches the meters through.
 
@@ -109,10 +117,60 @@ class _MeterNamespace:
     `AttributeError: module '...meters' has no attribute 'meter'` before the
     first optimizer step. Keeping the attribute here restores the documented
     drop-in path without moving the classes.
+
+    注意：这个命名空间**不要**用模块级赋值 `meter = _MeterNamespace()`
+    暴露出去，原因见下面 `_MetersModule`。
     """
 
     AverageValueMeter = AverageValueMeter
     ClassErrorMeter = ClassErrorMeter
 
 
-meter = _MeterNamespace()
+_meter_namespace = _MeterNamespace()
+
+
+class _MetersModule(types.ModuleType):
+    """让 `meter` 变成「即使本文件被加载两次也只有一个实例」的属性。
+
+    为什么需要这样：本文件在训练进程里会被**加载两次**，得到两个互不相干的
+    模块对象——一次是 `wespeaker_lite.utils.meters`，一次是
+    `applications.speaker_rec.wespeaker_lite.utils.meters`，因为这两条路径
+    都在 `sys.path` 上（训练入口自己加一条，`launch.sh` 导出的 `PYTHONPATH`
+    里两条都有）。文件里的类因此也会各自生成一份。
+
+    实测（在仓库根目录跑，两个名字都 import 一次）：
+
+        m1 = import wespeaker_lite.utils.meters
+        m2 = import applications.speaker_rec.wespeaker_lite.utils.meters
+        m1 is m2                     → False
+        m1.meter is m2.meter         → False   （改成属性之后是 True）
+        isinstance(m1.meter.AverageValueMeter(),
+                   m2.meter.AverageValueMeter) → False
+
+    这个 `isinstance` 的用法在本仓库里是真实存在的（`per_epoch` 评测那段），
+    写成模块级 `meter = _MeterNamespace()` 时，跨名字拿到的是另一份类对象，
+    判断落空，实测报 `TypeError: unsupported operand type(s) for /: 'NoneType' and 'int'`。
+
+    所以这里把 `meter` 存成一个「按名字唯一」的对象：无论本文件被加载几次，
+    只要进程里已经有一个这样的命名空间就复用它。这样两份模块里的 `meter`
+    指向同一个实例，两个名字下的类对象也是同一份。
+
+    为什么不简单地用 `sys.modules.get('wespeaker_lite.utils.meters')` 复用整份
+    模块：两次加载用的模块名不同，谁先谁后不确定；而且先前那份可能已经被
+    `del sys.modules[...]` 清掉（`tests/test_varlen_masking.py` 就会这么干），
+    那时再查模块名就查不到了。以「进程里有没有这个对象」为准最稳。
+    """
+
+    @property
+    def meter(self):
+        existing = getattr(builtins, _METER_SINGLETON_ATTR, None)
+        if existing is None:
+            existing = _meter_namespace
+            setattr(builtins, _METER_SINGLETON_ATTR, existing)
+        return existing
+
+
+# 把本模块的类型换成上面那个子类，`meter` 属性才会生效。
+# 换成属性之后，类对象也随之只保留一份：_MeterNamespace 只在本文件
+# **第一次**被加载时创建（后面那次直接复用旧实例）。
+sys.modules[__name__].__class__ = _MetersModule

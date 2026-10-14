@@ -15,7 +15,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import random
+import sys
 import numpy as np
 import pandas as pd
 import soundfile as sf
@@ -204,6 +206,122 @@ def get_varlen_length_bounds(configs):
     return min_sec, max_sec
 
 
+# 按语音活动（VAD）边界取片段的默认值，集中放一处，方便文档和测试引用。
+VAD_SEGMENT_DEFAULTS = {
+    'enable': False,
+    'rttm_suffix': '.rttm',
+    # 分段文件和音频放在一起（默认），还是放在另一棵树里按同样的相对路径镜像过去。
+    # 生成分段的那条流程两种都支持，训练这边必须能对上：
+    #   rttm_root: /some/where/rttm   音频 /a/b/c/00001.wav → /some/where/rttm/b/c/00001.wav.rttm
+    #   rttm_root_depth: 2            保留音频路径最后 2 层目录（b/c/00001.wav）
+    # 不写 rttm_root 就是「放在音频旁边」。
+    'rttm_root': None,
+    'rttm_root_depth': 2,
+    'target_sec': None,        # None 表示取 min_sec 与 max_sec 的中点
+    'pad_sec': 0.1,
+    'min_speech_sec': None,    # None 表示等于 min_sec
+    'merge_gap_sec': None,     # None 表示等于 pad_sec
+    'cut_policy': 'middle',    # 单段语音长于 max_sec 时：middle | random
+    'missing_policy': 'fallback',       # 没有分段文件：fallback | drop
+    'low_speech_policy': 'resample',    # 语音太少：resample | keep | drop
+    'low_speech_retries': 2,
+    'read_fail_policy': 'fallback',     # 片段读失败：fallback | drop
+    'fallback_chunk_sec': 3.0,
+    'audio_root': None,        # 用 rttm_root 镜像时，音频路径的公共前缀
+}
+
+
+def is_vad_segments_enabled(configs):
+    """ 是否按语音活动边界取样段。
+
+        开关在 `dataset_args.vad_segments.enable`，默认 false，
+        所以没写这一块的配方行为完全不变。
+    """
+    cfg = configs.get('vad_segments', None)
+    if not isinstance(cfg, dict):
+        return False
+    return bool(cfg.get('enable', False))
+
+
+def get_vad_segment_config(configs):
+    """ 取按语音活动取样的配置，缺的项用默认值补齐并做基本检查。 """
+    cfg = configs.get('vad_segments', None)
+    if not isinstance(cfg, dict):
+        cfg = {}
+    out = dict(VAD_SEGMENT_DEFAULTS)
+    out.update({k: v for k, v in cfg.items() if k in VAD_SEGMENT_DEFAULTS})
+    # 时长范围：没写就沿用变长路径那一套，保证两处对"合法长度"的理解一致。
+    varlen_min, varlen_max = get_varlen_length_bounds(configs)
+    out['min_sec'] = float(cfg.get('min_sec', varlen_min))
+    out['max_sec'] = float(cfg.get('max_sec', varlen_max))
+    assert out['max_sec'] > out['min_sec'] > 0, (out['min_sec'], out['max_sec'])
+    if out['target_sec'] is not None:
+        out['target_sec'] = float(out['target_sec'])
+    if out['min_speech_sec'] is not None:
+        out['min_speech_sec'] = float(out['min_speech_sec'])
+    out['pad_sec'] = float(out['pad_sec'])
+    assert out['pad_sec'] >= 0.0, out['pad_sec']
+    assert out['rttm_suffix'], "rttm_suffix must not be empty"
+    assert out['cut_policy'] in ('middle', 'random'), out['cut_policy']
+    assert out['missing_policy'] in ('fallback', 'drop'), out['missing_policy']
+    assert out['low_speech_policy'] in ('resample', 'keep', 'drop'), \
+        out['low_speech_policy']
+    assert out['read_fail_policy'] in ('fallback', 'drop'), \
+        out['read_fail_policy']
+    out['low_speech_retries'] = int(out['low_speech_retries'])
+    out['rttm_root_depth'] = int(out['rttm_root_depth'])
+    assert out['rttm_root_depth'] >= 1, out['rttm_root_depth']
+    return out
+
+
+def rttm_path_for_audio(wav_path, rttm_suffix='.rttm',
+                        rttm_root=None, rttm_root_depth=2,
+                        audio_root=None):
+    """音频路径 → 分段文件路径。
+
+    和生成分段的那条流程（`applications/speaker_rec/scripts/vad/`）用同一套规则：
+
+    * 不写 `rttm_root`：分段就放在音频旁边，文件名后面直接补后缀
+      （`a/b/00001.wav` → `a/b/00001.wav.rttm`）。
+    * 写了 `rttm_root`：把音频路径的最后 `rttm_root_depth` 层目录连同文件名
+      搬到 `rttm_root` 下面（音频树只读、或分段单独放一处时用这种）。
+      给了 `audio_root` 就先减掉这个前缀再搬。
+
+    这里只做路径拼装，不判断文件在不在——「在不在」由读文件那一步决定。
+    """
+    name = os.path.basename(wav_path) + rttm_suffix
+    if not rttm_root:
+        return wav_path + rttm_suffix
+    path = wav_path
+    if audio_root:
+        try:
+            rel = os.path.relpath(wav_path, audio_root)
+        except ValueError:
+            rel = wav_path
+        # relpath 会给出 ../.. 这样的结果，说明不在同一棵树里，那就退回整条路径。
+        path = wav_path if rel.startswith('..') else os.path.join(audio_root, rel)
+    parts = path.split(os.sep)
+    parts = parts[-(int(rttm_root_depth) + 1):]
+    # 文件名要单独补上后缀：path 是音频路径，最后一段还是 `00001.wav`。
+    parts[-1] = parts[-1] + rttm_suffix
+    return os.path.join(rttm_root, *parts)
+
+
+def vad_stats():
+    """ 按语音活动取样这一步的计数（每个进程一份）。
+
+        真正的定义和打印都在 processor.py 里（计数是在那一层产生的），
+        这里只是给个方便的入口，省得调用方去记在哪个模块。
+    """
+    return processor.VAD_STATS
+
+
+def report_vad_stats(prefix="[dataset] VAD 取样统计"):
+    """ 打印上面那份计数。 """
+    processor.report_vad_stats(prefix=prefix)
+
+
+
 def Dataset(data_type,
             data_list_file,
             configs,
@@ -232,6 +350,15 @@ def Dataset(data_type,
     # Global shuffle
     lists = read_lists(data_list_file)
     shuffle = configs.get('shuffle', False)
+    vadseg = is_vad_segments_enabled(configs)
+    if vadseg and not is_varlen_enabled(configs):
+        # 按语音活动取样的片段长度本来就是变化的，只有走变长读取才拿得到
+        # 真实长度、也只有变长那条 collate 会补零并回传 lengths。
+        # 直接报错，好过悄悄按固定长度跑出一个长度不对的结果。
+        raise ValueError(
+            "dataset_args.vad_segments.enable=true 需要同时打开 "
+            "dataset_args.varlen.enable=true：按语音活动边界取样的片段长度"
+            "是变化的，必须走变长读取与右侧补零那条路径。")
     varlen = is_varlen_enabled(configs)
     min_sec, max_sec = get_varlen_length_bounds(configs)
     dataset = DataList(lists, shuffle=shuffle, repeat_dataset=repeat_dataset)
@@ -271,7 +398,30 @@ def Dataset(data_type,
                             len(spk2id_dict))
     if (not whole_utt):
         # random chunk
-        if varlen:
+        if vadseg:
+            # 按语音活动边界取片段：从"段边界到段边界"挑一段完整的语音，
+            # 替代随机位置的切法。片段长度仍落在 [min_sec, max_sec] 里，
+            # 所以下游的分桶与补零逻辑原样可用。
+            vad_cfg = get_vad_segment_config(configs)
+            print(f"VAD_SEG : enabled, {vad_cfg}")
+            dataset = Processor(dataset, processor.vad_select_segment,
+                                rttm_suffix=vad_cfg['rttm_suffix'],
+                                rttm_root=vad_cfg['rttm_root'],
+                                rttm_root_depth=vad_cfg['rttm_root_depth'],
+                                audio_root=vad_cfg['audio_root'],
+                                min_sec=vad_cfg['min_sec'],
+                                max_sec=vad_cfg['max_sec'],
+                                target_sec=vad_cfg['target_sec'],
+                                pad_sec=vad_cfg['pad_sec'],
+                                merge_gap_sec=vad_cfg['merge_gap_sec'],
+                                min_speech_sec=vad_cfg['min_speech_sec'],
+                                cut_policy=vad_cfg['cut_policy'],
+                                low_speech_policy=vad_cfg['low_speech_policy'],
+                                low_speech_retries=vad_cfg['low_speech_retries'],
+                                missing_policy=vad_cfg['missing_policy'],
+                                read_fail_policy=vad_cfg['read_fail_policy'],
+                                fallback_chunk_sec=vad_cfg['fallback_chunk_sec'])
+        elif varlen:
             # Variable-length path: the crop is a random length inside the
             # configured bounds rather than a fixed chunk_len, so the batch
             # still carries utterances of differing true lengths.

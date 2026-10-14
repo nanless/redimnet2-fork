@@ -190,6 +190,9 @@ def run_epoch(dataloader,
         from wespeaker_lite.dataset import processor as _processor
         _processor.report_drop_counters(
             prefix="[dataset] dropped-sample summary")
+        # 按语音活动边界取样那一步的计数：选了几段、切了几次、回退了几次。
+        # 同样按进程统计，理由同上。没开这个功能时字典是空的，不打印任何东西。
+        _processor.report_vad_stats()
     except Exception:
         pass
     if rank == 0:
