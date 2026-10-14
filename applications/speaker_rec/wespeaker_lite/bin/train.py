@@ -646,12 +646,18 @@ def train(config='conf/config.yaml', **kwargs):
             # 直接 load 就会把骨干的 weight_decay 从微调配方要求的 1e-4
             # 悄悄改回主训练的 2e-5，整段微调都错了，而且不会报任何错。
             # 所以先记下当前（也就是配方要求的）超参，加载完再按原样写回。
+            #
+            # 但 `lr` 不在此列：它每一步都由调度器按绝对迭代数写回
+            # （`executor.run_epoch` 里 `scheduler.step(cur_iter)`），
+            # 这里写回配方的初始值反而会让**续训后的第一步**用错学习率
+            # ——实测会从 0.1 起步而不是接着 5.8e-05，整个学习率轨迹永久错开一步。
+            # 所以 `lr` 交给调度器管，这里不碰。
             keep_hyper = [
-                {k: v for k, v in g.items() if k != 'params'}
+                {k: v for k, v in g.items() if k not in ('params', 'lr')}
                 for g in optimizer.param_groups
             ]
             optimizer.load_state_dict(resume_optimizer_state)
-            # 只恢复状态、不恢复超参：以当前配方为准。
+            # 只恢复状态、不恢复超参：以当前配方为准（`lr` 除外，见上）。
             for group, kept in zip(optimizer.param_groups, keep_hyper):
                 for key, value in kept.items():
                     if group.get(key) != value:
