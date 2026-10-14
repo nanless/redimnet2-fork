@@ -29,6 +29,7 @@ from scipy.signal import windows
 
 from redimnet2.layers.masking import (
     MaskSequential,
+    ensure_nonempty,
     frame_mask_from_sample_mask,
     mask_mean,
     mask_var,
@@ -254,6 +255,13 @@ class SpectralFeaturesTF(nn.Module):
         if sample_mask is not None:
             frame_mask = frame_mask_from_sample_mask(
                 sample_mask, self.length, self.shift, pad=pad)
+            # 极短音频（不足约 20 毫秒）会得到**全 0 的帧掩码**。
+            # 那样 ASTP 会把所有 logits 填成 -inf，softmax 出来全是 NaN；
+            # 训练模式下这个 NaN 会经 BatchNorm 扩散到同一批的**每一条**样本，
+            # 并污染 running 统计量，等于把整个批次、损失、梯度和存档一起毁掉。
+            # 这里保证至少留一帧有效（与 `MaskDownConv2d` 的做法一致），
+            # 让极短音频退化成"只有一帧上下文"，而不是变成 NaN。
+            frame_mask = ensure_nonempty(frame_mask)
 
         if self.features == 'complex':
             return [real_part, imag_part] if frame_mask is None else \

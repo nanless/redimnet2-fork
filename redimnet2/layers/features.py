@@ -26,6 +26,7 @@ import torch.nn.functional as F
 
 from redimnet2.layers.masking import (
     MaskSequential,
+    ensure_nonempty,
     frame_mask_from_sample_mask,
     mask_mean,
     mask_var,
@@ -207,6 +208,9 @@ class MelBanks(nn.Module):
                     frame_mask = frame_mask_from_sample_mask(
                         mask, self.win_length, self.hop_length,
                         pad=self.frame_pad)
+                    # 极短音频会得到全 0 的帧掩码，ASTP 的 softmax 会因此
+                    # 产生 NaN 并在训练模式下扩散到整批；保证至少留一帧有效。
+                    frame_mask = ensure_nonempty(frame_mask)
                     x = x * frame_mask
                 else:
                     x, frame_mask = self.torchfbank(x, mask)
