@@ -4,7 +4,7 @@ compile_backbone:
   mode: default
 data_type: raw_fast
 dataloader_args:
-  batch_size: 160
+  batch_size: 128
   drop_last: true
   num_workers: 16
   pin_memory: false
@@ -58,9 +58,13 @@ dataset_args:
   # min_sec / max_sec 是可变长度路径的时长范围；max_batch_sec 限制一批的总秒数。
   varlen:
     enable: true
-    min_sec: 2.0
+    # 短句下限放到 0.5 秒：0.5 秒以上都保留，不再像固定长度那样
+    # 把短句循环复制补满（实测 b0/b6 在 0.5 秒下算出的向量正常、不退化）。
+    # 只有连 0.5 秒都不到的片段才丢掉。
+    min_sec: 0.5
+    # 长句上限：超过 6 秒的按随机窗口截到 6 秒；6 秒以内按原样送入。
     max_sec: 6.0
-    max_batch_sec: 900.0
+    max_batch_sec: 780.0
 do_lm: true
 enable_amp: true
 eval_dur: 8.0
