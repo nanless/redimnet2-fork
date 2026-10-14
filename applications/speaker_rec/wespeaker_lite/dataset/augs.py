@@ -46,7 +46,13 @@ from typing import Union, List, Tuple
 def _random_int(val: Union[int, Tuple[int, int], List[int]]) -> int:
     if isinstance(val, (tuple, list)):
         lo, hi = val
-        return lo if lo >= hi else np.random.randint(lo, hi)
+        # The ranges in this module are inclusive at both ends: [3, 7] means
+        # "3 to 7 noises" (see the AudioSource.random_one docstring: babble does
+        # "3-7 reads/call", and the snr ranges use the same inclusive
+        # convention). np.random.randint is exclusive on the upper bound, so the
+        # old call never produced hi -- babble only ever drew {3,4,5,6}. The +1
+        # restores the documented range. [1, 1] still yields exactly 1.
+        return lo if lo >= hi else np.random.randint(lo, hi + 1)
     return int(val)
 
 
@@ -58,12 +64,53 @@ def _random_float(val: Union[float, Tuple[float, float], List[float]]) -> float:
 
 
 def _crop_or_pad(signal: np.ndarray, target_len: int) -> np.ndarray:
+    """Crop a long signal, or loop-pad a short one with np.pad(..., 'wrap').
+
+    Kept for callers that have no way to fetch a different file. CustomNoise
+    does NOT use it for the short case any more -- see
+    ``_draw_noise_at_least``: loop-padding a short noise file makes the tail a
+    verbatim copy of its head, so the added noise is periodic and the network
+    can learn the loop rather than the noise. That helper instead re-draws a
+    longer file, and only falls back to this wrap-padding if it cannot find one.
+    """
     if len(signal) > target_len:
+        # NOTE: the original exclusive-bound crop offset is kept deliberately.
+        # Including the last possible start (randint(0, len-target+1)) would be
+        # a more uniform crop, but it is an unrequested change to the crop
+        # distribution and is not part of this fix.
         start = np.random.randint(0, len(signal) - target_len)
         return signal[start:start + target_len]
     elif len(signal) < target_len:
         return np.pad(signal, (0, target_len - len(signal)), mode='wrap')
     return signal
+
+
+def _draw_noise_at_least(source, target_len, category=None,
+                         max_retry=8, read_frames=None):
+    """Draw noise from ``source`` and return a signal of exactly target_len.
+
+    Prefers a file that is already at least ``target_len`` long, so a short
+    target is filled with real audio instead of a looped copy of itself (the
+    measured problem: on real MUSAN files, 5-15% of draws hit a file shorter
+    than the target, and the resulting wrap duplicates ~50% of the samples --
+    one 0.065 s file became 97% repeated audio).
+
+    Bounded retry, then the old behaviour: after ``max_retry`` attempts that all
+    returned a short file, fall back to ``_crop_or_pad`` (wrap) so this can
+    never raise or loop forever. Returns ``(noise, noise_sr)``.
+    """
+    if read_frames is None:
+        read_frames = target_len * 2
+    last = None
+    for _ in range(max_retry):
+        noise, noise_sr = source.random_one(category, frames=read_frames)
+        last = (noise, noise_sr)
+        if len(noise) >= target_len:
+            break
+    noise, noise_sr = last
+    if len(noise) < target_len:
+        noise = _crop_or_pad(noise, target_len)
+    return noise, noise_sr
 
 
 # ── audio source (LMDB or disk) ─────────────────────────────────────
@@ -233,8 +280,13 @@ class CustomNoise(Augmentor):
         # path falls back if SR differs after read.
         read_frames = audio_len * 2
         for _ in range(num_noises):
-            noise, noise_sr = self._source.random_one(
-                self.noise_category, frames=read_frames)
+            # Re-draw a file that is at least audio_len long instead of
+            # loop-padding a short one (see _draw_noise_at_least); the resample
+            # below can shrink the signal, so request the margin in source
+            # frames and let _crop_or_pad handle any remaining shortfall.
+            noise, noise_sr = _draw_noise_at_least(
+                self._source, read_frames, self.noise_category,
+                read_frames=read_frames)
             if noise_sr != sample_rate:
                 from scipy.signal import resample as sp_resample
                 noise = sp_resample(noise, int(len(noise) / noise_sr * sample_rate))
@@ -335,7 +387,22 @@ class CodecAug(Augmentor):
         if out.shape[-1] > orig_len:
             out = out[..., :orig_len]
         elif out.shape[-1] < orig_len:
-            out = torch.nn.functional.pad(out, (0, orig_len - out.shape[-1]))
+            # Keep the tail consistent with the rest of the augmentation chain:
+            # wrap (repeat the audio) rather than zero-pad. Zero padding inserted
+            # outright silence, which is a different and much easier cue than the
+            # codec artefact this augmentor is supposed to teach the model to
+            # ignore. The shortfall is tiny (a codec changes length by a few
+            # samples, unlike the multi-second noise case), so wrap is both
+            # cheap and inaudible here. Note: no current recipe enables CodecAug,
+            # so this only affects configs that opt in; it is kept deliberately
+            # conservative and does not change the length semantics (output is
+            # still exactly orig_len samples).
+            pad = orig_len - out.shape[-1]
+            if pad >= out.shape[-1]:
+                reps = pad // out.shape[-1] + 1
+                out = out.repeat(1, reps)[..., :orig_len]
+            else:
+                out = torch.cat([out, out[..., :pad]], dim=-1)
 
         example['wav'] = out.float()
         return example
@@ -366,6 +433,17 @@ class LowPassAug(Augmentor):
         tw = self.transition_width * freqs[-1]
 
         mask = np.ones_like(freqs)
+        if tw <= 0:
+            # transition_width=0 means "infinitely sharp cut". The cosine ramp
+            # below divides by tw, which produced NaN (0/0) for every bin inside
+            # the (empty) transition band and made the whole output NaN. With no
+            # transition band the intended filter is the plain brick wall: pass
+            # everything below the cutoff, drop everything above it.
+            mask[freqs >= cutoff] = 0
+            filtered = np.fft.irfft(rfft * mask, n=T)
+            example['wav'] = torch.from_numpy(filtered).unsqueeze(0).float()
+            return example
+
         mask[freqs > cutoff + tw / 2] = 0
         transition = np.logical_and(freqs >= cutoff - tw / 2,
                                      freqs <= cutoff + tw / 2)

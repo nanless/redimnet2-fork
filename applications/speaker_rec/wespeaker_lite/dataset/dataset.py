@@ -161,6 +161,34 @@ class DataList(IterableDataset):
                 yield data
 
 
+def is_varlen_enabled(configs):
+    """ Whether the variable-length training path is switched on.
+
+        The switch lives at ``dataset_args.varlen.enable`` and defaults to
+        false, so every recipe written before this feature keeps the
+        fixed-length behaviour bit for bit.
+    """
+    varlen_cfg = configs.get('varlen', None)
+    if not isinstance(varlen_cfg, dict):
+        return False
+    return bool(varlen_cfg.get('enable', False))
+
+
+def get_varlen_length_bounds(configs):
+    """ (min_sec, max_sec) bounds used by the variable-length path.
+
+        Shared by the reader stage, the random-crop stage and the collate-time
+        batch cap so all three agree on what a legal length is.
+    """
+    varlen_cfg = configs.get('varlen', None)
+    if not isinstance(varlen_cfg, dict):
+        varlen_cfg = {}
+    min_sec = float(varlen_cfg.get('min_sec', 1.0))
+    max_sec = float(varlen_cfg.get('max_sec', 8.0))
+    assert max_sec > min_sec > 0, (min_sec, max_sec)
+    return min_sec, max_sec
+
+
 def Dataset(data_type,
             data_list_file,
             configs,
@@ -189,6 +217,8 @@ def Dataset(data_type,
     # Global shuffle
     lists = read_lists(data_list_file)
     shuffle = configs.get('shuffle', False)
+    varlen = is_varlen_enabled(configs)
+    min_sec, max_sec = get_varlen_length_bounds(configs)
     dataset = DataList(lists, shuffle=shuffle, repeat_dataset=repeat_dataset)
 
     num_frms = configs.get('num_frms', 200)
@@ -198,8 +228,15 @@ def Dataset(data_type,
     chunk_len = ((num_frms - 1) * frame_shift +
                  frame_length) * resample_rate // 1000
     filter_conf = configs.get('filter_args', {})
-    dataset = Processor(dataset, processor.parse_raw_fast_and_filter,
-                        chunk_len, data_type, **filter_conf)
+    if varlen:
+        print(f"VARLEN : enabled, clips read at their own length, "
+              f"min_sec={min_sec}, max_sec={max_sec}")
+        dataset = Processor(dataset, processor.parse_raw_fast_varlen,
+                            min_sec, max_sec, data_type, **filter_conf)
+    else:
+        dataset = Processor(dataset, processor.parse_raw_fast_and_filter,
+                            chunk_len, data_type, **filter_conf)
+
 
     # Local shuffle
     if shuffle:
@@ -219,13 +256,20 @@ def Dataset(data_type,
                             len(spk2id_dict))
     if (not whole_utt):
         # random chunk
-        num_frms = configs.get('num_frms', 200)
-        frame_shift = configs['fbank_args'].get('frame_shift', 10)
-        frame_length = configs['fbank_args'].get('frame_length', 25)
-        chunk_len = ((num_frms - 1) * frame_shift +
-                     frame_length) * resample_rate // 1000
-        dataset = Processor(dataset, processor.random_chunk, chunk_len,
-                            data_type)
+        if varlen:
+            # Variable-length path: the crop is a random length inside the
+            # configured bounds rather than a fixed chunk_len, so the batch
+            # still carries utterances of differing true lengths.
+            dataset = Processor(dataset, processor.random_chunk_range,
+                                min_sec, max_sec)
+        else:
+            num_frms = configs.get('num_frms', 200)
+            frame_shift = configs['fbank_args'].get('frame_shift', 10)
+            frame_length = configs['fbank_args'].get('frame_length', 25)
+            chunk_len = ((num_frms - 1) * frame_shift +
+                         frame_length) * resample_rate // 1000
+            dataset = Processor(dataset, processor.random_chunk, chunk_len,
+                                data_type)
 
     # ── Standard augmentation ──
     if configs.get("aug_setup", None) is not None:
@@ -323,8 +367,23 @@ class Vox1TestEvalDataset(torch.utils.data.Dataset):
         num_chunks=5
     ):
         chunk_len = int(chunk_len_sec*samplerate)
+        n = len(samples)
+
+        if n < chunk_len:
+            # Audio shorter than one chunk. np.linspace(0, n - chunk_len, ...)
+            # produced NEGATIVE offsets here, and each slice then came back with
+            # a different length, so np.stack raised
+            # "all input arrays must have the same shape" (e.g. a 47999-sample
+            # clip against a 48000-sample chunk). Pad the tail by wrapping so
+            # every chunk is exactly chunk_len, matching how the training path
+            # fills a short window; the caller still gets (num_chunks, chunk_len).
+            padded = np.pad(samples, (0, chunk_len - n), mode='wrap')
+            return np.stack([padded[:chunk_len]] * num_chunks)
+
+        # Long enough for a full chunk: unchanged behaviour. Offsets are spread
+        # over [0, n - chunk_len], so every slice is exactly chunk_len long.
         chunked = []
-        for shift in np.linspace(0, len(samples) - chunk_len, num_chunks).astype(int):
+        for shift in np.linspace(0, n - chunk_len, num_chunks).astype(int):
             chunked.append(samples[shift: shift + chunk_len])
         return np.stack(chunked)
 
@@ -348,6 +407,283 @@ class Vox1TestEvalDataset(torch.utils.data.Dataset):
 def collate_func_mult(batch):
     tbatch = tuple(zip(*batch))
     return [torch.stack(xyz,dim=0) for xyz in tbatch]
+
+
+def collate_varlen(batch, max_batch_sec=None, sample_rate=16000):
+    """ Zero pad a list of variable-length utterances to the batch maximum.
+
+        Used as the DataLoader `collate_fn` on the variable-length training
+        path. Each item is `{key, label, wav (1, T_b), num_samples}` with a
+        possibly different `T_b`; the returned `wav` is `(B, 1, T_max)` with
+        every shorter utterance zero padded **on the right**, which is the
+        layout `make_sample_mask` assumes, and `lengths` is the matching
+        `(B,)` long tensor of real sample counts in samples of that padded
+        waveform.
+
+        `max_batch_sec` (optional, in seconds) caps how much audio one batch
+        may hold: items are taken in the order the loader produced them until
+        the next one would push the total past the cap, so a batch can come
+        back smaller than `batch_size`. The first item is always kept, so a
+        batch can never be empty whatever the cap is.
+
+        Args:
+            batch: List[{key, label, wav, num_samples}]
+            max_batch_sec: optional cap on the summed true duration
+            sample_rate: samples per second of `wav`, used for the cap
+
+        Returns:
+            Dict{key, label, wav, lengths}
+    """
+    # Bucketing assembles its own batches and hands them over wrapped so that
+    # torch's auto-collation leaves them alone. The DataLoader still gathers
+    # `batch_size` of those wrappers per step, so what arrives here is a list
+    # of wrappers, each already holding a whole bucket batch. Flatten them into
+    # the single list of samples this function expects; a plain list of samples
+    # (the ordinary unbucketed path) passes through unchanged.
+    if isinstance(batch, PreBatched):
+        batch = batch.items
+    if len(batch) and any(isinstance(x, PreBatched) for x in batch):
+        flat = []
+        for x in batch:
+            flat.extend(x.items if isinstance(x, PreBatched) else [x])
+        batch = flat
+
+    if max_batch_sec is not None and max_batch_sec > 0:
+        cap = int(max_batch_sec * sample_rate)
+        taken = [batch[0]]
+        total = int(batch[0]['num_samples'])
+        for item in batch[1:]:
+            n = int(item['num_samples'])
+            if total + n > cap:
+                break
+            taken.append(item)
+            total += n
+        batch = taken
+
+    keys = [item['key'] for item in batch]
+    # `spk_to_id` stores a plain int and nothing later turns it into a tensor,
+    # so accept both rather than assuming the item is already a 1-element
+    # tensor (the fixed-length path stack-collates and gets the tensor for
+    # free).
+    labels = torch.as_tensor(
+        [int(item['label']) for item in batch], dtype=torch.long)
+    lengths = torch.tensor([int(item['num_samples']) for item in batch],
+                           dtype=torch.long)
+    max_len = int(lengths.max().item())
+    wav = torch.zeros(len(batch), 1, max_len, dtype=torch.float32)
+    for i, item in enumerate(batch):
+        n = int(item['num_samples'])
+        wav[i, :, :n] = item['wav'][0, :n]
+    return dict(key=keys, label=labels, wav=wav, lengths=lengths)
+
+
+# ── length bucketing ─────────────────────────────────────────────────
+#
+# Bucketing is a training strategy, not part of the model: it only decides
+# which utterances end up in the same batch, so that the zero padding a batch
+# needs stays small. It is therefore a separate, optional block
+# (`dataset_args.bucketing`) and never touches ReDimNet2 itself.
+#
+# The training dataset is an infinite IterableDataset whose samples arrive in
+# speaker-shuffled order, so there is no indexable table to group by length up
+# front. The sampler below instead keeps one buffer per length bucket, fills
+# them from the incoming stream, and emits a whole batch from a single bucket
+# once that bucket has enough samples. Utterances from different buckets are
+# never mixed, which is the point of the strategy.
+
+def bucket_index(length_sec, bucket_width_sec, bucket_count):
+    """ Which bucket a clip of `length_sec` seconds belongs to.
+
+        Buckets are half-open intervals of `bucket_width_sec` starting at 0;
+        everything at or beyond the last edge goes into the last bucket, so no
+        clip is ever dropped for being too long.
+    """
+    idx = int(length_sec / bucket_width_sec)
+    return min(idx, bucket_count - 1)
+
+
+class PreBatched:
+    """A batch already assembled by the dataset, not by the DataLoader.
+
+    `BucketedLengthDataset` decides the batch itself (it must: one batch has to
+    come from one length bucket), but the `DataLoader` it is handed to was
+    built with the recipe's `batch_size`, so torch would otherwise try to
+    batch these batches again -- wrapping each yielded group of `batch_size`
+    dicts into a list-of-`batch_size`-items and handing *that* to
+    `collate_varlen`, which then fails with
+    `TypeError: list indices must be integers or slices, not str`.
+
+    Wrapping the group in an object that is not a list/tuple/dict keeps torch's
+    auto-collation from touching it (see `_utils/collate.default_convert`,
+    which only recurses into those three container types). `collate_varlen`
+    unwraps the group and pads it. It is a `list` subclass, so `len()` and
+    iteration keep working if anything else looks at it.
+    """
+
+    __slots__ = ('items',)
+
+    def __init__(self, items):
+        self.items = list(items)
+
+    def __len__(self):
+        return len(self.items)
+
+    def __iter__(self):
+        return iter(self.items)
+
+
+class BucketedLengthDataset(IterableDataset):
+    """ Wrap a training dataset so each batch comes from one length bucket.
+
+        An `IterableDataset` rather than a generator function for two reasons
+        that both matter to the training loop:
+
+          * `training_loop` calls `train_dataset.set_epoch(epoch)` once per
+            epoch, and that call has to reach the inner `DataList.sampler`,
+            which is what actually re-shuffles the data. A bare generator has
+            no `set_epoch`, so wrapping the dataset in one broke training with
+            `AttributeError: 'generator' object has no attribute 'set_epoch'`.
+          * Being an `IterableDataset`, it can be handed straight to the
+            `DataLoader` and gets the usual worker forking, which is what the
+            per-worker stream split below relies on.
+
+        Args:
+            dataset: the training dataset, yielding `{key, wav, label,
+                num_samples, ...}` with `num_samples` set by the
+                variable-length reader
+            batch_size: samples per emitted batch
+            num_workers: DataLoader worker count, used only when no worker
+                context is active (tests, `num_workers=0`); the real worker
+                count is read from `torch.utils.data.get_worker_info()`
+            bucket_count: number of length buckets
+            bucket_width_sec: width of one bucket, in seconds
+            shuffle_buckets: pick the next bucket at random instead of in a
+                fixed order, so the batch length varies over training
+            max_fill_rounds: how many times the loop may look for a full bucket
+                before giving up and emitting the fullest buffer it has
+    """
+
+    def __init__(self, dataset, batch_size, num_workers=1, bucket_count=8,
+                 bucket_width_sec=1.0, shuffle_buckets=True,
+                 max_fill_rounds=4):
+        assert batch_size >= 1, batch_size
+        assert bucket_count >= 1, bucket_count
+        assert bucket_width_sec > 0, bucket_width_sec
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.bucket_count = bucket_count
+        self.bucket_width_sec = bucket_width_sec
+        self.shuffle_buckets = shuffle_buckets
+        self.max_fill_rounds = max_fill_rounds
+
+    def set_epoch(self, epoch):
+        # Forward to the inner dataset; this is what keeps the per-epoch
+        # shuffle working through the bucketing wrapper.
+        try:
+            self.dataset.set_epoch(epoch)
+        except AttributeError:
+            pass
+
+    def __len__(self):
+        try:
+            return len(self.dataset)
+        except Exception:
+            return None
+
+    def __iter__(self):
+        batch_size = self.batch_size
+        bucket_count = self.bucket_count
+        bucket_width_sec = self.bucket_width_sec
+        shuffle_buckets = self.shuffle_buckets
+        max_fill_rounds = self.max_fill_rounds
+
+        worker_info = torch.utils.data.get_worker_info()
+        worker_id = 0 if worker_info is None else worker_info.id
+        num_workers_effective = (self.num_workers if worker_info is None
+                                 else worker_info.num_workers)
+        # With no worker context (num_workers=0, or a direct call) there is no
+        # stream to split, so treat it as a single worker.
+        num_workers_effective = max(1, int(num_workers_effective))
+
+        rng = random.Random(random.getrandbits(64) + worker_id)
+
+        buffers = [[] for _ in range(bucket_count)]
+        full = [False] * bucket_count
+        in_flight = 0  # samples held by this worker across all buckets
+        stream = iter(self.dataset)
+        exhausted = False
+        # Split the stream across DataLoader workers the same way the rest of
+        # the stack does: the workers are identical forks of one iterable, so
+        # each one takes every `num_workers`-th sample and together they cover
+        # it once.
+        cursor = 0
+
+        while True:
+            if not exhausted and not any(full):
+                # Read until some bucket holds a whole batch.
+                #
+                # This used to stop after `num_workers * batch_size` samples,
+                # which is far too few: with `bucket_count` buckets in play a
+                # single bucket only receives about 1/bucket_count of the
+                # stream, so no bucket could ever reach `batch_size` within that
+                # budget. The loop then fell through to the "emit the fullest
+                # buffer" branch below and handed back batches of one or two
+                # items, which stalled the DataLoader and broke the training
+                # loop's step count. The budget below leaves room for a whole
+                # batch to land in the least populated bucket, with a generous
+                # multiplier for a skewed length distribution.
+                lookahead_limit = bucket_count * batch_size * max(1, num_workers_effective) * max_fill_rounds
+                for _ in range(lookahead_limit):
+                    if any(full):
+                        break
+                    try:
+                        sample = next(stream)
+                    except StopIteration:
+                        exhausted = True
+                        break
+                    mine = (cursor % num_workers_effective) == worker_id
+                    cursor += 1
+                    if not mine:
+                        continue
+                    width = int(sample.get('num_samples', sample['wav'].size(-1)))
+                    sec = width / float(sample.get('sample_rate', 16000))
+                    b = bucket_index(sec, bucket_width_sec, bucket_count)
+                    buffers[b].append(sample)
+                    in_flight += 1
+                    if len(buffers[b]) >= batch_size:
+                        full[b] = True
+
+            if any(full):
+                ready_buckets = [b for b in range(bucket_count) if full[b]]
+                b = rng.choice(ready_buckets) if shuffle_buckets else ready_buckets[0]
+                out = buffers[b][:batch_size]
+                del buffers[b][:batch_size]
+                in_flight -= len(out)
+                full[b] = len(buffers[b]) >= batch_size
+                yield PreBatched(out)
+                continue
+
+            if not exhausted:
+                # Nothing has filled yet even after the lookahead above. This
+                # cannot happen for a live stream (the lookahead only stops
+                # early when a bucket filled), but guard against an infinite
+                # loop rather than spinning forever if it ever does.
+                continue
+
+            # Stream is over. Emit whatever is left, longest bucket first, with
+            # the short tail as the final batch. The training loader is fed an
+            # infinite stream in normal operation, so these tail batches only
+            # occur when the source itself was finite (tests, small data lists).
+            remaining = [b for b in range(bucket_count) if buffers[b]]
+            if not remaining:
+                return
+            biggest = max(remaining, key=lambda b: len(buffers[b]))
+            out = buffers[biggest]
+            buffers[biggest] = []
+            full[biggest] = False
+            in_flight -= len(out)
+            yield PreBatched(out)
 
 class Vox1TestEvalDatasetSimple(torch.utils.data.Dataset):
     def __init__(self,
