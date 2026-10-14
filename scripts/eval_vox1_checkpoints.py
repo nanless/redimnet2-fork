@@ -14,7 +14,8 @@ Audio duration also differs from the training-time validation: this script reads
 each utterance in full (soundfile read, variable length, batch_size=1), whereas
 the fast path reads only the first 8 s (eval_dur=8.0, start_time=0.0) and wraps
 the tail around when the clip is shorter. Hence these numbers, not val_log.csv's
-`-eer-fl`, are the ones comparable to the official table.
+`-eer-8s` column (formerly `-eer-fl`), are the ones comparable to the official
+table.
 
 Usage (from repo root, with redimnet2 env):
   python scripts/eval_vox1_checkpoints.py \
