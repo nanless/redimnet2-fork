@@ -638,7 +638,26 @@ def train(config='conf/config.yaml', **kwargs):
     # (there is nothing to restore) and only triggered by a real resume.
     if resume_optimizer_state is not None:
         try:
+            # `load_state_dict` 会连**超参**一起覆盖，不只是动量缓冲。
+            # 这一点很坑：两个参数组是「骨干 / 投影头」，大间隔微调阶段
+            # 的骨干权重衰减与主训练阶段并不相同（配方里微调阶段常常不写
+            # `loss_weight_decay_mult`，于是取默认 1.0，而主训练写的是 5.0）。
+            # 微调是从主训练的权重冷启动的，那份检查点里带着主训练的优化器状态，
+            # 直接 load 就会把骨干的 weight_decay 从微调配方要求的 1e-4
+            # 悄悄改回主训练的 2e-5，整段微调都错了，而且不会报任何错。
+            # 所以先记下当前（也就是配方要求的）超参，加载完再按原样写回。
+            keep_hyper = [
+                {k: v for k, v in g.items() if k != 'params'}
+                for g in optimizer.param_groups
+            ]
             optimizer.load_state_dict(resume_optimizer_state)
+            # 只恢复状态、不恢复超参：以当前配方为准。
+            for group, kept in zip(optimizer.param_groups, keep_hyper):
+                for key, value in kept.items():
+                    if group.get(key) != value:
+                        print('resume: 参数组超参以当前配方为准: {}: {} -> {}'
+                              .format(key, group.get(key), value))
+                    group[key] = value
             n_buffers = sum(1 for s in optimizer.state.values()
                             if 'momentum_buffer' in s)
             print('resume: restored optimizer state from {} '
@@ -646,6 +665,8 @@ def train(config='conf/config.yaml', **kwargs):
                       ckpt_to_load, n_buffers,
                       optimizer.param_groups[0].get('momentum'),
                       optimizer.param_groups[0].get('nesterov')))
+            print('resume: 参数组权重衰减 = {} (按当前配方)'.format(
+                [g['weight_decay'] for g in optimizer.param_groups]))
         except (ValueError, KeyError) as e:
             # Different param-group count or shape (e.g. the projection head was
             # rebuilt for new classes). Trainable, just without momentum history.

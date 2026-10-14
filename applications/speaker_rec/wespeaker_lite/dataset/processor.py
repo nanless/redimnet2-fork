@@ -72,12 +72,17 @@ def _drop_counter_incr(name, detail=None):
 
 
 def report_drop_counters(prefix="[dataset] dropped-sample summary"):
-    """Print the accumulated drop counters to stderr (visible at any log level)."""
+    """Print the accumulated drop counters to stderr (visible at any log level).
+
+    只负责本进程的计数。开了 num_workers 之后每个 worker 是独立进程，
+    它自己的计数不会汇总到主进程；所以主进程这边调用时可能一条都不打
+    （这也是为什么调用方还要另外核对"一个 epoch 实际读到了多少条样本"）。
+    """
     active = {k: v for k, v in DROP_COUNTERS.items() if v}
     if not active:
         return
     parts = ", ".join(f"{k}={v}" for k, v in sorted(active.items()))
-    print(f"{prefix}: {parts}", file=sys.stderr, flush=True)
+    print(f"{prefix}（本进程 / 本 worker）: {parts}", file=sys.stderr, flush=True)
 
 
 

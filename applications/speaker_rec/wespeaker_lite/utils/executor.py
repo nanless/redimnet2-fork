@@ -179,6 +179,22 @@ def run_epoch(dataloader,
             width=10,
             style='grid'))
 
+    # 数据侧丢弃了多少样本。
+    #
+    # 这些计数是**按进程**的：开了 num_workers 之后每个 worker 是独立进程，
+    # 主进程这里通常一条都看不到（worker 自己会把前几条打到 stderr）。
+    # 所以这里除了打印本进程的计数，还报出本 epoch 实际跑到了第几批，
+    # 一旦和 epoch_iter 差很多，就能从主进程这一侧看出数据被大面积丢掉了。
+    try:
+        from wespeaker_lite.dataset import processor as _processor
+        _processor.report_drop_counters(
+            prefix="[dataset] dropped-sample summary")
+    except Exception:
+        pass
+    if rank == 0:
+        print(f"[dataset] 本 epoch 完成 {i + 1} / {epoch_iter} 个批次",
+              file=sys.stderr, flush=True)
+
 # https://stackoverflow.com/questions/28339746/equal-error-rate-in-python
 def EER(y, y_score):
     """
