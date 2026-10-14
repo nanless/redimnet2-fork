@@ -100,18 +100,38 @@ def main():
         print(f"  -> {n_utts:,} utts, {n_spks:,} speakers")
         per_source_stats.append((name, prefix, n_utts, n_spks))
 
+        # data.list 与 utt2spk 必须逐行对应。旧版本把两张表的键**各自**加一次前缀
+        # （new_key 取自 data.list，new_utt_key 取自 utt2spk），只有两张表的原始键
+        # 完全相同时结果才碰巧一致；一旦不一致就会写出错位的两张表，而且不报错。
+        # 现在改成：先强制校验两张表逐行一致，再统一用 data.list 的键派生新键。
+        mismatched = 0
+        first_mismatch = None
+        for lineno, (entry, (utt_key, spk)) in enumerate(
+                zip(ds_data, ds_utt), start=1):
+            if entry['key'] != utt_key or entry['spk'] != spk:
+                mismatched += 1
+                if first_mismatch is None:
+                    first_mismatch = (lineno, entry['key'], utt_key,
+                                      entry['spk'], spk)
+        if mismatched:
+            lineno, dl_key, u2s_key, dl_spk, u2s_spk = first_mismatch
+            raise SystemExit(
+                f"  {name}: data.list 与 utt2spk 有 {mismatched} 行对不上，"
+                f"不能直接拼接。第一处在第 {lineno} 行："
+                f"data.list 是 (key={dl_key!r}, spk={dl_spk!r})，"
+                f"utt2spk 是 (key={u2s_key!r}, spk={u2s_spk!r})。"
+                f"请先修好这个来源的两张表再拼。")
+
         for entry, (utt_key, spk) in zip(ds_data, ds_utt):
-            # Sanity: utt2spk key should match data.list key.
-            # (Tolerated if not — we just use whichever is in data.list.)
             new_spk = f"{prefix}_{spk}"
+            # 两张表复用同一个新键，保证拼接后仍然逐行对应
             new_key = f"{prefix}_{entry['key']}"
-            new_utt_key = f"{prefix}_{utt_key}"
             all_entries.append({
                 "key": new_key,
                 "spk": new_spk,
                 "wav": entry["wav"],
             })
-            all_utt2spk.append((new_utt_key, new_spk))
+            all_utt2spk.append((new_key, new_spk))
 
     # Optional global shuffle (deterministic).
     if not args.no_shuffle:
@@ -122,13 +142,34 @@ def main():
         all_utt2spk = [all_utt2spk[i] for i in order]
 
     # Write outputs.
+    #
+    # 先写临时文件、全部成功后再原子改名。这份混合清单有上千万行，
+    # 中途被打断（Ctrl-C、被 kill、磁盘满）时，旧写法会在目标位置留下
+    # 看起来正常、其实只有一半的 data.list；而下一次运行会因为
+    # `--*_data.sh` 里的"文件已存在就跳过"判断把它当成完整结果复用。
     os.makedirs(args.output, exist_ok=True)
     data_list_out = os.path.join(args.output, 'data.list')
     utt2spk_out = os.path.join(args.output, 'utt2spk')
-    with open(data_list_out, 'w') as f_data, open(utt2spk_out, 'w') as f_utt:
-        for entry, (utt_key, spk) in zip(all_entries, all_utt2spk):
-            f_data.write(json.dumps(entry) + '\n')
-            f_utt.write(f"{utt_key} {spk}\n")
+    data_tmp = data_list_out + '.tmp'
+    utt_tmp = utt2spk_out + '.tmp'
+    try:
+        with open(data_tmp, 'w') as f_data, open(utt_tmp, 'w') as f_utt:
+            for entry, (utt_key, spk) in zip(all_entries, all_utt2spk):
+                f_data.write(json.dumps(entry) + '\n')
+                f_utt.write(f"{utt_key} {spk}\n")
+            f_data.flush()
+            os.fsync(f_data.fileno())
+            f_utt.flush()
+            os.fsync(f_utt.fileno())
+        os.replace(data_tmp, data_list_out)
+        os.replace(utt_tmp, utt2spk_out)
+    except BaseException:
+        for tmp in (data_tmp, utt_tmp):
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        raise
 
     # Stats summary.
     total_utts = sum(s[2] for s in per_source_stats)
