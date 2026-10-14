@@ -92,12 +92,14 @@
 - 数据增强用的噪声与混响：MUSAN、以及 RIRS 里的模拟房间脉冲（`simulated_rirs`）。  
 - 配置：`recipes/redimnet2/b0` … `b6`，每个型号有 `ptn.yaml` 和 `lm.yaml`。
 
-在本机已经准备好时，配置里默认会读：
+在本机已经准备好时，配置里默认会读（**这些就是配方里现在写的真实路径**，本机可直接用）：
 
-- 训练样本清单：`/data/wespeaker_data/vox2_dev/data.list`  
-- 语句到说话人：`/data/wespeaker_data/vox2_dev/utt2spk`  
-- 噪声目录：`/data/wespeaker_data/raw/musan/music`（以及 `noise`、`speech`）  
-- 混响目录：`/data/wespeaker_data/raw/rirs/simulated_rirs`
+- 训练样本清单：`/root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/data.list`  
+- 语句到说话人：同目录下的 `utt2spk`  
+- 噪声目录：`/root/group-shared/voiceprint/data/wespeaker_data/raw/musan/music`（以及 `noise`、`speech`）  
+- 混响目录：`/root/group-shared/voiceprint/data/wespeaker_data/raw/rirs/simulated_rirs`
+
+（早期这些地方写的是 `/data/wespeaker_data/...`，但本机没有 `/data` 目录；现在已改成上面的真实位置。）
 
 ### 3.2 混合数据（目录 `examples/vb2_vox2_cnc2`）
 
@@ -107,9 +109,9 @@
 - CN-Celeb2（中文说话人数据，常用前缀 `C_`）  
 - VoxCeleb2 在混合清单里常用前缀 `A_`  
 
-当前配置指向（需要事先生成这些文件）：
+当前配置指向（需要事先生成这些文件；路径就是配方里写的真实位置）：
 
-- 主训练：`/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/data.list` 与同目录下的 `utt2spk`  
+- 主训练：`/root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/data.list` 与同目录下的 `utt2spk`  
 - 大间隔微调：同根目录下的 `mix_join_lm/`  
 
 生成脚本在：
@@ -152,7 +154,8 @@
 **本仓库当前的 ReDimNet2 实验配置已经改成：增强时直接从文件夹读 wav。**
 
 - 配置里用 `dataset_dir` 指向目录。  
-- 全部 18 个 `recipes/redimnet2/**/*.yaml` **不应再出现** `lmdb_file`、`noise_lmdb_file`、`reverb_lmdb_file`、`lmdb_to_ram`。  
+- 全部 `recipes/redimnet2/**/*.yaml` **不应再出现** `lmdb_file`、`noise_lmdb_file`、`reverb_lmdb_file`、`lmdb_to_ram`。
+  （原有 18 份，加上变长训练新增的 5 份 `varlen_*.yaml`，共 23 份，逐份查过都不含这几个键。）  
 - `prepare_data.py` 默认阶段不含 `lmdb`；只有有人显式传入 `--stages lmdb` 才会构建那种旧格式。  
 - 代码里仍保留读 LMDB 的能力，只为兼容旧配置；**新实验不要依赖它。**
 
@@ -225,21 +228,21 @@
 
 ### 6.3 训练入口是否齐（截至 2026-10-13 实测）
 
-**先记住一件事：本机没有 `/data` 目录。** 下表左列写的是配方里的路径，
-右列"齐"指的是**共享盘上真实存在的那份**，不是 `/data/...` 这个字符串本身可读。
-
-共享盘上的真实位置是：
+配方里现在写的就是共享盘上的真实位置：
 
 ```text
 /root/group-shared/voiceprint/data/wespeaker_data/
 ```
 
-| 项目（配方里的路径） | 共享盘上是否齐 | 说明 |
+（早期配方写的是 `/data/wespeaker_data/...`，但本机没有 `/data` 目录，照原样跑会失败；
+现在已全部改成上面的真实位置，本机可直接启动。）
+
+| 项目 | 是否齐 | 说明 |
 |------|------|------|
-| `/data/wespeaker_data/vox2_dev/data.list` 与 `utt2spk` | 齐 | 各 1,092,009 行；说话人 5,994 |
-| `/data/wespeaker_data/raw/musan/...` 与 `raw/rirs/simulated_rirs` | 齐 | 是软链接，分别落到共享盘的 musan 与 RIRS 目录 |
-| `/data/wespeaker_data/vox1-test/` | 齐 | 试验列表 37,611 行；按列表链接了用到的 4,708 个 wav，逐条核对无缺失 |
-| `/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/` | **还没有** | 混合线要先跑第 3.2 节的脚本；连中间产物 `vb2_full` / `cnc2_full` 也没有 |
+| `vox2_dev/data.list` 与 `utt2spk` | 齐 | 各 1,092,009 行；说话人 5,994 |
+| `raw/musan/...` 与 `raw/rirs/simulated_rirs` | 齐 | 是软链接，分别落到共享盘的 musan 与 RIRS 目录 |
+| `vox1-test/` | 齐 | 试验列表 37,611 行；按列表链接了用到的 4,708 个 wav，逐条核对无缺失 |
+| `vox2_vb2_cnc2_v0/mix_join/` | **还没有** | 混合线要先跑第 3.2 节的脚本；连中间产物 `vb2_full` / `cnc2_full` 也没有 |
 
 因此：
 
