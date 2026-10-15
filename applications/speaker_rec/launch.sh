@@ -83,11 +83,16 @@ fi
 if ! "$PYTHON_BIN" - <<'PYCHK' >/dev/null 2>&1
 import sys
 import torch
-parts = torch.__version__.split('.')[:2]
+parts = torch.__version__.split('.')
 try:
     major, minor = int(parts[0]), int(parts[1])
-except ValueError:
-    sys.exit(0)          # 版本号形状不认识就不拦
+except (ValueError, IndexError):
+    # 版本号形状不认识（例如只有 "2" 没有点）：**不拦**。
+    # 这里必须同时接住 IndexError —— 早先只接了 ValueError，
+    # 于是 "2".split('.')[1] 抛 IndexError -> heredoc 非零退出 ->
+    # 一个 torch 2.x 被误报成"版本低于 2.0"。
+    # 两个分支的策略要一致：认不出来就放行，交给后面的 import 检查。
+    sys.exit(0)
 sys.exit(0 if (major, minor) >= (2, 0) else 1)
 PYCHK
 then

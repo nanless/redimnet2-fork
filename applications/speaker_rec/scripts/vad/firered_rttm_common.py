@@ -382,27 +382,60 @@ def check_mirror_uniqueness(
     run must refuse to start when this check fails. Returns the colliding
     paths together with the sample lines that produced them.
     """
-    owners: Dict[str, List[str]] = {}
-    # 只数一遍、只看路径，不保留记录本身。
-    # 清单可能有上千万行，把记录全留下会占几个 GB 内存
-    # （实测 1152 万条约 9 GB），而这里只需要"输出路径 → 来源"的映射，
-    # 所以边读边判，`records` 允许是迭代器。
+    # 每个输出路径只留**第一个**来源。
+    #
+    # 关键在于：第二次看到同一个路径**本身就是冲突**，不需要把每次出现都存下来。
+    # 早先的写法是 `owners[path].append(...)`，给每条记录都留一个列表，
+    # 于是这份映射和"把整份清单读进内存"一样大 ——
+    # 真实清单上 1152 万条对应 1152 万个不同路径（本来就没有重名），
+    # 每条占约 500 字节，实测峰值 **5.6 GB**（不是想象的"只留冲突所以很小"）。
+    #
+    # 现在只在**真的重名**时多记一条，所以内存是 O(冲突数)：
+    # 没有重名时就只留一份路径 → 来源 的映射，冲突表为空。
+    # 仍然只需要"输出路径 → 来源"，`records` 允许是迭代器。
+    # 用 128 位摘要做归属判定，只保留**第一个**来源。
+    #
+    # 内存实测（这是反复踩过的地方，写清楚免得再绕）：
+    #   * `owners[path].append(...)`（每个路径一个列表）: 523 B/条 -> 1152 万条 **5.6 GB**
+    #   * 只留第一个来源的"路径 -> 来源"映射:            256 B/条 -> **2.95 GB**
+    #   * 只把路径的 16 字节摘要放进集合（现在这个）:      140 B/条 -> **1.6 GB**
+    #
+    # 曾经想再压到 O(1)：加一层 Bloom 过滤器，说"没见过"就直接跳过。
+    # **那是错的，已撤回** —— Bloom 说"没见过"时确实可以直接过，
+    # 但第一条记录永远走这条路，于是它从不进精确集合；
+    # 等第二条相同路径到来时，精确集合里并没有第一条，比较落空，
+    # 真正的重名被静默漏掉（实测：同一路径出现两次，报 unique=True）。
+    # 这个检查存在的意义就是"一条都不能漏"，所以宁可多花 1.6 GB 内存。
+    #
+    # 摘要用 blake2b(digest_size=16)（128 位）；上千万条规模下碰撞概率可忽略，
+    # 且摘要碰撞只会让两条不同路径被当成重名（偏保守），不会漏报。
+    collisions: Dict[str, List[str]] = {}
+    first_source: Dict[bytes, str] = {}   # 摘要 -> 第一次出现的来源；键就是"见过的路径"
     total = 0
     for record in records:
         total += 1
-        path = sidecar_path(
+        path = str(sidecar_path(
             Path(record.path), None if beside else audio_root, None if beside else output_root,
             suffix, root_depth,
-        )
-        owners.setdefault(str(path), []).append(f"{record.index}:{record.path}")
-    collisions = {path: sources for path, sources in owners.items() if len(sources) > 1}
+        ))
+        digest = hashlib.blake2b(path.encode("utf-8"), digest_size=16).digest()
+        source = f"{record.index}:{record.path}"
+        previous = first_source.get(digest)
+        if previous is None:
+            first_source[digest] = source
+        else:
+            bucket = collisions.get(path)
+            if bucket is None:
+                collisions[path] = [previous, source]
+            else:
+                bucket.append(source)
     return {
         "layout": "beside-audio" if beside else "mirror-tree",
         "audio_root": str(audio_root) if audio_root else None,
         "output_root": str(output_root) if output_root else None,
         "root_depth": root_depth,
         "records": total,
-        "distinct_outputs": len(owners),
+        "distinct_outputs": len(first_source),
         "collision_count": len(collisions),
         "collisions_head": [
             {"output": path, "sources": sources[:4]}

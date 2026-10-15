@@ -357,6 +357,37 @@ if not r["consistent"]:
 ' "${shard_report}" || fail "分片有重复或遗漏，已停止"
 
 # ---------------------------------------------------------------------------
+# 重名自检：证明没有两条音频会写到同一个输出文件。
+#
+# **必须在起进程之前、且只做一次。** 检查要看整份清单（一千多万行），
+# 实测单次约 23~28 分钟、纯 CPU、GPU 全程空闲。
+# 如果放在每个 rank 的启动流程里（那是原来的做法），
+# 16 个 rank 各做一遍 = 16 倍空转，而且日志只有一行、GPU 0%，
+# 在外面看起来和"卡死"一模一样，很容易被误杀。
+# 所以这里做一次，然后给每个 rank 传 --no-collision-check。
+# ---------------------------------------------------------------------------
+note "检查输出路径是否重名（只需做一次，可能要十几分钟）"
+if [[ "${SKIP_COLLISION_CHECK:-0}" == "1" ]]; then
+    note "[RTTM][WARN] 已按要求跳过重名自检（SKIP_COLLISION_CHECK=1）；若有重名会被静默覆盖"
+else
+    collision_report="$("${PYTHON_BIN}" "${ANNOTATOR}" --mode shard-plan "${common_args[@]}" \
+        --rank 0 --manifest-sha256 "${MANIFEST_SHA256}" --collision-only)" \
+        || fail "重名自检未通过：${collision_report}"
+    echo "${collision_report}" > "${RUNTIME_DIR}/collision_global.json"
+    "${PYTHON_BIN}" -c '
+import json, sys
+r = json.loads(sys.argv[1])
+print("COLLISION_CHECK records={} distinct_outputs={} collisions={} unique={}".format(
+    r["records"], r["distinct_outputs"], r["collision_count"], r["unique"]))
+if not r["unique"]:
+    for c in r["collisions_head"][:5]:
+        print("[RTTM][ERROR]   冲突：{} <- {}".format(c["output"], c["sources"][:3]),
+              file=sys.stderr)
+    raise SystemExit(1)
+' "${collision_report}" || fail "有两条音频会写到同一个输出文件，已停止"
+fi
+
+# ---------------------------------------------------------------------------
 # 起进程
 # ---------------------------------------------------------------------------
 run_all_ranks() {
@@ -369,6 +400,7 @@ run_all_ranks() {
             note "启动 mode=${mode} rank=${rank}/${NUM_RANKS} 物理卡=${gpu}"
             CUDA_VISIBLE_DEVICES="${gpu}" "${PYTHON_BIN}" "${ANNOTATOR}" \
                 --mode "${mode}" --rank "${rank}" "${common_args[@]}" \
+                --no-collision-check \
                 >"${RUNTIME_DIR}/${mode}.pass${pass}.rank${rank}.log" 2>&1 &
             pids[rank]="$!"
         done

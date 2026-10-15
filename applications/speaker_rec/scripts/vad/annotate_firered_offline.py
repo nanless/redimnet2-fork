@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import multiprocessing as mp
 import os
@@ -1248,8 +1249,18 @@ def run_collision_only(args: argparse.Namespace) -> int:
     """
     output_root = abspath(args.output_root) if args.output_root else None
     audio_root = abspath(args.audio_root) if args.audio_root else None
+    # `--limit` 要生效：冒烟测试用 LIMIT_PER_RANK=100 时，
+    # 不应该还去把一千多万行整份读一遍（实测那要二十多分钟，
+    # 而冒烟本来只该几秒）。`--limit` 是"每个 rank 的上限"，
+    # 重名检查是全量的、不按 rank 切，所以这里按 limit*world_size 截前若干条。
+    limit = args.limit
+    if limit is not None:
+        limit = int(limit) * max(1, int(args.world_size))
+        records = itertools.islice(iter_audio_records(abspath(args.manifest)), limit)
+    else:
+        records = iter_audio_records(abspath(args.manifest))
     report = check_mirror_uniqueness(
-        iter_audio_records(abspath(args.manifest)),
+        records,
         audio_root,
         output_root,
         args.rttm_suffix,
