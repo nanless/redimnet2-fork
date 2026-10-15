@@ -338,8 +338,11 @@ def select_vad_span(segments,
             span = min(target_sec, durs[k])
             start = seg_start + rng.uniform(0.0, durs[k] - span)
         end = start + span
-        if stats is not None:
-            stats['cut_inside'] = stats.get('cut_inside', 0) + 1
+        # 这里**不**单独累加 cut_inside：函数末尾会统一按 `mode` 加一次
+        # （`stats[mode] += 1`，而 mode 就是 'cut_inside'）。
+        # 两处都加会把一个样本算成 2 个 —— 实测踩过这个坑：
+        # 单个段内切样本让统计变成 {'cut_inside': 2}，
+        # 于是"段内切占多少比例"虚报成两倍。
 
     # 记下加余量之前的区间：它就是「算出来的语音边界」，检查/排查时看这个。
     raw_start, raw_end = start, end
@@ -366,6 +369,16 @@ def select_vad_span(segments,
         start -= pad_sec
         end += pad_sec
         if clip_duration is not None:
+            # 整段平移，让放不下的那一头贴住文件边缘。
+            #
+            # **但不能因此把另一头的余量撑大。** 平移会把起点（或终点）
+            # 推到原来的语音边界之外，那一头就多出来一截不是语音的余量。
+            # 实测过：分段 [(0.0,7.640),(7.890,9.984)]、音频 9.984 秒、pad=0.2 时，
+            # 右端放不下 -> 整体左移 0.200 -> 左余量变成 0.400（请求的两倍），
+            # 而右余量变成 0。也就是说"给两端各留一点余量"这个承诺没兑现，
+            # 左边白送了一倍的静音。修法：平移之后把多出来的那头夹回去，
+            # 让实际余量不超过请求的 `pad_sec`。长度会因此变短一点，
+            # 这是有意的取舍 —— 宁可短一点，也不要悄悄多塞静音进去。
             if start < -EDGE_EPS and end <= clip_duration + EDGE_EPS:
                 end += -start                  # 左端放不下：整体右移
                 start = 0.0
@@ -373,6 +386,12 @@ def select_vad_span(segments,
             elif end > clip_duration + EDGE_EPS and start >= -EDGE_EPS:
                 start -= end - clip_duration   # 右端放不下：整体左移
                 end = clip_duration
+            # 不管走了哪条分支，最后都把两头夹进"原始区间 ± pad_sec"里，
+            # 保证任何一头的余量都不会超过请求值。
+            if raw_start - pad_sec > start:
+                start = max(0.0, min(raw_start - pad_sec, clip_duration))
+            if raw_end + pad_sec < end:
+                end = max(0.0, min(raw_end + pad_sec, clip_duration))
                 aligned = False
             elif start < -EDGE_EPS and end > clip_duration + EDGE_EPS:
                 aligned = False                # 两头都放不下：只能夹短
@@ -922,13 +941,34 @@ def vad_select_segment(data,
         attempts = 1
         if low_speech_policy == 'resample':
             attempts = 1 + max(0, int(low_speech_retries))
-        for _ in range(attempts):
+        for attempt in range(attempts):
             this_min_speech = (0.0 if low_speech_policy == 'keep'
                                else min_speech_sec)
+            # **重试必须换一个目标时长，否则等于没重试。**
+            #
+            # 原来每次都用同一个 `target_sec`，而 `select_vad_span` 是确定性的：
+            # 只要"最接近目标"的那个区间是唯一的，重试多少次都会挑到同一段，
+            # 结果自然还是语音太少。实测 200 条真实分段文件里，
+            # 唯一最优区间 155 条、并列 0 条 —— 也就是说重试能改变结果的概率是 0，
+            # `low_speech_retries` 这个开关实际上不起作用。
+            #
+            # 改成：第 2 次起把目标时长在 [min_sec, max_sec] 里挪一挪，
+            # 让它去考虑别的区间（更靠中间的、或更短的），
+            # 这样"多试几次"才真的多试了几个候选。
+            if attempt == 0:
+                this_target = target_sec
+            elif target_sec is None:
+                this_target = None
+            else:
+                lo = min_sec
+                hi = max_sec
+                # 在合法区间里取一个和上次不同的目标：交替偏向更短 / 更长
+                bias = 0.25 if attempt % 2 == 1 else 0.75
+                this_target = min(max(lo + bias * (hi - lo), lo), hi)
             span = select_vad_span(segments,
                                    min_sec=min_sec,
                                    max_sec=max_sec,
-                                   target_sec=target_sec,
+                                   target_sec=this_target,
                                    pad_sec=pad_sec,
                                    merge_gap_sec=merge_gap_sec,
                                    cut_policy=cut_policy,
@@ -945,13 +985,16 @@ def vad_select_segment(data,
             if low_speech_policy == 'drop':
                 _drop_counter_incr('vad_low_speech', f"{wav_path}")
                 continue
-            if _fallback('vad_bad_rttm'):
+            # 记成 vad_low_speech，**不要**记成 vad_bad_rttm：
+            # 走到这里说明分段文件本身是好的、也读出了区间，只是选出来的
+            # 片段里语音太少。记错名字会让人去查数据，而真正该调的
+            # 是 min_speech_sec 或 min_sec。
+            if _fallback('vad_low_speech'):
                 continue
             yield sample
             continue
 
         if span['mode'] == 'cut_inside':
-            stats['cut_inside'] = stats.get('cut_inside', 0) + 1
             # 报的是"被切的那一整段"有多长，不是切完之后的长度；
             # 否则会出现 2.251s > 6.000s 这种自相矛盾的话（实测踩到过）。
             _src = span.get('cut_source_sec')
@@ -960,7 +1003,11 @@ def vad_select_segment(data,
                 'vad_cut_inside',
                 f"{wav_path} 单段语音长 {_src_txt}，超过 max_sec={max_sec:.3f}s，"
                 f"只能在段内部切开（切出 {span['end'] - span['start']:.3f}s）")
-        stats[span['mode']] = stats.get(span['mode'], 0) + 1
+        # 只按 mode 计一次。**不要**在 cut_inside 分支里另外再加一次
+        # `stats['cut_inside']` —— 那样一个样本会被算成 2 个，
+        # "段内切占多少比例"就虚报成两倍，文档里的分模式统计表也会和日志对不上。
+        _mode = span['mode']
+        stats[_mode] = stats.get(_mode, 0) + 1
 
         chunk, _ = read_audio_span(wav_path, sample_rate,
                                    span['start'], span['end'])

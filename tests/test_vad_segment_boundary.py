@@ -72,13 +72,27 @@ def check(name, segs, min_sec, max_sec, target_sec=None, pad_sec=0.0,
     assert min_sec - EPS <= (e - s) <= max_sec + EPS, "长度越界"
     if expect_mode is not None:
         assert span['mode'] == expect_mode, f"模式应为 {expect_mode}，实际 {span['mode']}"
-    if pad_sec > 0 and span['mode'] != 'cut_inside' and span['aligned']:
-        # 加了余量之后，边界应当是「段起点-pad / 段终点+pad」；两头对称地让掉
-        # 放不下的余量时 aligned 会变 False，那种情况这里不检查。
-        on_start = round(s + pad_sec, 6) in starts
-        on_end = round(e - pad_sec, 6) in ends
-        print(f"  减掉余量后落在段边界上: 起点 {on_start} / 终点 {on_end}")
-        assert on_start and on_end, "减掉余量后边界没有落在语音段边界上！"
+    if pad_sec > 0 and span['mode'] != 'cut_inside':
+        # **余量预算：任何一头实际留出的余量都不能超过请求的 pad_sec。**
+        #
+        # 这一条必须**无条件**检查，不能像原来那样加 `and span['aligned']`
+        # 的前置条件 —— 因为出问题的那条分支恰恰会把 aligned 置成 False，
+        # 于是唯一能发现它的检查被它自己的标志位跳过了（实测踩过：
+        # 右端放不下时整段左移，左余量变成 2 倍 pad，19.5% 的真实片段中招）。
+        raw_s, raw_e = span['covered']
+        left_pad = raw_s - s
+        right_pad = e - raw_e
+        print(f"  实际余量         : 左 {left_pad:.3f}s / 右 {right_pad:.3f}s "
+              f"(请求各 {pad_sec:.3f}s)")
+        assert left_pad <= pad_sec + EPS, (
+            f"左边余量 {left_pad:.3f}s 超过请求的 {pad_sec:.3f}s")
+        assert right_pad <= pad_sec + EPS, (
+            f"右边余量 {right_pad:.3f}s 超过请求的 {pad_sec:.3f}s")
+        if span['aligned']:
+            on_start = round(s + pad_sec, 6) in starts
+            on_end = round(e - pad_sec, 6) in ends
+            print(f"  减掉余量后落在段边界上: 起点 {on_start} / 终点 {on_end}")
+            assert on_start and on_end, "减掉余量后边界没有落在语音段边界上！"
     if pad_sec == 0.0 and span['mode'] != 'cut_inside':
         assert on_start and on_end, "边界没有落在语音段边界上！"
     return span
