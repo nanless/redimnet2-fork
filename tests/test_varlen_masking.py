@@ -47,18 +47,26 @@ CKPT_DIR_DEFAULT = os.path.join(REPO, 'checkpoints', 'pretrained')
 MIN_COS_ALL_VALID = 0.999      # 掩码全有效 vs 不传掩码
 MIN_COS_HALF_VALID = 0.90      # 半有效掩码 vs 逐条（实测约 0.95，留余量）
 
-# 「补零但不传掩码应当明显更差」这一条不能用固定的绝对阈值。
+# 判据要怎么设计：**必须成对比较，不能用单点的绝对阈值，也不能只看"不传掩码有多差"。**
 #
-# 原因：不同权重的余弦尺度差别很大。实测非对角余弦（同一模型对两段互不相关
-# 音频的余弦）在 b0-vox2-lm 上是 0.64，而在混合数据那几个权重上高达 0.99——
-# 也就是说后者的向量高度相关，余弦被压缩在一个很窄的区间里，
-# 在那里「0.81」其实已经是很大的差异了。
-# 原来写死 `<= 0.6` 会让 5 个混合数据权重（b3/b6 的 vb2/cnc2）误报失败。
+# 走过两次弯路，记在这里免得再犯：
 #
-# 改成**与模型自身尺度比较**：拿该模型对两段无关音频的余弦当基准
-# （代表这个空间的"区分度尺度"），要求 no_mask 比基准至少低这么多。
-# 实测 20 个权重全部满足，最小差值 0.158、最大 0.650。
-MIN_NO_MASK_MARGIN = 0.12      # no_mask 至少要比该模型自身的基准低这么多
+# 1. 最早写死「不传掩码的余弦 <= 0.6」。不行，因为不同权重的余弦尺度差别很大：
+#    实测非对角余弦（同一模型对两段互不相关音频的余弦）在 b0-vox2-lm 上是 0.64，
+#    而混合数据那几个权重高达 0.99——后者向量高度相关，余弦被压在很窄的区间里，
+#    在那里「0.81」已经是大差异。这个阈值让 5 个混合数据权重误报失败。
+#
+# 2. 后来改成「不传掩码要比该模型自身的基准低至少 0.12」。**这条方向是反的**：
+#    掩码**失效**时，短的那条会被补零污染，「不传掩码」的结果当然是差的、
+#    离基准很远，margin 反而更大，于是**照样通过**。
+#    实测（b0-vox2-lm，把掩码整个删掉）：掩码正常与掩码失效两种情况的
+#    margin 都是 0.312112 —— 也就是说这条判据对"掩码有没有生效"完全没有分辨力。
+#
+# 所以现在改成**成对比较**：同一批数据、同一个模型，
+# **传 lengths 的结果**必须比**不传 lengths 的结果**明显更接近逐条推理。
+# 掩码生效时这两个数差很多（实测 0.955 对 0.325），掩码失效时两者相等（都是 0.325），
+# 于是这条判据在掩码坏掉时会**确实失败**。
+MIN_MASK_BENEFIT = 0.30        # 传 lengths 要比不传至少好这么多（成对比较）
 
 
 def cos(a: torch.Tensor, b: torch.Tensor) -> float:
@@ -136,7 +144,6 @@ def check_mask_effect(ckpt, quick):
         ref_short = model(wave_short)[0]
         ref_long = model(wave_long)[0]
         emb = model(padded, lengths=torch.tensor([long_len, short_len]))
-        emb_all_valid = model(padded, lengths=torch.tensor([long_len, long_len]))
         emb_no_lengths = model(padded)
 
         # 该模型自身的"余弦尺度"：两段互不相关、等长的音频之间的余弦。
@@ -148,14 +155,16 @@ def check_mask_effect(ckpt, quick):
                                   generator=torch.Generator().manual_seed(4))
         baseline = cos(model(unrelated_a)[0], model(unrelated_b)[0])
 
+    half_valid = cos(emb[1], ref_short)
     no_lengths = cos(emb_no_lengths[1], ref_short)
     return {
-        'all_valid': cos(emb_all_valid[0], emb_no_lengths[0]),
-        'half_valid': cos(emb[1], ref_short),
-        'long_unaffected': cos(emb[0], ref_long),
+        # 关键判据：同一批数据、同一个模型，传 lengths 是否明显更接近逐条推理
+        'half_valid': half_valid,
         'no_lengths': no_lengths,
+        'mask_benefit': half_valid - no_lengths,
+        'long_unaffected': cos(emb[0], ref_long),
+        # 只作参考：该模型对两段无关音频的余弦，代表这个空间的"区分度尺度"
         'baseline': baseline,
-        'no_mask_margin': baseline - no_lengths,
     }
 
 
@@ -193,35 +202,28 @@ def main(argv=None):
     for ckpt in ckpts:
         r = check_mask_effect(ckpt, args.quick)
         name = os.path.basename(ckpt)
-        ok_all = r['all_valid'] >= MIN_COS_ALL_VALID
         ok_half = r['half_valid'] >= MIN_COS_HALF_VALID
-        ok_gap = r['no_mask_margin'] >= MIN_NO_MASK_MARGIN
+        ok_benefit = r['mask_benefit'] >= MIN_MASK_BENEFIT
         ok_long = r['long_unaffected'] >= MIN_COS_ALL_VALID
         print(f'  {name}')
-        print(f'    掩码全有效 vs 不传掩码 : {r["all_valid"]:.6f}  '
-              f'(要求 >= {MIN_COS_ALL_VALID})          '
-              f'{"通过" if ok_all else "未通过"}')
-        print(f'    半有效掩码 vs 逐条     : {r["half_valid"]:.6f}  '
+        print(f'    传 lengths   vs 逐条   : {r["half_valid"]:.6f}  '
               f'(要求 >= {MIN_COS_HALF_VALID})          '
               f'{"通过" if ok_half else "未通过"}')
-        print(f'    不传掩码   vs 逐条     : {r["no_lengths"]:.6f}  '
-              f'(该模型基准 {r["baseline"]:.6f}，'
-              f'要求至少低 {MIN_NO_MASK_MARGIN})  '
-              f'{"通过" if ok_gap else "未通过"}')
+        print(f'    不传 lengths vs 逐条   : {r["no_lengths"]:.6f}  (只作对照)')
+        print(f'    掩码带来的改善（成对）  : {r["mask_benefit"]:.6f}  '
+              f'(要求 >= {MIN_MASK_BENEFIT})          '
+              f'{"通过" if ok_benefit else "未通过"}')
         print(f'    同批里长的那条不受影响 : {r["long_unaffected"]:.6f}  '
               f'(要求 >= {MIN_COS_ALL_VALID})          '
               f'{"通过" if ok_long else "未通过"}')
-        if not ok_all:
-            failures.append(
-                f'{name}: 掩码全有效余弦 {r["all_valid"]:.6f} < {MIN_COS_ALL_VALID}')
         if not ok_half:
             failures.append(
-                f'{name}: 半有效余弦 {r["half_valid"]:.6f} < {MIN_COS_HALF_VALID}')
-        if not ok_gap:
+                f'{name}: 传 lengths 的余弦 {r["half_valid"]:.6f} < {MIN_COS_HALF_VALID}')
+        if not ok_benefit:
             failures.append(
-                f'{name}: 不传掩码余弦 {r["no_lengths"]:.6f} 只比该模型基准 '
-                f'{r["baseline"]:.6f} 低 {r["no_mask_margin"]:.6f}，'
-                f'不足 {MIN_NO_MASK_MARGIN}，掩码似乎没有起作用')
+                f'{name}: 传 lengths({r["half_valid"]:.6f}) 并不比不传'
+                f'({r["no_lengths"]:.6f}) 好多少，差 {r["mask_benefit"]:.6f}，'
+                f'不足 {MIN_MASK_BENEFIT} —— 掩码很可能没有生效')
         if not ok_long:
             failures.append(
                 f'{name}: 同批长条余弦 {r["long_unaffected"]:.6f} < {MIN_COS_ALL_VALID}')

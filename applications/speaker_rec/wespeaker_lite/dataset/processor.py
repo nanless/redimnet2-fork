@@ -824,7 +824,7 @@ def vad_select_segment(data,
         target_sec: 想要的时长，默认取上下限中点
         pad_sec: 两端各留的余量，默认 0.1 秒（保证不会正好切在语音的第一帧上，
             因为挑剔一点的分段器通常会把边界前的十几毫秒也标成静音）
-        merge_gap_sec: 相邻语音段间隔小于这个值就先并成一段；默认等于 pad_sec
+        merge_gap_sec: 相邻语音段间隔小于这个值就先并成一段；默认为 0.0
         min_speech_sec: 片段里真实语音的下限，默认等于 min_sec
         cut_policy: 'middle' | 'random'，见上
         low_speech_policy: 'resample' | 'keep' | 'drop'，见上

@@ -220,7 +220,7 @@ VAD_SEGMENT_DEFAULTS = {
     'target_sec': None,        # None 表示取 min_sec 与 max_sec 的中点
     'pad_sec': 0.1,
     'min_speech_sec': None,    # None 表示等于 min_sec
-    'merge_gap_sec': None,     # None 表示等于 pad_sec
+    'merge_gap_sec': None,     # None 表示 0.0（只并真正重叠或首尾相接的段）
     'cut_policy': 'middle',    # 单段语音长于 max_sec 时：middle | random
     'missing_policy': 'fallback',       # 没有分段文件：fallback | drop
     'low_speech_policy': 'resample',    # 语音太少：resample | keep | drop

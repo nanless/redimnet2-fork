@@ -543,6 +543,26 @@ def validate_sidecar(
                 f"头部 samples_16k {stored_samples_int} 与本次读到的 {expected_sample_length} 不一致"
             )
 
+    # 头部声明了多少段，正文就必须有多少行 SPEAKER。
+    #
+    # 少了这一比对会有一个很隐蔽的后果：把正文的 SPEAKER 行删掉、只留头部，
+    # 这个文件在解析器看来与"合法地没有语音"完全一样（0 段、0 错误），
+    # 于是 validate 判它通过、infer 又因为"已经写过且检查通过"而跳过它 ——
+    # 语音标注就这么被永久地丢掉了，而且外面看到的是"全部完成、状态 ok"。
+    declared = header.get("segments")
+    if declared is not None:
+        try:
+            declared_int = int(declared)
+        except (TypeError, ValueError):
+            errors.append(f"头部 segments 不是整数：{declared!r}")
+            declared_int = None
+        if declared_int is not None and declared_int != len(parsed.segments):
+            errors.append(
+                f"头部声明 {declared_int} 段语音，正文里只有 "
+                f"{len(parsed.segments)} 行 SPEAKER —— 两者必须一致"
+                f"（正文被截断过？）"
+            )
+
     if audio_duration is not None and not errors:
         errors.extend(check_segments(parsed.segments, audio_duration))
 
@@ -680,12 +700,27 @@ def run_infer(args: argparse.Namespace, params: VadParameters) -> int:
     runtime_dir.mkdir(parents=True, exist_ok=True)
     tag = f"rank{args.rank:05d}-of{args.world_size:05d}"
 
-    # 前置检查：本 rank 要处理的那些音频，会不会算出同一个输出路径。
+    # 前置检查：会不会有两条音频算出同一个输出路径。
     # 一旦重复，后写的会悄悄盖掉先写的，所以宁可在这里停下来。
+    #
+    # **必须检查整份清单，不能只查本 rank 那一片。** 只查本片会漏掉跨 rank 的
+    # 重名：清单里同一行音频出现两次时，分片会把它分到两个不同的 rank，
+    # 两个 rank 各自看自己那一片都是"唯一的"，于是都去写同一个输出路径，
+    # 最后两边都报成功、磁盘上只有一个文件。实测过这个情形
+    # （两行重复的清单、world_size=2：两个 rank 都 written=1，磁盘上只有 1 个文件）。
+    #
+    # 代价说明：这里要把整份清单读一遍（一千多万行的清单约需十几秒），
+    # 只在启动时做一次，相对于整个任务的时长可以忽略。
     if not args.no_collision_check:
-        owned = list(
-            iter_audio_shard(manifest, args.rank, args.world_size, args.limit)
-        )
+        if args.world_size > 1 and args.limit is None:
+            owned_all = list(iter_audio_records(manifest))
+        else:
+            # 分片或限流的情况下，"整份清单"没有意义（limit 是每 rank 的上限），
+            # 退回查本片，并在输出里标明范围。
+            owned_all = list(
+                iter_audio_shard(manifest, args.rank, args.world_size, args.limit)
+            )
+        owned = owned_all
         collision = check_mirror_uniqueness(
             owned,
             audio_root,
@@ -1041,7 +1076,11 @@ def run_validate(args: argparse.Namespace, params: VadParameters) -> int:
                     valid += 1
                     header = parse_header_block(out_path.read_text(encoding="utf-8"))
                     try:
-                        segments_total += int(header.get("segments", "0"))
+                        # 从**正文实际解析出的行**统计，而不是头部声明的数字：
+                        # 头部是文件自己写的，正文才是真正的内容。
+                        parsed_body = parse_rttm(
+                            out_path.read_text(encoding="utf-8"))
+                        segments_total += len(parsed_body.segments)
                         speech_seconds += float(header.get("speech_s", "0"))
                         audio_seconds += float(header.get("duration_s", "0"))
                     except ValueError:

@@ -156,7 +156,11 @@ def iter_audio_records(manifest: Path) -> Iterator[AudioRecord]:
     """
     manifest = Path(manifest)
     index = 0
-    with manifest.open("r", encoding="utf-8") as stream:
+    # utf-8-sig：清单若带 BOM（Windows 上编辑过、或某些导出工具会加），
+    # 用普通 utf-8 读会把 BOM 当成正文，第一行 json.loads 直接失败、
+    # 整个任务以一段原始 traceback 结束。utf-8-sig 会把这个前缀吃掉，
+    # 没有 BOM 时行为与 utf-8 完全一样。
+    with manifest.open("r", encoding="utf-8-sig") as stream:
         for line_number, line in enumerate(stream, start=1):
             stripped = line.strip()
             if not stripped:

@@ -26,3 +26,10 @@ tableprint      # per-step logging table in bin/train.py / utils/executor.py
 tqdm            # progress bars
 scikit-learn    # EER and ROC computation in utils/executor.py
 pyarrow         # parquet output for duration tables (vb2_vox2_cnc2 scripts)
+
+# --- 语音活动标注工具专用：applications/speaker_rec/scripts/vad ---
+# FireRedVAD（外部仓库，没有复制进本仓库）需要下面这两个包。
+# 它们**不在**本仓库训练用的 conda 环境里，所以那套工具默认跑在另一个
+# 解释器里（见 docs/09-VAD标注与RTTM.md 第 4.1 节）。
+kaldiio
+kaldi_native_fbank
