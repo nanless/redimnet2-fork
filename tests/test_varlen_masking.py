@@ -6,11 +6,15 @@
 1. **向后兼容**：不传 `lengths` 时，模型的行为有没有变？
    基准是"改动前的那份代码"的结果，要求逐位一致（最大绝对差 0.0）。
 
-2. **掩码是否真的在起作用**：
-   * 掩码**全有效**时，结果应当与不传掩码几乎相同（实测余弦 > 0.999）。
-     这一条如果不成立，说明掩码本身接错了。
-   * 掩码**半有效**（一条短音频补零凑批）时，结果会与逐条推理有差距，
-     但必须明显好于"补零却不传掩码"。这一条是防退化的下限。
+2. **掩码是否真的在起作用**（两条判据，一起看）：
+   * **掩码机制算得对不对**：同一批数据，传一个**全有效**的 `lengths`
+     与完全不传 `lengths`，结果应当几乎相同（实测相对 L2 约 2e-06）。
+     这条能发现"带掩码的路径把全有效算错了"。
+     **但它发现不了"掩码被整个忽略"** —— 那种情况下两条路径完全一样、
+     这个数反而变成 0。所以它只是上限检查，下面那条成对比较才是主力。
+   * **掩码带来的实际改善**（成对比较）：把一条短音频补零凑进一批，
+     传 `lengths` 的结果必须比不传的明显更接近逐条推理。
+     这一条是真正能发现"掩码失效"的判据。
 
 为什么要专门测第二条：变长批量与逐条推理**不可能逐位等价**。
 补齐会改变总帧数，进而改变下采样后的时间上下文，
@@ -44,7 +48,10 @@ if REPO not in sys.path:
 CKPT_DIR_DEFAULT = os.path.join(REPO, 'checkpoints', 'pretrained')
 
 # 各项检查的下限。这些数字来自实测，改动模型层后如果掉下去就说明退化了。
-MIN_COS_ALL_VALID = 0.999      # 掩码全有效 vs 不传掩码
+MIN_COS_ALL_VALID = 0.999      # 同批里较长那条不受补齐影响
+# 「掩码机制本身对不对」的判据：同一段音频，全有效掩码 vs 不传掩码，
+# 相对 L2 误差应当很小（实测约 5e-07）。
+MAX_REL_L2_ALL_VALID = 1e-4
 MIN_COS_HALF_VALID = 0.90      # 半有效掩码 vs 逐条（实测约 0.95，留余量）
 
 # 判据要怎么设计：**必须成对比较，不能用单点的绝对阈值，也不能只看"不传掩码有多差"。**
@@ -144,6 +151,9 @@ def check_mask_effect(ckpt, quick):
         ref_short = model(wave_short)[0]
         ref_long = model(wave_long)[0]
         emb = model(padded, lengths=torch.tensor([long_len, short_len]))
+        # 全有效掩码：把两条都标成"整条有效"，于是掩码全为 1。
+        # 它拿来测的是"走带掩码分支"与"走不带掩码分支"是否一致。
+        emb_all_valid = model(padded, lengths=torch.tensor([long_len, long_len]))
         emb_no_lengths = model(padded)
 
         # 该模型自身的"余弦尺度"：两段互不相关、等长的音频之间的余弦。
@@ -155,9 +165,23 @@ def check_mask_effect(ckpt, quick):
                                   generator=torch.Generator().manual_seed(4))
         baseline = cos(model(unrelated_a)[0], model(unrelated_b)[0])
 
+    # 「掩码机制本身有没有算错」：同一批数据，传一个**全有效**的 lengths
+    # 与完全不传 lengths，结果应当几乎一样（实测相对 L2 约 2e-06）。
+    #
+    # **这条判据要说清它能测什么、不能测什么**（我在这上面来回错过两次）：
+    #   * 能测：带掩码的那条代码路径有没有把"全有效"算错 —— 比如归一化时
+    #     用错了统计量、或者下采样掩码时把有效区间缩掉了。算错就会远超 2e-06。
+    #   * **不能测**：掩码有没有被整个忽略。实测把掩码删掉之后这个数变成
+    #     0.000e+00（两条路径完全一样，当然相等），反而"更好看"。
+    #     所以它只是一个**上限**检查，不是"掩码生效"的证据。
+    #     真正能发现掩码失效的是下面成对比较的 mask_benefit。
+    all_valid_rel_l2 = ((emb_all_valid[0] - emb_no_lengths[0]).norm()
+                        / emb_no_lengths[0].norm()).item()
+
     half_valid = cos(emb[1], ref_short)
     no_lengths = cos(emb_no_lengths[1], ref_short)
     return {
+        'all_valid_rel_l2': all_valid_rel_l2,
         # 关键判据：同一批数据、同一个模型，传 lengths 是否明显更接近逐条推理
         'half_valid': half_valid,
         'no_lengths': no_lengths,
@@ -202,10 +226,14 @@ def main(argv=None):
     for ckpt in ckpts:
         r = check_mask_effect(ckpt, args.quick)
         name = os.path.basename(ckpt)
+        ok_mech = r['all_valid_rel_l2'] <= MAX_REL_L2_ALL_VALID
         ok_half = r['half_valid'] >= MIN_COS_HALF_VALID
         ok_benefit = r['mask_benefit'] >= MIN_MASK_BENEFIT
         ok_long = r['long_unaffected'] >= MIN_COS_ALL_VALID
         print(f'  {name}')
+        print(f'    全有效掩码机制（相对L2）: {r["all_valid_rel_l2"]:.3e}  '
+              f'(要求 <= {MAX_REL_L2_ALL_VALID:.0e})   '
+              f'{"通过" if ok_mech else "未通过"}')
         print(f'    传 lengths   vs 逐条   : {r["half_valid"]:.6f}  '
               f'(要求 >= {MIN_COS_HALF_VALID})          '
               f'{"通过" if ok_half else "未通过"}')
@@ -216,6 +244,11 @@ def main(argv=None):
         print(f'    同批里长的那条不受影响 : {r["long_unaffected"]:.6f}  '
               f'(要求 >= {MIN_COS_ALL_VALID})          '
               f'{"通过" if ok_long else "未通过"}')
+        if not ok_mech:
+            failures.append(
+                f'{name}: 全有效掩码 vs 不传掩码的相对 L2 有 '
+                f'{r["all_valid_rel_l2"]:.3e}，超过 {MAX_REL_L2_ALL_VALID:.0e} —— '
+                f'带掩码的路径把"全有效"算错了')
         if not ok_half:
             failures.append(
                 f'{name}: 传 lengths 的余弦 {r["half_valid"]:.6f} < {MIN_COS_HALF_VALID}')
