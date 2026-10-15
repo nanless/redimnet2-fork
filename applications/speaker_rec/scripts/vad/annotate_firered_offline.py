@@ -665,10 +665,27 @@ def pending_records(
     args: argparse.Namespace,
     signature: str,
     counters: Dict[str, object],
+    progress_path: Optional[Path] = None,
+    tag: str = "",
+    started: Optional[float] = None,
 ) -> Iterator[AudioRecord]:
-    """按分片顺序遍历本 rank 的样本；已经做好且检查通过的直接跳过。"""
+    """按分片顺序遍历本 rank 的样本；已经做好且检查通过的直接跳过。
+
+    **这个函数要自己报进度**，不能只靠下游那个循环。
+    原因：跳过的样本在 `yield` 之前就 `continue` 了，下游循环一次都不迭代，
+    于是"每 60 秒打印一次进度"和"写 progress.json"都不会执行。
+    续跑时前面可能有一两百万条全是被跳过的，那段时间对外完全静默 ——
+    progress.json 一直停在 0、state 一直停在 starting，
+    看起来和卡死一模一样（实测踩过：整段跳过期约 20 分钟没有任何输出，
+    还因此被误判成卡死而杀掉过任务）。
+
+    所以这里按"已经看过多少条"定期自己打印并落盘。
+    """
     audio_root = abspath(args.audio_root) if args.audio_root else None
     output_root = abspath(args.output_root) if args.output_root else None
+    if started is None:
+        started = time.monotonic()
+    last_report = time.monotonic()
     for record in iter_audio_shard(args.manifest, args.rank, args.world_size, args.limit):
         counters["selected"] = int(counters["selected"]) + 1
         audio_path = abspath(record.path)
@@ -676,6 +693,21 @@ def pending_records(
             reused = resolve_reusable_sidecar(audio_path, args, audio_root, output_root)
             if reused is not None:
                 counters["skipped_valid"] = int(counters["skipped_valid"]) + 1
+                # 被跳过的样本也要报进度（否则整段跳过期是静默的）。
+                if args.report_every and time.monotonic() - last_report >= args.report_every:
+                    scanned = int(counters["selected"])
+                    elapsed = max(1e-9, time.monotonic() - started)
+                    if progress_path is not None:
+                        counters["state"] = "running"
+                        counters["elapsed_seconds"] = elapsed
+                        write_progress(progress_path, counters)
+                    print(
+                        f"[infer {tag}] 已扫过={scanned} 跳过={counters['skipped_valid']} "
+                        f"新写={counters['written']} 失败={counters['failed']} "
+                        f"（{scanned / elapsed:.1f} 条/秒）",
+                        flush=True,
+                    )
+                    last_report = time.monotonic()
                 continue
         yield record
 
@@ -813,7 +845,10 @@ def run_infer(args: argparse.Namespace, params: VadParameters) -> int:
     exit_code = 0
     try:
         vad = load_vad(firered_root, model_dir, params)
-        records = pending_records(args, signature, counters)
+        records = pending_records(
+            args, signature, counters,
+            progress_path=progress_path, tag=tag, started=started,
+        )
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
