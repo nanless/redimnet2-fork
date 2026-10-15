@@ -751,10 +751,23 @@ class BucketedLengthDataset(IterableDataset):
             pass
 
     def __len__(self):
+        """返回批次数；数不出来就抛 TypeError，而不是返回 None。
+
+        训练用的数据流是无限迭代的（IterableDataset），本来就没有"长度"，
+        所以取不到长度是正常情况，不是错误。但 `__len__` **不能返回 None**：
+        Python 对 `len(x)` 的要求是返回整数，返回 None 会变成
+        `TypeError: 'NoneType' object cannot be interpreted as an integer`，
+        报错信息完全看不出真正的原因。
+
+        按 Python 的约定，对象"没有长度"时应当抛 TypeError，
+        这样 `len()`、`bool()`、以及 DataLoader 的相关逻辑都能正确处理它。
+        """
         try:
             return len(self.dataset)
-        except Exception:
-            return None
+        except Exception as exc:
+            raise TypeError(
+                "这份数据流没有可用的长度（变长数据流是无限的，属正常情况）"
+            ) from exc
 
     def __iter__(self):
         batch_size = self.batch_size

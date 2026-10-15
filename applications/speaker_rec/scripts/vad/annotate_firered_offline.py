@@ -1238,6 +1238,30 @@ def run_shard_plan(args: argparse.Namespace) -> int:
     return 0 if report["consistent"] else 1
 
 
+def run_collision_only(args: argparse.Namespace) -> int:
+    """只检查"有没有两条音频会写到同一个输出文件"，然后打印结果退出。
+
+    单独做成一个入口，是为了让启动脚本**只做一次**。
+    检查要看整份清单（一千多万行、约 23 分钟纯 CPU），
+    如果让每个 rank 各做一遍，4 个 rank 就是 4 倍空转，
+    而且期间 GPU 一直空闲、日志只有一行，很容易被当成卡死。
+    """
+    output_root = abspath(args.output_root) if args.output_root else None
+    audio_root = abspath(args.audio_root) if args.audio_root else None
+    report = check_mirror_uniqueness(
+        iter_audio_records(abspath(args.manifest)),
+        audio_root,
+        output_root,
+        args.rttm_suffix,
+        args.root_depth,
+        beside=output_root is None,
+    )
+    report["manifest"] = str(abspath(args.manifest))
+    report["manifest_sha256"] = args.manifest_sha256
+    print(json.dumps(report, ensure_ascii=False, sort_keys=True), flush=True)
+    return 0 if report["unique"] else 1
+
+
 # ---------------------------------------------------------------------------
 # 命令行。
 # ---------------------------------------------------------------------------
@@ -1292,6 +1316,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "镜像树布局时，除文件名外再保留几层上层目录名，默认 2；"
             "保留太少会让不同语料里同名的音频互相覆盖，启动前会检查"
         ),
+    )
+    parser.add_argument(
+        "--collision-only",
+        action="store_true",
+        help="只做「输出路径是否重名」的自检然后退出"
+             "（供启动脚本调用一次，避免每个 rank 各做一遍）",
     )
     parser.add_argument(
         "--no-collision-check",
@@ -1384,6 +1414,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.mode == "validate":
         return run_validate(args, params)
     if args.mode == "shard-plan":
+        if getattr(args, "collision_only", False):
+            return run_collision_only(args)
         return run_shard_plan(args)
     return run_oracle(args, params)
 

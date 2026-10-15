@@ -383,7 +383,13 @@ def check_mirror_uniqueness(
     paths together with the sample lines that produced them.
     """
     owners: Dict[str, List[str]] = {}
+    # 只数一遍、只看路径，不保留记录本身。
+    # 清单可能有上千万行，把记录全留下会占几个 GB 内存
+    # （实测 1152 万条约 9 GB），而这里只需要"输出路径 → 来源"的映射，
+    # 所以边读边判，`records` 允许是迭代器。
+    total = 0
     for record in records:
+        total += 1
         path = sidecar_path(
             Path(record.path), None if beside else audio_root, None if beside else output_root,
             suffix, root_depth,
@@ -395,7 +401,7 @@ def check_mirror_uniqueness(
         "audio_root": str(audio_root) if audio_root else None,
         "output_root": str(output_root) if output_root else None,
         "root_depth": root_depth,
-        "records": len(records),
+        "records": total,
         "distinct_outputs": len(owners),
         "collision_count": len(collisions),
         "collisions_head": [

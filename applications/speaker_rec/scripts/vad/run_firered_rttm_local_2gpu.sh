@@ -229,6 +229,36 @@ note "检查分片覆盖"
 shard_report="$("${PYTHON_BIN}" "${ANNOTATOR}" --mode shard-plan "${common_args[@]}" \
     --rank 0 --manifest-sha256 "${MANIFEST_SHA256}")" || fail "分片检查未通过：${shard_report}"
 echo "${shard_report}" > "${RUNTIME_DIR}/shard_plan.json"
+
+# ---------------------------------------------------------------------------
+# 重名自检：证明没有两条音频会写到同一个输出文件。
+#
+# **这一步必须在这里做一次，不能让每个 rank 各做一遍。**
+# 检查需要看整份清单（一千多万行），实测单次约 23 分钟、纯 CPU、GPU 全程空闲。
+# 之前每个 rank 都在启动时各做一次，4 个 rank 就是 4 倍的空转，
+# 日志看起来像"卡死"（GPU 0%、只有一行输出），非常容易被误杀。
+# 现在由启动脚本做一次，rank 拿到 `--no-collision-check` 直接开跑。
+# ---------------------------------------------------------------------------
+note "检查输出路径是否重名（只需做一次，可能要十几分钟）"
+if [ "${SKIP_COLLISION_CHECK:-0}" = "1" ]; then
+    note "已按要求跳过重名自检（SKIP_COLLISION_CHECK=1）"
+else
+    collision_report="$("${PYTHON_BIN}" "${ANNOTATOR}" --mode shard-plan "${common_args[@]}" \
+        --rank 0 --manifest-sha256 "${MANIFEST_SHA256}" --collision-only)" \
+        || fail "重名自检未通过：${collision_report}"
+    echo "${collision_report}" > "${RUNTIME_DIR}/collision_global.json"
+    "${PYTHON_BIN}" -c '
+import json, sys
+r = json.loads(sys.argv[1])
+print("[rttm] 重名自检：清单 {} 条，输出路径 {} 个，冲突 {} 个".format(
+    format(r["records"], ","), format(r["distinct_outputs"], ","),
+    r["collision_count"]))
+if not r["unique"]:
+    for c in r["collisions_head"][:5]:
+        print("[rttm]   冲突：{} <- {}".format(c["output"], c["sources"][:3]))
+    raise SystemExit(1)
+' "${collision_report}" || fail "有两条音频会写到同一个输出文件，已停下"
+fi
 "${PYTHON_BIN}" -c '
 import json, sys
 r = json.loads(sys.argv[1])
@@ -271,6 +301,7 @@ run_all_ranks() {
             note "启动 mode=${mode} rank=${rank}/${NUM_RANKS} 物理卡=${gpu} 第${slot}批"
             CUDA_VISIBLE_DEVICES="${gpu}" "${PYTHON_BIN}" "${ANNOTATOR}" \
                 --mode "${mode}" --rank "${rank}" "${common_args[@]}" \
+                --no-collision-check \
                 >"${RUNTIME_DIR}/${mode}.pass${pass}.rank${rank}.log" 2>&1 &
             pids[rank]="$!"
         done

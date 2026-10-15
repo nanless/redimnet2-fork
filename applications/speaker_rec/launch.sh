@@ -8,6 +8,7 @@ if [ -z "$CONFIG" ]; then
     exit 1
 fi
 
+
 shift
 NUM_GPUS=8
 if [[ $# -gt 0 && "$1" =~ ^[0-9]+$ ]]; then
@@ -63,9 +64,36 @@ PY_BIN_DIR="$(dirname "$PYTHON_BIN")"
 
 # 检查这个解释器真的能用；缺包就立刻停下并说清是哪个环境缺什么，
 # 而不是让训练跑到一半才在某个 import 上炸掉。
+# 除了"能不能 import"，还要挡住**版本太旧**的解释器。
+#
+# 实测踩过：某个旧环境里是 torch 1.12.1 配 NumPy 2.x，
+# `import torch` 能过，但一用 `torch.from_numpy` 就报
+# `RuntimeError: Numpy is not available`。那种错误发生在训练跑到一半的时候，
+# 很难一眼看出是环境问题，所以在启动时就挡住。
+# 这里要求 torch >= 2.0（本仓库的开发环境是 2.4.0）。
 if ! "$PYTHON_BIN" -c 'import torch, torchaudio' >/dev/null 2>&1; then
     echo "ERROR: $PYTHON_BIN 里没有 torch/torchaudio。" >&2
     echo "       请安装依赖，或指定其它环境：" >&2
+    echo "         REDIMNET2_ENV=<conda 环境名> $0 ..." >&2
+    echo "         REDIMNET2_PYTHON=<python 路径> $0 ..." >&2
+    exit 1
+fi
+
+# torch 版本下限：低于 2.0 的老环境能 import 但会在训练中途炸。
+if ! "$PYTHON_BIN" - <<'PYCHK' >/dev/null 2>&1
+import sys
+import torch
+parts = torch.__version__.split('.')[:2]
+try:
+    major, minor = int(parts[0]), int(parts[1])
+except ValueError:
+    sys.exit(0)          # 版本号形状不认识就不拦
+sys.exit(0 if (major, minor) >= (2, 0) else 1)
+PYCHK
+then
+    echo "ERROR: $PYTHON_BIN 里的 torch 版本低于 2.0（实测版本见下），本仓库需要 2.x。" >&2
+    "$PYTHON_BIN" -c 'import torch; print("       torch =", torch.__version__)' >&2 || true
+    echo "       请用较新的环境：" >&2
     echo "         REDIMNET2_ENV=<conda 环境名> $0 ..." >&2
     echo "         REDIMNET2_PYTHON=<python 路径> $0 ..." >&2
     exit 1
