@@ -155,6 +155,24 @@ bash run_firered_rttm_cloud_8gpu.sh
 确认通了再跑正式任务。云端脚本默认输出到镜像树（见下一节），
 所以**音频目录是只读的也能跑**。
 
+**这个脚本在本机按 2 卡完整跑通过**（400 条真实音频，退出码 0）：
+
+```text
+SHARD_CHECK       manifest=400 covered=400 expected=400 duplicates=0 missing=0 consistent=True
+COLLISION_CHECK   records=400 distinct_outputs=400 collisions=0 unique=True
+VALIDATE_SUMMARY  processed=400 valid=400 invalid=0 empty=0 expected=400
+RTTM_RESULT       status=ok
+```
+
+产出另外用官方 FireRedVAD 重跑比对过：**25/25 段边界完全一致**。
+但要说清楚：**没有在真实的八卡机器上跑过**（本机只有 2 块卡），
+脚本逻辑与参数传递是按 2 卡验证的，八卡上的 CPU 核数、磁盘带宽、
+镜像环境还需要现场确认。
+
+云端脚本会在起进程前做**一次**全量重名自检（本地脚本同样），
+然后给每个 rank 传 `--no-collision-check`。若确定清单没有重名，
+可以设 `SKIP_COLLISION_CHECK=1` 跳过（会打一行警告）。
+
 脚本会打印机器容易抓取的进度行，可以照着 grep：
 
 ```text
