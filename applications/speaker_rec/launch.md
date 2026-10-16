@@ -21,14 +21,19 @@ export LOGLEVEL=ERROR
 export PYTHONFAULTHANDLER=1
 
 torchrun --nnodes=1:1 --nproc_per_node="$NUM_GPUS" --rdzv-backend=static \
-  --rdzv-endpoint="${MASTER_ADDR:-127.0.0.1}:${MASTER_PORT:-29400}" \
+  --rdzv-endpoint="${MASTER_ADDR:-127.0.0.1}:${MASTER_PORT}" \
   --master-addr="${MASTER_ADDR:-127.0.0.1}" \
   applications/speaker_rec/wespeaker_lite/bin/train.py \
   --config "$CONFIG" "$@"
 ```
 
-`MASTER_ADDR` and `MASTER_PORT` can be overridden in the environment. Training
-auto-resumes from the newest `model_*.pt` in the configured `exp_dir/models/`.
+`MASTER_ADDR` and `MASTER_PORT` can be set in the environment. If `MASTER_PORT`
+is not set, `launch.sh` picks a free port automatically, so two training runs on
+the same machine no longer collide. **Multi-node runs must set `MASTER_PORT`
+explicitly** — every node has to use the same one.
+
+Training auto-resumes from the newest `model_*.pt` in the configured
+`exp_dir/models/`.
 
 The load order is `checkpoint` (a config key, unset in every recipe) →
 newest file in `exp_dir/models/` → `model_ckpt`, first non-empty wins. So:
