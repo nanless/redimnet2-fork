@@ -118,7 +118,34 @@ fi
 export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/applications/speaker_rec:${PYTHONPATH}"
 
 MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
-MASTER_PORT="${MASTER_PORT:-29400}"
+
+# 通信端口。
+#
+# 原来这里写死 29400，于是**同一台机器上并发跑两个训练必然有一个起不来**，
+# 报的是 `EADDRINUSE: address already in use`，而且要在 torchrun 的
+# 一大堆堆栈里才找得到这一行（实测踩过：上一个任务超时没退干净，
+# 下一次启动就撞上，看起来像配置错误）。
+#
+# 现在改成：没显式指定就**自动找一个空闲端口**。
+# 这样做是安全的，因为这个脚本用的是 `--nnodes=1:1`（单机），
+# 主进程和所有 worker 都在本机、共享同一个文件系统与端口空间。
+# 如果哪天要做多机训练，必须显式给 `MASTER_PORT`（多机时各节点得用同一个端口），
+# 那时不要依赖自动选端口。
+if [ -z "${MASTER_PORT:-}" ]; then
+    MASTER_PORT="$("$PYTHON_BIN" - <<'PYPORT'
+import socket
+
+# 让内核分配一个空闲端口：绑到 0 号端口再读回实际端口，然后立刻释放。
+# 这中间有一个很短的窗口期，理论上别的进程可能抢走它；
+# 单机训练里这个窗口小到可以忽略，而且真抢走了也只是启动失败、
+# 报的还是同一个 EADDRINUSE，重跑一次即可 —— 比写死端口必冲突要好得多。
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.bind(("127.0.0.1", 0))
+    print(s.getsockname()[1])
+PYPORT
+)"
+    echo "  MASTER_PORT: $MASTER_PORT（自动选的空闲端口；可用 MASTER_PORT=... 覆盖）"
+fi
 
 export LOGLEVEL="ERROR"
 export PYTHONFAULTHANDLER=1
