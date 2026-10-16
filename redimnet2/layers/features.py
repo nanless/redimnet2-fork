@@ -173,8 +173,22 @@ class MelBanks(nn.Module):
             self.spec_norm = _mvn
         elif spec_norm == 'bn':
             self.spec_norm = nn.BatchNorm1d(n_mels)
+        elif spec_norm in ('none', None):
+            # 显式要求不做归一化时才用 Identity。
+            # 用 Identity 而不是 None：`forward` 里是直接调用的
+            # （`x = self.spec_norm(x)`），留成 None 会在跑到那一步时报
+            # `TypeError: 'NoneType' object is not callable`，
+            # 报错位置离真正的原因很远。
+            self.spec_norm = nn.Identity()
         else:
-            self.spec_norm = None
+            # 未知取值：**在这里就报错**，不要留到 forward 里才炸。
+            # 原来写成 `self.spec_norm = None`，于是配置里拼错一个字母，
+            # 要等到训练跑到第一个 batch 才崩，而且报错信息完全看不出
+            # 是 spec_norm 写错了。
+            raise ValueError(
+                f"spec_norm 取值不认识：{spec_norm!r}；"
+                f"可用的是 'mn'（默认，只在有掩码时生效）、'mvn'、'bn'、'none'"
+            )
         if do_spec_aug:
             self.specaug = FbankAug(
                 freq_start_bin=freq_start_bin,

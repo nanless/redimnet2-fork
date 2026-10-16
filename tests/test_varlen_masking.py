@@ -73,7 +73,20 @@ MIN_COS_HALF_VALID = 0.90      # 半有效掩码 vs 逐条（实测约 0.95，�
 # **传 lengths 的结果**必须比**不传 lengths 的结果**明显更接近逐条推理。
 # 掩码生效时这两个数差很多（实测 0.955 对 0.325），掩码失效时两者相等（都是 0.325），
 # 于是这条判据在掩码坏掉时会**确实失败**。
-MIN_MASK_BENEFIT = 0.30        # 传 lengths 要比不传至少好这么多（成对比较）
+# 判据用**比例**，不用绝对差值。
+#
+# 为什么：不同权重的"不传掩码"基线离 1 有多远差别很大 ——
+# 实测混合数据那几个权重的基线本来就有 0.74~0.83（向量高度相关），
+# 于是"可改善空间"只有 0.17~0.26，绝对差值再大也到不了 0.30。
+#
+# 实测（20 个权重 × 两种长度 = 40 组）：
+#   绝对差值        0.202 ~ 0.658   <- 随基线尺度变化，不能当固定阈值
+#   补回比例(下面这个) 0.900 ~ 0.995   <- 与尺度无关，很窄
+#
+# 补回比例 = (传 lengths - 不传 lengths) / (1 - 不传 lengths)，
+# 意思是"把'不传掩码'离完全一致还差的那部分，补回来了多少"。
+# 取 0.80 作下限：实测最小 0.900，留了余量；掩码失效时这个比例是 0。
+MIN_MASK_BENEFIT_FRACTION = 0.80
 
 
 def cos(a: torch.Tensor, b: torch.Tensor) -> float:
@@ -186,6 +199,9 @@ def check_mask_effect(ckpt, quick):
         'half_valid': half_valid,
         'no_lengths': no_lengths,
         'mask_benefit': half_valid - no_lengths,
+        # 与尺度无关的判据：把"不传掩码"离完全一致还差的那部分补回了多少
+        'mask_benefit_fraction': ((half_valid - no_lengths) / (1.0 - no_lengths)
+                                  if no_lengths < 0.999999 else 1.0),
         'long_unaffected': cos(emb[0], ref_long),
         # 只作参考：该模型对两段无关音频的余弦，代表这个空间的"区分度尺度"
         'baseline': baseline,
@@ -228,7 +244,7 @@ def main(argv=None):
         name = os.path.basename(ckpt)
         ok_mech = r['all_valid_rel_l2'] <= MAX_REL_L2_ALL_VALID
         ok_half = r['half_valid'] >= MIN_COS_HALF_VALID
-        ok_benefit = r['mask_benefit'] >= MIN_MASK_BENEFIT
+        ok_benefit = r['mask_benefit_fraction'] >= MIN_MASK_BENEFIT_FRACTION
         ok_long = r['long_unaffected'] >= MIN_COS_ALL_VALID
         print(f'  {name}')
         print(f'    全有效掩码机制（相对L2）: {r["all_valid_rel_l2"]:.3e}  '
@@ -238,8 +254,9 @@ def main(argv=None):
               f'(要求 >= {MIN_COS_HALF_VALID})          '
               f'{"通过" if ok_half else "未通过"}')
         print(f'    不传 lengths vs 逐条   : {r["no_lengths"]:.6f}  (只作对照)')
-        print(f'    掩码带来的改善（成对）  : {r["mask_benefit"]:.6f}  '
-              f'(要求 >= {MIN_MASK_BENEFIT})          '
+        print(f'    掩码带来的改善（成对）  : {r["mask_benefit"]:.6f}  (只作对照)')
+        print(f'    补回比例（与尺度无关）  : {r["mask_benefit_fraction"]:.6f}  '
+              f'(要求 >= {MIN_MASK_BENEFIT_FRACTION})          '
               f'{"通过" if ok_benefit else "未通过"}')
         print(f'    同批里长的那条不受影响 : {r["long_unaffected"]:.6f}  '
               f'(要求 >= {MIN_COS_ALL_VALID})          '
@@ -254,9 +271,10 @@ def main(argv=None):
                 f'{name}: 传 lengths 的余弦 {r["half_valid"]:.6f} < {MIN_COS_HALF_VALID}')
         if not ok_benefit:
             failures.append(
-                f'{name}: 传 lengths({r["half_valid"]:.6f}) 并不比不传'
-                f'({r["no_lengths"]:.6f}) 好多少，差 {r["mask_benefit"]:.6f}，'
-                f'不足 {MIN_MASK_BENEFIT} —— 掩码很可能没有生效')
+                f'{name}: 传 lengths({r["half_valid"]:.6f}) vs 不传'
+                f'({r["no_lengths"]:.6f})，只补回了 '
+                f'{r["mask_benefit_fraction"]:.4f} 的差距，'
+                f'不足 {MIN_MASK_BENEFIT_FRACTION} —— 掩码很可能没有生效')
         if not ok_long:
             failures.append(
                 f'{name}: 同批长条余弦 {r["long_unaffected"]:.6f} < {MIN_COS_ALL_VALID}')

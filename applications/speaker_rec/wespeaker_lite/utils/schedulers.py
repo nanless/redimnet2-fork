@@ -281,8 +281,27 @@ class ExponentialDecayPlateauWithWarmup(BaseClass):
                 else:
                     eff_rate = self.decay_rate
                 if self.staircase:
-                    current_lr = self.initial_lr * (
-                        eff_rate ** (decay_steps_adjusted // self.decay_steps))
+                    # 阶梯模式是**离散**的：lr 只在整周期处跳变。
+                    #
+                    # 而 `eff_rate` 是按 `n_periods = total_decay_steps / decay_steps`
+                    # 反解出来的，这个数通常不是整数（实测 14000 步时是 9.4）。
+                    # 所以阶梯模式**不可能**每一级都既保持阶梯形状、又刚好落在
+                    # `final_lr` —— 只能二选一：
+                    #   * 用 `//` 只跳整周期：最后一步落在 1.34e-4（差了 eff_rate 倍），
+                    #     永远到不了目标，这正是修之前的行为；
+                    #   * 让**最后一步显式落到目标**：中途仍是阶梯，收尾对得上。
+                    #
+                    # 这里选后者。中途的阶梯位置按"已完成比例 × 总周期数"向下取整，
+                    # 保持"每隔 decay_steps 掉一档"的形状；只在最后一步覆盖为目标值。
+                    n_periods_total = total_decay_steps / self.decay_steps
+                    periods_done = math.floor(
+                        (decay_steps_adjusted / total_decay_steps) * n_periods_total
+                    ) if total_decay_steps > 0 else 0
+                    if step >= self.max_iter - 1:
+                        # 最后一步：直接落到目标（这里面 target 已经除过 lr_coeff）
+                        current_lr = target
+                    else:
+                        current_lr = self.initial_lr * (eff_rate ** periods_done)
                 else:
                     current_lr = self.initial_lr * math.exp(
                         (decay_steps_adjusted / self.decay_steps) *

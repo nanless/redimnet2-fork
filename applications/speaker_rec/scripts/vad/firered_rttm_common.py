@@ -369,7 +369,7 @@ def sidecar_path(
 
 
 def check_mirror_uniqueness(
-    records: "Sequence[AudioRecord]",
+    records: "Iterable[AudioRecord]",
     audio_root: Optional[Path],
     output_root: Optional[Path],
     suffix: str = DEFAULT_RTTM_SUFFIX,
@@ -398,7 +398,7 @@ def check_mirror_uniqueness(
     # 内存实测（这是反复踩过的地方，写清楚免得再绕）：
     #   * `owners[path].append(...)`（每个路径一个列表）: 523 B/条 -> 1152 万条 **5.6 GB**
     #   * 只留第一个来源的"路径 -> 来源"映射:            256 B/条 -> **2.95 GB**
-    #   * 只把路径的 16 字节摘要放进集合（现在这个）:      140 B/条 -> **1.6 GB**
+    #   * 只把路径的 16 字节摘要放进映射（现在这个）:      约 270~285 B/条 -> **约 3.1~3.3 GB**
     #
     # 曾经想再压到 O(1)：加一层 Bloom 过滤器，说"没见过"就直接跳过。
     # **那是错的，已撤回** —— Bloom 说"没见过"时确实可以直接过，
