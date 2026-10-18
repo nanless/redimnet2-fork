@@ -409,6 +409,34 @@ def normalize_vox1_wav_layout(source_root: Path, target_root: Path) -> Path:
                 f"Existing {target_wav} points to {target_wav.resolve()}, "
                 f"not requested source {source_wav}"
             )
+        # 这里可能是两种情况，必须分开处理：
+        #   1. 上一次已经完整归一化过 -> 直接返回；
+        #   2. **上一次搬到一半被中断**（Ctrl-C、磁盘满、机器重启）：
+        #      `wav/` 已经建好、只搬了一部分说话人目录，剩下的还留在根下。
+        #
+        # 情况 2 原来会**静默返回成功**（因为 `wav/` 已存在且指向正确），
+        # 于是根下那些说话人目录永远不会被搬进 `wav/`。
+        # 后果是静默的：读 `<root>/wav/<说话人>/...` 的下游代码会**少掉那些说话人**，
+        # 而 VoxCeleb1 的评测协议因此少了试验、EER 却照常算出来 —— 数字错了但看不出来。
+        # 实测复现过：三个说话人目录、搬完一个后重跑，返回成功，
+        # 但另外两个仍留在根下。
+        #
+        # 所以这里补一次：把根下"看起来还是说话人目录"的补搬过去。
+        # 只在 `wav/` 是**真实目录**（不是软链接）时才做 ——
+        # 软链接说明走的是"直接指向原树"那条路，不存在搬一半的问题。
+        if not target_wav.is_symlink():
+            leftovers = [
+                path
+                for path in target_root.iterdir()
+                if path.is_dir() and path != target_wav
+                and any(path.glob("*/*.wav"))
+            ]
+            for path in leftovers:
+                destination = target_wav / path.name
+                if destination.exists():
+                    # 目标已存在就不动它，避免覆盖（正常流程里不该发生）
+                    continue
+                shutil.move(str(path), destination)
         return target_wav
 
     if source_wav == target_root.resolve():
@@ -421,7 +449,7 @@ def normalize_vox1_wav_layout(source_root: Path, target_root: Path) -> Path:
         ]
         if not speaker_dirs:
             raise RuntimeError(f"No VoxCeleb1 speaker directories under {target_root}")
-        target_wav.mkdir()
+        target_wav.mkdir(exist_ok=True)
         for speaker_dir in speaker_dirs:
             shutil.move(str(speaker_dir), target_wav / speaker_dir.name)
         return target_wav
