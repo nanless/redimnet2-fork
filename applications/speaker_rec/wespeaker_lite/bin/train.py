@@ -677,6 +677,32 @@ def train(config='conf/config.yaml', **kwargs):
                         print('resume: 参数组超参以当前配方为准: {}: {} -> {}'
                               .format(key, group.get(key), value))
                     group[key] = value
+            # 把"形状和当前参数对不上"的优化器状态项丢掉。
+            #
+            # 跨阶段续训（PTN → LM）时分类头会被重建成新的类别数
+            # （实测 PTN 的 119274×3 = 357822 → LM 的 115362），
+            # 但存档里的动量缓冲还是旧形状。`load_state_dict` **不会**因此报错
+            # （它只校验参数组，不校验 state 里的张量形状），
+            # 于是错误要等到第一步 `optimizer.step()` 才炸：
+            #
+            #     RuntimeError: The size of tensor a (357822) must match
+            #                   the size of tensor b (115362)
+            #
+            # 下面那个 `except (ValueError, KeyError)` 本来是想兜这种情况的，
+            # 但异常根本不在那里抛，所以兜不住 —— LM 阶段因此完全起不来。
+            # 这里显式丢掉对不上的项：该参数从零动量开始，其余照旧。
+            _dropped = 0
+            for _param, _state in list(optimizer.state.items()):
+                for _key, _value in list(_state.items()):
+                    if torch.is_tensor(_value) and _value.shape != _param.shape:
+                        del _state[_key]
+                        _dropped += 1
+                if not _state:
+                    del optimizer.state[_param]
+            if _dropped:
+                print('resume: 丢弃了 {} 个与当前参数形状不符的优化器状态项'
+                      '（分类头被重建过，这些参数从零动量开始）'.format(_dropped))
+
             n_buffers = sum(1 for s in optimizer.state.values()
                             if 'momentum_buffer' in s)
             print('resume: restored optimizer state from {} '
