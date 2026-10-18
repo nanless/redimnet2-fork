@@ -110,6 +110,28 @@ class FbankAug(nn.Module):
         x = self.mask_along_axis(x, dim=1)
         return x
 
+class _NoSpecNorm(nn.Module):
+    """"不做归一化"的占位模块。
+
+    需要它是因为 `forward` 里有**两条**调用路径，对 `self.spec_norm` 的要求不同：
+
+        x = self.spec_norm(x)                     # 无掩码，要求可调用、且只吃一个参数
+        if self.spec_norm is not None:            # 有掩码，吃两个参数 (x, frame_mask)
+            x = self.spec_norm(x, frame_mask)
+
+    所以"不做归一化"这件事：
+      * 用 `None` 表示 -> 无掩码那条路会 `'NoneType' object is not callable`；
+      * 用 `nn.Identity()` 表示 -> 有掩码那条路会
+        `TypeError: Identity.forward() takes 2 positional arguments but 3 were given`。
+    两种写法都只能满足一条路径（这两个坑实测都踩过）。
+
+    这个模块接受可选的第二个参数，两条路都能走，返回原值不变。
+    """
+
+    def forward(self, x, mask=None):  # noqa: D102 - 见类文档
+        return x
+
+
 class MelBanks(nn.Module):
     def __init__(self, 
         sample_rate=16000, 
@@ -174,12 +196,10 @@ class MelBanks(nn.Module):
         elif spec_norm == 'bn':
             self.spec_norm = nn.BatchNorm1d(n_mels)
         elif spec_norm in ('none', None):
-            # 显式要求不做归一化时才用 Identity。
-            # 用 Identity 而不是 None：`forward` 里是直接调用的
-            # （`x = self.spec_norm(x)`），留成 None 会在跑到那一步时报
-            # `TypeError: 'NoneType' object is not callable`，
-            # 报错位置离真正的原因很远。
-            self.spec_norm = nn.Identity()
+            # 显式不做归一化。用能接受可选掩码的空操作模块，
+            # 这样无掩码与有掩码两条路径都能走（详见 `_NoSpecNorm` 的说明：
+            # 用 None 或 nn.Identity 都只能满足其中一条）。
+            self.spec_norm = _NoSpecNorm()
         else:
             # 未知取值：**在这里就报错**，不要留到 forward 里才炸。
             # 原来写成 `self.spec_norm = None`，于是配置里拼错一个字母，
@@ -187,7 +207,8 @@ class MelBanks(nn.Module):
             # 是 spec_norm 写错了。
             raise ValueError(
                 f"spec_norm 取值不认识：{spec_norm!r}；"
-                f"可用的是 'mn'（默认，只在有掩码时生效）、'mvn'、'bn'、'none'"
+                f"可用的只有 'mn'（默认）、'mvn'、'bn'（这三个都只在无掩码时可用），"
+                f"以及 'none'（不做归一化）"
             )
         if do_spec_aug:
             self.specaug = FbankAug(
