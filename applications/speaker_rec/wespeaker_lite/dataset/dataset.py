@@ -391,37 +391,51 @@ def Dataset(data_type,
     # resample
     resample_rate = configs.get('resample_rate', 16000)
     dataset = Processor(dataset, processor.resample, resample_rate)
-    # speed perturb
     speed_perturb_flag = configs.get('speed_perturb', True)
+
+    # ── 按语音活动边界取片段：**必须排在变速之前** ──
+    #
+    # 取段的实现是"拿着 RTTM 里的**绝对时间**，回原始文件里把那段读出来"
+    # （`read_audio_span`），它读的是**磁盘上的原始音频**。
+    # 如果变速排在它前面，变速的结果会被这次读盘整个覆盖掉 ——
+    # 波形回到未变速的原样，但 `speed_perturb` 已经把 label 改成了
+    # "另一个说话人"（`label + num_spks*speed_idx`）。
+    # 于是同一段原始音频被当成最多 3 个不同说话人训练。
+    # 实测确认过：变速 0.9x/1.1x 之后取段，拿到的波形与原始文件逐位相同（maxdiff 0.0）。
+    #
+    # 所以顺序必须是"先按边界把内容读出来，再做变速"。
+    # 变速本身会更新 `num_samples`（见 processor.speed_perturb）。
+    if (not whole_utt) and vadseg:
+        # 按语音活动边界取片段：从"段边界到段边界"挑一段完整的语音，
+        # 替代随机位置的切法。片段长度仍落在 [min_sec, max_sec] 里，
+        # 所以下游的分桶与补零逻辑原样可用。
+        vad_cfg = get_vad_segment_config(configs)
+        print(f"VAD_SEG : enabled, {vad_cfg}")
+        dataset = Processor(dataset, processor.vad_select_segment,
+                            rttm_suffix=vad_cfg['rttm_suffix'],
+                            rttm_root=vad_cfg['rttm_root'],
+                            rttm_root_depth=vad_cfg['rttm_root_depth'],
+                            audio_root=vad_cfg['audio_root'],
+                            min_sec=vad_cfg['min_sec'],
+                            max_sec=vad_cfg['max_sec'],
+                            target_sec=vad_cfg['target_sec'],
+                            pad_sec=vad_cfg['pad_sec'],
+                            merge_gap_sec=vad_cfg['merge_gap_sec'],
+                            min_speech_sec=vad_cfg['min_speech_sec'],
+                            cut_policy=vad_cfg['cut_policy'],
+                            low_speech_policy=vad_cfg['low_speech_policy'],
+                            low_speech_retries=vad_cfg['low_speech_retries'],
+                            missing_policy=vad_cfg['missing_policy'],
+                            read_fail_policy=vad_cfg['read_fail_policy'],
+                            fallback_chunk_sec=vad_cfg['fallback_chunk_sec'])
+
+    # speed perturb（对已经取好的片段做变速；非 vadseg 时顺序与从前一致）
     if speed_perturb_flag:
         dataset = Processor(dataset, processor.speed_perturb,
                             len(spk2id_dict))
-    if (not whole_utt):
-        # random chunk
-        if vadseg:
-            # 按语音活动边界取片段：从"段边界到段边界"挑一段完整的语音，
-            # 替代随机位置的切法。片段长度仍落在 [min_sec, max_sec] 里，
-            # 所以下游的分桶与补零逻辑原样可用。
-            vad_cfg = get_vad_segment_config(configs)
-            print(f"VAD_SEG : enabled, {vad_cfg}")
-            dataset = Processor(dataset, processor.vad_select_segment,
-                                rttm_suffix=vad_cfg['rttm_suffix'],
-                                rttm_root=vad_cfg['rttm_root'],
-                                rttm_root_depth=vad_cfg['rttm_root_depth'],
-                                audio_root=vad_cfg['audio_root'],
-                                min_sec=vad_cfg['min_sec'],
-                                max_sec=vad_cfg['max_sec'],
-                                target_sec=vad_cfg['target_sec'],
-                                pad_sec=vad_cfg['pad_sec'],
-                                merge_gap_sec=vad_cfg['merge_gap_sec'],
-                                min_speech_sec=vad_cfg['min_speech_sec'],
-                                cut_policy=vad_cfg['cut_policy'],
-                                low_speech_policy=vad_cfg['low_speech_policy'],
-                                low_speech_retries=vad_cfg['low_speech_retries'],
-                                missing_policy=vad_cfg['missing_policy'],
-                                read_fail_policy=vad_cfg['read_fail_policy'],
-                                fallback_chunk_sec=vad_cfg['fallback_chunk_sec'])
-        elif varlen:
+
+    if (not whole_utt) and (not vadseg):
+        if varlen:
             # Variable-length path: the crop is a random length inside the
             # configured bounds rather than a fixed chunk_len, so the batch
             # still carries utterances of differing true lengths.

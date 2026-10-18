@@ -717,6 +717,11 @@ def parse_raw_fast_varlen(
                     f"shorter than {min_sec:.2f}s: {obj}")
                 continue
 
+            # 记下**裁剪之前**的真实长度。超过 max_sec 的音频下面会被裁成
+            # 随机的 max_sec 窗口，但按语音边界取段要用的是**文件真实时长**
+            # （RTTM 里的时间是原始文件里的绝对时间），不能拿裁剪后的长度去当。
+            full_num_samples = int(len(waveform))
+
             max_samples = int(max_sec * sample_rate)
             if len(waveform) > max_samples:
                 # Trim to a random window of at most max_sec. Reusing
@@ -742,7 +747,8 @@ def parse_raw_fast_varlen(
                           path=wav_file,
                           wav=waveform,
                           sample_rate=sample_rate,
-                          num_samples=waveform.size(-1))
+                          num_samples=waveform.size(-1),
+                          full_num_samples=full_num_samples)
             yield sample
         except Exception as ex:
             traceback.print_exc()
@@ -891,9 +897,19 @@ def vad_select_segment(data,
         wav = sample['wav'][0]
         sample_rate = sample.get('sample_rate', 16000)
         wav_path = sample.get('path', None)
-        # 这一条音频自己有多长：优先用刚读出来的波形长度（它就是真实长度），
-        # 读不到时才退回用上游给的时长。
-        clip_duration = wav.size(-1) / float(sample_rate)
+        # 这一条音频**真实**有多长。
+        #
+        # 优先用上游记下的 `full_num_samples`：变长读取器会把超过 `max_sec`
+        # 的音频裁成随机的 `max_sec` 窗口，这时 `wav.size(-1)` 已经不是文件长度了，
+        # 而 RTTM 里的时间是**原始文件**里的绝对时间 —— 拿裁剪后的长度去判断
+        # "片段有没有越界"，会把本来合法的片段判成越界、错误地退回随机切。
+        # 实测：10002 条里 3386 条 >6 秒，其中 743 条（21.9%）因此错误回退，
+        # 而这 743 条用真实时长全都能成功。
+        full_n = sample.get('full_num_samples', None)
+        if full_n:
+            clip_duration = float(full_n) / float(sample_rate)
+        else:
+            clip_duration = wav.size(-1) / float(sample_rate)
 
         segments = None
         rttm_path = None
@@ -1138,6 +1154,15 @@ def speed_perturb(data, num_spks):
                 waveform, sample_rate, speeds[speed_idx])
             sample['wav'] = wav
             sample['label'] = sample['label'] + num_spks * speed_idx
+            # 变速会改变波形长度，`num_samples` 必须跟着更新。
+            #
+            # 原来这里不更新，靠下游（`random_chunk` / `random_chunk_range`）
+            # 重新算。那两条路都排在变速之后，所以一直是巧合地正确。
+            # 但 `vad_select_segment` 现在要排在变速**之前**（见 dataset.py 的说明），
+            # 于是变速成了最后一个改波形的步骤，这里不更新就会留下一个
+            # 与波形不符的 num_samples，下游按它补零、建掩码就会错位。
+            if 'num_samples' in sample:
+                sample['num_samples'] = wav.size(-1)
 
         yield sample
 
