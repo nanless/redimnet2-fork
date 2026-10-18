@@ -170,10 +170,11 @@ Use `mix_join_lm/data.list` and `mix_join_lm/utt2spk` for LM training.
 
 ## Configure training
 
-The copied recipes keep the source experiment schedule and model defaults, with
-generic `/data/...` paths. Use a local overlay instead of editing the recipes in
-place. The overlay and command examples below already carry this machine's real
-data location.
+The copied recipes keep the source experiment schedule and model defaults, and
+already carry this machine's real shared-filesystem paths — there are no
+`/data/...` paths left in them. If you need to point them somewhere else, use a
+local overlay instead of editing the recipes in place; the overlay and command
+examples below show how.
 
 > **Note on this machine:** there is no `/data` directory here, and the recipes
 > no longer assume one. Every recipe already points at the real shared-filesystem

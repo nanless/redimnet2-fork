@@ -113,16 +113,29 @@ AAC/M4A → 16 kHz mono WAV 依赖系统 **`ffmpeg`**（转换参数固定为 16
 脚本对目录名有**硬性约定**，不匹配就直接退出（`exit 1`）：
 VoxBlink2 必须是 `<vb2-root>/audio/`，CN-Celeb2 必须是 `<cnc2-root>/CN-Celeb2_flac/data/`。
 
-### 本机现状：这两份清单还没生成
+### 本机现状：这两份清单**已经生成好了**
 
-在本机核对时，`vox2_vb2_cnc2_v0/` 下的 `mix_join/`、`mix_join_lm/`，
-连中间产物 `vb2_full/`、`cnc2_full/` 都**完全不存在**，一份清单都没有（全盘查找无命中）。
-原始语料本身是齐的：VoxBlink2 的 `audio/` 有 111,284 个说话人目录（带校验通过的解压完成标记），
-CN-Celeb2 的 flac 与 wav 各 524,787 句。
+（这一段以前写的是"还没生成、一份清单都没有"——那是更早时候的状态。
+2026-10-14 到 10-15 之间这些清单已经生成并逐行核对过，这里改成现状。）
 
-也就是说**混合线现在还开不了训**，下面两条命令要自己先跑。
-注意它们默认往 `/data/wespeaker_data/...` 写，会先撞上第 2 节说的路径问题，
-`--output-root` 和 `--vb2-root` / `--cnc2-root` 都要换成自己的真实位置。
+`vox2_vb2_cnc2_v0/` 下四份清单都在：
+
+```text
+mix_join/data.list       11,521,178 行（主训练）
+mix_join_lm/data.list     5,021,010 行（大间隔微调，按最短 5 秒过滤）
+vb2_full/data.list        9,904,382 行（中间产物）
+cnc2_full/data.list         524,787 行（中间产物）
+```
+
+原始语料本身是齐的：VoxBlink2 的 `audio/` 有 111,284 个说话人目录
+（带校验通过的解压完成标记），CN-Celeb2 的 flac 与 wav 各 524,787 句。
+
+**所以混合线可以直接开训，不必先跑下面的脚本。**
+下面两条命令只在需要**重新生成**清单时用（例如换了数据位置）。
+注意这两个脚本**没有默认输出路径**：`--output-root` 与
+`--vb2-root` / `--cnc2-root` 都必须显式给，不给会直接报错退出。
+（以前这里写的是"它们默认往 `/data/wespeaker_data/...` 写"——
+现在脚本没有默认值了，也不存在 `/data` 这个目录。）
 
 ### 主训练（PTN）用的样本清单
 
@@ -205,7 +218,7 @@ validation:
 exp_dir: /root/group-shared/voiceprint/data/wespeaker_data/exp/vox2/b0_ptn
 ```
 
-> **`exp_dir` 别落在容器根上。** 本机 `/` 只剩约 2 GB，训练日志和权重会直接把它写满。
+> **`exp_dir` 别落在容器根上。** 本机 `/` 可用空间只有几 GB，训练日志和权重会直接把它写满。（本仓库自己在共享盘上，所以配方默认的 `exp_dir: exp/...` 是写在共享盘上的；只有你把它设成 `/` 或 `/tmp` 下的绝对路径才会占容器根。）
 > 写到共享盘，或写到 `/dev/shm`（本机约 325 GB 可用）。
 
 改增强路径时，**整段带上 `aug_setup`**（列表是整段替换，只改一半容易指到旧 MUSAN）。
@@ -353,7 +366,7 @@ flowchart TB
 
 **混合数据**
 
-- **`mix_join` / `mix_join_lm` 还没生成**（本机就是这种状态）→ 先跑这一节的两个脚本。  
+- `mix_join` / `mix_join_lm` **已经生成好了**，混合线可直接开训；只有要重新生成时才跑这一节的两个脚本。  
 - 未先生成 vox2 的 `data.list` / `utt2spk`。  
 - VB2/CNC2 目录层级不对（脚本要求 `<vb2-root>/audio/` 与 `<cnc2-root>/CN-Celeb2_flac/data/`）。  
 - 缺 `pyarrow` / `soundfile`。  
