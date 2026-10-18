@@ -102,6 +102,15 @@ dataset_args:
   vad_segments:
     enable: true
     rttm_suffix: .rttm          # 分段文件名 = 音频文件名 + 这个后缀
+    # 分段文件**不在音频旁边**，而是集中放在一棵镜像树里（音频目录只读）。
+    # 这三项必须给：不给 rttm_root 就会去音频旁边找，一条都找不到，
+    # 于是每条样本都走 missing_policy 回退成"随机位置切"——
+    # 训练照跑、日志也不报错，但按语音边界取段这个功能等于没开。
+    # （实测踩过：6 份 vadseg 配方原来只写了 rttm_suffix，
+    #   抽 2001 条真实数据全部 vad_no_rttm。）
+    rttm_root: /root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_join/rttm_firered
+    rttm_root_depth: 2          # 保留音频路径最后两层目录名（说话人/视频）
+    audio_root: /root/group-shared/voiceprint/data/speech/speaker_verification
     min_sec: 1.0                # 片段允许的最短时长
     max_sec: 6.0                # 片段允许的最长时长（与 varlen.max_sec 一致）
     target_sec: 3.5             # 想要的时长；不写就是 (min_sec+max_sec)/2
