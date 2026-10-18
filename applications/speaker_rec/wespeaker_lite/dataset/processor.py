@@ -1025,8 +1025,19 @@ def vad_select_segment(data,
         _mode = span['mode']
         stats[_mode] = stats.get(_mode, 0) + 1
 
-        chunk, _ = read_audio_span(wav_path, sample_rate,
-                                   span['start'], span['end'])
+        # 读盘可能**抛异常**（文件缺失、损坏、权限），不只是"返回空"。
+        # 原来这里没有 try：一个坏文件会直接把异常抛穿 DataLoader worker、
+        # 把训练打断，而配置里的 `read_fail_policy` 对这条最常见的失败路径
+        # 完全不起作用（实测：fallback 与 drop 两种取值都会抛 LibsndfileError）。
+        # 现在统一成"读失败"，交给下面的策略处理。
+        try:
+            chunk, _ = read_audio_span(wav_path, sample_rate,
+                                       span['start'], span['end'])
+        except Exception as exc:
+            chunk = None
+            stats['read_error'] = stats.get('read_error', 0) + 1
+            _drop_counter_incr('read_failed',
+                               f"{type(exc).__name__}: {exc} | {wav_path}")
         if chunk is None or len(chunk) == 0:
             stats['read_failed'] = stats.get('read_failed', 0) + 1
             if read_fail_policy == 'drop':

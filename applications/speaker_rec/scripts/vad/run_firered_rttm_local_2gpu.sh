@@ -22,7 +22,14 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
+# 本仓库根目录。`SCRIPT_DIR` 是 .../redimnet2-fork/applications/speaker_rec/scripts/vad，
+# 往上**四层**才是仓库根（五层会落到 /root/code/github_repos，那不是 git 仓库）。
+# 这个值用来算 TOOL_GIT_SHA 与 PYTHONPATH：少一层的话
+# `git rev-parse HEAD` 失败，于是 1152 万个 RTTM 头部都记成
+# `tool_git_sha=unknown`（实测确认过：抽 806 个文件，790 个是 unknown）。
+# 云脚本用的是 `git -C "${SCRIPT_DIR}"`，那种写法更稳，这里对齐。
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null \
+             || (cd "${SCRIPT_DIR}/../../../.." && pwd))"
 
 # ---------------------------------------------------------------------------
 # 路径与运行参数。全部可以用环境变量覆盖。
