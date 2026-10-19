@@ -24,7 +24,7 @@ from tqdm import tqdm
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from redimnet2.redimnet2 import ReDimNet2Wrap  # noqa: E402
+from scripts.checkpoint_utils import load_embedding_checkpoint  # noqa: E402
 
 OFFICIAL_MIX = {
     "b6-vb2+vox2_v0-lm.pt": {"Vox1-B": 0.89, "SITW": 0.74, "VOICES": 2.55, "CN-Celeb": 7.49},
@@ -82,12 +82,8 @@ def extract_embeddings(model, dataset, device) -> dict[str, np.ndarray]:
     return out
 
 
-def load_checkpoint(path: Path, device: torch.device):
-    ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    model = ReDimNet2Wrap(**ckpt["model_config"])
-    model.load_state_dict(ckpt["state_dict"])
-    model.to(device).eval()
-    return model
+def load_checkpoint(path: Path, device: torch.device, training_config: Path | None = None):
+    return load_embedding_checkpoint(path, device, training_config)
 
 
 def score_trials(emb, trials: list[tuple[int, str, str]]) -> float:
@@ -326,6 +322,8 @@ def main():
     ap.add_argument("--out-csv", type=Path,
                     default=REPO / "checkpoints" / "eval_ood_results.csv")
     ap.add_argument("--only-mix", action="store_true", help="Only mix-table checkpoints")
+    ap.add_argument("--training-config", type=Path,
+                    help="Saved experiment config.yaml, required only for raw training checkpoints")
     args = ap.parse_args()
 
     benches = [b.strip() for b in args.benchmarks.split(",") if b.strip()]
@@ -336,12 +334,22 @@ def main():
         if args.only_mix:
             ckpts = [p for p in ckpts if p.name in OFFICIAL_MIX]
 
+    if not ckpts:
+        raise SystemExit(f"No checkpoints in {args.ckpt_dir}")
+    roots = {"Vox1-B": args.vox1_root, "VOICES": args.voices_root,
+             "CN-Celeb": args.cnceleb_root}
+    for benchmark in benches:
+        if benchmark not in roots:
+            raise SystemExit(f"Unknown benchmark {benchmark}")
+        if roots[benchmark] is None:
+            raise SystemExit(f"Missing dataset root for {benchmark}; set the corresponding --*-root")
+
     device = torch.device(args.device)
     cache = {}
     rows = []
     for ckpt in ckpts:
         print(f"\n=== {ckpt.name} ===")
-        model = load_checkpoint(ckpt, device)
+        model = load_checkpoint(ckpt, device, args.training_config)
         row = {"checkpoint": ckpt.name}
         for b in benches:
             if b not in cache:

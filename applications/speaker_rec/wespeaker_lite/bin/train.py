@@ -49,6 +49,17 @@ from wespeaker_lite.utils.utils import get_logger, parse_config_or_kwargs, set_s
     spk2id, save_spk2id, load_spk2id, reassemble_projection_head
 from wespeaker_lite.utils.utils import seed_worker
 
+def _select_resume_training_state(checkpoint_extra, resume_checkpoint):
+    """Return optimizer/scaler state only for a same-stage checkpoint resume.
+
+    model_ckpt initializes a new training stage from model parameters. It must
+    not import the previous stage's momentum or mixed-precision loss scale.
+    """
+    if resume_checkpoint is None:
+        return None, None
+    return checkpoint_extra.get('optimizer'), checkpoint_extra.get('scaler')
+
+
 def _make_train_logger(exp_dir, rank):
     """Build the training logger, writing to ``train.log`` on rank 0 only.
 
@@ -59,7 +70,11 @@ def _make_train_logger(exp_dir, rank):
     that still forwards to stderr via the root configuration.
     """
     if rank == 0:
-        return get_logger(exp_dir, 'train.log')
+        logger = get_logger(exp_dir, 'train.log')
+        # basicConfig is already configured by train(); inherited WARNING or
+        # CRITICAL would otherwise discard INFO progress before the file handler.
+        logger.setLevel(logging.INFO)
+        return logger
     logger = logging.getLogger('wespeaker_train_rank{}'.format(rank))
     logger.propagate = True
     return logger
@@ -446,9 +461,9 @@ def train(config='conf/config.yaml', **kwargs):
     # starting file -- that pin takes priority over both.
     ckpt_to_load = checkpoint or configs.get('model_ckpt', None)
 
-    # Optimizer / GradScaler state found in the checkpoint, restored further down
-    # once both objects exist. Reported on every rank because every rank owns its
-    # own optimizer instance and all of them need the momentum buffers back.
+    # Only a same-stage checkpoint resume may restore optimizer / GradScaler
+    # state. A model_ckpt cold start loads model parameters but starts both
+    # training states fresh, even when the source file happens to contain them.
     resume_optimizer_state = None
     resume_scaler_state = None
 
@@ -462,8 +477,11 @@ def train(config='conf/config.yaml', **kwargs):
         # save_checkpoint (and the published weight files), and the dict format
         # that additionally carries optimizer/scaler/epoch.
         state_dict, ckpt_extra = extract_state_dict(raw_checkpoint)
-        resume_optimizer_state = ckpt_extra.get('optimizer')
-        resume_scaler_state = ckpt_extra.get('scaler')
+        resume_optimizer_state, resume_scaler_state = _select_resume_training_state(
+            ckpt_extra, checkpoint)
+        if checkpoint is None:
+            print('cold start: model_ckpt loads model parameters only; '
+                  'optimizer/scaler start fresh')
         print('checkpoint format: {} (keys: {})'.format(
             'training dict' if ckpt_extra else 'bare state_dict',
             ', '.join(sorted(ckpt_extra.keys())) if ckpt_extra else 'state_dict only'))
@@ -648,7 +666,8 @@ def train(config='conf/config.yaml', **kwargs):
     # type makes the saved groups line up with different tensors, and
     # `load_state_dict` will silently load mismatched momentum rather than raise.
     # That is why the restore is skipped for the cold start from `model_ckpt`
-    # (there is nothing to restore) and only triggered by a real resume.
+    # (the previous stage state is deliberately ignored) and only triggered by
+    # a checkpoint resume within the current stage.
     if resume_optimizer_state is not None:
         try:
             # `load_state_dict` 会连**超参**一起覆盖，不只是动量缓冲。
@@ -783,7 +802,8 @@ def training_loop(
                 mix_aug=_mix_aug,
                 enable_amp=configs['enable_amp'],
                 log_batch_interval=configs['log_batch_interval'],
-                device=device)
+                device=device,
+                diagnostic_dir=configs['exp_dir'])
 
         dist.barrier(device_ids=[gpu])
 

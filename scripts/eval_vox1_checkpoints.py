@@ -46,7 +46,7 @@ from tqdm import tqdm
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from redimnet2.redimnet2 import ReDimNet2Wrap  # noqa: E402
+from scripts.checkpoint_utils import load_embedding_checkpoint  # noqa: E402
 
 
 PROTOCOL_FILES = {
@@ -158,16 +158,8 @@ def extract_embeddings(
     return out
 
 
-def load_checkpoint(path: Path, device: torch.device) -> torch.nn.Module:
-    ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    if isinstance(ckpt, dict) and "model_config" in ckpt and "state_dict" in ckpt:
-        model = ReDimNet2Wrap(**ckpt["model_config"])
-        model.load_state_dict(ckpt["state_dict"])
-    else:
-        raise ValueError(f"Unexpected checkpoint format: {path}")
-    model.to(device)
-    model.eval()
-    return model
+def load_checkpoint(path: Path, device: torch.device, training_config: Path | None = None):
+    return load_embedding_checkpoint(path, device, training_config)
 
 
 def eval_one(
@@ -217,6 +209,8 @@ def main():
         default=REPO / "checkpoints" / "eval_vox1_results.csv",
     )
     ap.add_argument("--only-lm", action="store_true", help="Only evaluate *-lm.pt")
+    ap.add_argument("--training-config", type=Path,
+                    help="Saved experiment config.yaml, required only for raw training checkpoints")
     args = ap.parse_args()
 
     proto_keys = [p.strip().upper() for p in args.protocols.split(",") if p.strip()]
@@ -238,7 +232,7 @@ def main():
     rows = []
     for ckpt_path in ckpts:
         print(f"\n=== {ckpt_path.name} ===")
-        model = load_checkpoint(ckpt_path, device)
+        model = load_checkpoint(ckpt_path, device, args.training_config)
         row = {"checkpoint": ckpt_path.name}
         for key in proto_keys:
             ppath = resolve_protocol(args.vox1_root, key)

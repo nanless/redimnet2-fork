@@ -1,57 +1,26 @@
-# ── 官方结果复现实验 ────────────────────────────────────────────────
-#
-# 这一份不是用来训练的，是用来**逐位复现官方结果**的。
-# 它在同目录 ptn.yaml / lm.yaml 的基础上只加两项，其余一字不改：
-#
-#   compile_backbone: null   ← 官方配方开着 torch.compile，而实测编译会让
-#                              训练**连跑两次结果都不同**（同一棵树、同一份配置，
-#                              673/747 个权重张量不一致）。要逐位对比必须关掉。
-#
-#   legacy_aug: true         ← 退回官方（修复前）的增强行为。本仓库修过
-#                              augs.py 两处缺陷（随机上界取不到、短噪声循环复制），
-#                              那两处会改变增强的随机流，因此不退回就复现不了。
-#
-# 另外官方基线（9d38486）的 meters.py 漏了 `meter` 命名空间，训练第 1 步就崩；
-# 本仓库已修。这一项不需要开关，修好的是崩溃，不影响数值。
-#
-# 实测：本配方 + 官方基线（只补 meters 命名空间）= 权重逐位一致
-#       （747 个张量全部 0 差异）。见 docs/11。
-# b6 LM — large-margin fine-tuning, 1 epoch, on the vox2 + vb2 + cnc2 mix.
-#
-# Pairs with the PTN recipe ptn_ha.yaml (exp/.../ptn_ha, trained to epoch 120).
-# Provenance:
-#   * model + spec/fbank + augmentation   <- ptn_ha.yaml (the cnc2 b6 model)
-#   * LM schedule (1 epoch, fixed margin 0.3, SGD + ExponentialDecrease,
-#     5 s crops / batch 48, do_lm)         <- exp/vox2_vb2_mix/b6_gnorm_50ep/lm_v2
-#   * train data = mix_join_lm data.list / utt2spk (>=5 s utts, A_/B_/C_ join)
-#
-# Inits from the PTN checkpoint; the projection head is reassembled from the PTN
-# spk2id.json — all 115,361 LM speakers are a strict subset of PTN's 119,273, so
-# the mapping is 1:1 (no random centroids). num_class and epoch_iter are
-# auto-computed by train.py from the data — do NOT set them here.
-# Augmentation reads MUSAN/RIRS from raw wav dirs via dataset_dir (no LMDB).
-#
-# Launch (8 GPUs):
-#   ./applications/speaker_rec/launch.sh applications/speaker_rec/examples/vb2_vox2_cnc2/recipes/redimnet2/b6/lm.yaml 8
-#   (the launcher runs train.py on the config; do_lm + model_ckpt drive LM)
+# 三语料 B6 官方公开配方的复现实验配置。
+# 真实官方基线：c5bbe0b76e37df698c403f8844e41304ceab6307。
+# 9d38486 属于 zhounan 的非官方提交，不能当作未经修改的官方代码。
+# 以官方三语料专用配方为依据，保留模型、批量、轮数、旧版学习率和增强分布。
+# 本次明确关闭 torch.compile，继续直接读取增强目录；这些与公开配方有差别。
+# legacy_aug 恢复旧版随机上界和短噪声循环填充，不保证整个训练逐位重现。
+# 以完整测试录音的等错误率评测结果验收，不能把短训练权重相同当作最终指标复现。
+# PTN 训练 120 轮，LM 明确从第 115 轮权重开始，沿用官方 lm.yaml 的 model_ckpt。
+# 第 115/120 轮与目录名 100ep 的冲突来自官方文件；作者未公开最终权重选轮记录。
+# 云端必须为本实验覆盖独立 exp_dir，并核实 LM 的 model_ckpt 和 spk2id_map_path。
+# 核查说明：docs/12-三语料B6官方复现配方核查.md。
+# 大间隔微调使用 500 帧固定裁剪、每卡 48 条、1 轮。
+# 以 PTN 的 spk2id.json 按说话人名称重组分类头，禁止随机替代。
 
-# gpus: removed - not read by the training code; the GPU count comes from the
-#   number passed to launch.sh above (and CUDA_VISIBLE_DEVICES).
-# grad_accum_steps: removed - gradient accumulation is not implemented.
-# eval_step_interval: removed - validation runs once per epoch, not per step.
-# scheduler_args.scale_ratio: removed - overwritten at startup by
-#   train.py as world_size * batch_size / 64, so the YAML value was discarded.
-
-compile_backbone: null   # 关掉编译：编译会让训练不可复现
+compile_backbone: null   # 本次固定使用未编译模型，单独记录这一差异
 data_type: raw_fast
 do_lm: true
 enable_amp: true
 seed: 42
 
 exp_dir: exp/vox2_vb2_cnc2/b6_gnorm_100ep/lm
-# NOTE: model_ckpt below loads model_115.pt, while the ptn.yaml for this line
-# sets num_epochs: 120 and its exp_dir is named `b6_gnorm_100ep` — three
-# different epochs. Confirm which epoch the official result used.
+# 本次明确沿用官方 LM 配置的第 115 轮初始化；PTN 仍训练完整 120 轮。
+# 这是已声明的实验选择，不能据此声称作者最终发布权重一定来自第 115 轮。
 model_ckpt: exp/vox2_vb2_cnc2/b6_gnorm_100ep/ptn_ha/models/model_115.pt
 spk2id_map_path: exp/vox2_vb2_cnc2/b6_gnorm_100ep/ptn_ha/spk2id.json
 
@@ -67,7 +36,7 @@ dataloader_args:
   seed_worker: true
 
 dataset_args:
-  legacy_aug: true         # 退回官方增强行为（见 augs.py 的 LEGACY_AUG_BEHAVIOR）
+  legacy_aug: true         # 保留官方版本的随机上界和短噪声循环填充
   num_frms: 500
   resample_rate: 16000
   sample_num_per_epoch: 0
@@ -226,6 +195,7 @@ optimizer_args:
 
 scheduler: ExponentialDecrease
 scheduler_args:
+  lr_scaling: legacy       # 八卡、每卡48条：倍率6，实际峰值约4.54715e-4
   initial_lr: 0.0001
   final_lr: 2.5e-05
   num_epochs: 1

@@ -1,41 +1,18 @@
-# ── 官方结果复现实验 ────────────────────────────────────────────────
-#
-# 这一份不是用来训练的，是用来**逐位复现官方结果**的。
-# 它在同目录 ptn.yaml / lm.yaml 的基础上只加两项，其余一字不改：
-#
-#   compile_backbone: null   ← 官方配方开着 torch.compile，而实测编译会让
-#                              训练**连跑两次结果都不同**（同一棵树、同一份配置，
-#                              673/747 个权重张量不一致）。要逐位对比必须关掉。
-#
-#   legacy_aug: true         ← 退回官方（修复前）的增强行为。本仓库修过
-#                              augs.py 两处缺陷（随机上界取不到、短噪声循环复制），
-#                              那两处会改变增强的随机流，因此不退回就复现不了。
-#
-# 另外官方基线（9d38486）的 meters.py 漏了 `meter` 命名空间，训练第 1 步就崩；
-# 本仓库已修。这一项不需要开关，修好的是崩溃，不影响数值。
-#
-# 实测：本配方 + 官方基线（只补 meters 命名空间）= 权重逐位一致
-#       （747 个张量全部 0 差异）。见 docs/11。
-# b6 PT v3: 100ep on vox2 + vb2 + cnc2 mix — HARD AUGS variant of ptn.yaml.
-#
-# Differs from ptn.yaml only in the augmentation setup. Augmentation as
-# actually in effect below:
-#   * Sequential tree (root prob 0.9) read from dataset_args.aug_setup.
-#   * OneOf (prob 0.8) over three CustomNoise branches with explicit SNR
-#     ranges — music [2, 12], noise [0, 12], speech [7, 18] with babble: true.
-#     These are per-augmentor values, not a named SNR preset.
-#   * Reverb (prob 0.2) reading RIR wavs from a raw directory via dataset_dir
-#     (no LMDB).
-#   * OneOf (prob 0.25) over LowPassAug with a single active branch,
-#     cutoff_ratio=0.6 (transition_width 0.08) — used as a spec-aug
-#     replacement while do_spec_aug stays False. A second cutoff_ratio=0.5
-#     branch is present but commented out, so only 0.6 is in effect.
-#   * CodecAug is commented out entirely and does not run.
-#
-# Schedule, model, optimizer, and training list paths are unchanged from
-# ptn.yaml (mix_join data.list / utt2spk).
+# 三语料 B6 官方公开配方的复现实验配置。
+# 真实官方基线：c5bbe0b76e37df698c403f8844e41304ceab6307。
+# 9d38486 属于 zhounan 的非官方提交，不能当作未经修改的官方代码。
+# 以官方三语料专用配方为依据，保留模型、批量、轮数、旧版学习率和增强分布。
+# 本次明确关闭 torch.compile，继续直接读取增强目录；这些与公开配方有差别。
+# legacy_aug 恢复旧版随机上界和短噪声循环填充，不保证整个训练逐位重现。
+# 以完整测试录音的等错误率评测结果验收，不能把短训练权重相同当作最终指标复现。
+# PTN 训练 120 轮，LM 明确从第 115 轮权重开始，沿用官方 lm.yaml 的 model_ckpt。
+# 第 115/120 轮与目录名 100ep 的冲突来自官方文件；作者未公开最终权重选轮记录。
+# 云端必须为本实验覆盖独立 exp_dir，并核实 LM 的 model_ckpt 和 spk2id_map_path。
+# 核查说明：docs/12-三语料B6官方复现配方核查.md。
+# 主训练使用 200 帧固定裁剪、每卡 96 条、120 轮。
+# 增强概率与官方三语料配置相同；只读文件夹，不需要键值库。
 
-compile_backbone: null   # 关掉编译：编译会让训练不可复现
+compile_backbone: null   # 本次固定使用未编译模型，单独记录这一差异
 data_type: raw_fast
 dataloader_args:
   batch_size: 96
@@ -47,7 +24,7 @@ dataloader_args:
 # grad_accum_steps: removed - gradient accumulation is not implemented in this
 # training stack, so the value was never read.
 dataset_args:
-  legacy_aug: true         # 退回官方增强行为（见 augs.py 的 LEGACY_AUG_BEHAVIOR）
+  legacy_aug: true         # 保留官方版本的随机上界和短噪声循环填充
   aug_setup:
     aug_type: Sequential
     prob: 0.9
@@ -191,10 +168,8 @@ model_args:
   dual_agg: false
   agg_gnorm: true
 num_avg: 10
-# NOTE: this file sets num_epochs: 120, but exp_dir above is named
-# `b6_gnorm_100ep` and the matching lm.yaml loads model_115.pt. These three do
-# not agree — confirm which epoch the official result used before relying on
-# them.
+# 保留官方配置的 120 轮，保留第 115 和 120 轮权重。
+# 本次 LM 使用第 115 轮；目录名中的 100ep 不作为训练轮数依据。
 num_epochs: 120
 optimizer: SGD
 optimizer_args:
@@ -214,6 +189,8 @@ projection_args:
 save_epoch_interval: 1
 scheduler: ExponentialDecayPlateauWithWarmup
 scheduler_args:
+  lr_scaling: legacy       # 八卡、每卡96条：倍率12，实际峰值0.72
+  decay_to_final_lr: false # 保留官方半衰期，final_lr不决定本调度器终点
   initial_lr: 0.06
   final_lr: 1.0e-4
   warm_up_epoch: 8

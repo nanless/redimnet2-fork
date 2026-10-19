@@ -4,7 +4,7 @@
 # =============================================================================
 #
 # 这个脚本训练的目标，是复现官方权重 `b6-vb2+vox2+cnc2_v0-lm.pt`
-# （VoxCeleb1-O 等错误率 0.255，数字越小越好）。它分两个阶段：
+# （官方表 VoxCeleb1-O 等错误率0.26%，本仓库历史复测0.255%）。它分两个阶段：
 #
 #   1. 主训练阶段（STAGE=ptn）：配方 .../redimnet2/b6/ptn.yaml，
 #      训练清单 mix_join（11,521,178 句），每卡批大小 96，共 120 轮。
@@ -25,6 +25,7 @@
 #   递归替换成 DATA_ROOT -> 写出一份完整的新配置 -> 交给 launch.sh 用
 #   `--config <新配置>` 启动。
 #
+# 只替换 YAML；不改 data.list 内的音频路径，不修软链接。两者都须另外核实。
 # 配方文件本身一个字都不改。若 DATA_ROOT 与 RECIPE_DATA_PREFIX 相同
 # （例如云端就把共享盘挂在原来那个路径上），替换结果与原文相同，等于不做改写。
 #
@@ -73,11 +74,14 @@
 #   applications/speaker_rec/scripts/cloud/train_b6_mix_cloud_8gpu.sh
 # 也可以用等价的包装脚本 train_b6_mix_cloud_8gpu_lm.sh（它只是把 STAGE 设成 lm）。
 #
-# 本机 2 卡小样验证（几轮就结束）：
+# 本机历史2卡小样验证（已完成，不代表八卡测试）：
 #   NUM_GPUS=2 SAMPLE_NUM_PER_EPOCH=576 NUM_EPOCHS=2 \
 #   EXP_DIR=/dev/shm/... DATA_ROOT=/root/group-shared/voiceprint/data/wespeaker_data \
 #   applications/speaker_rec/scripts/cloud/train_b6_mix_cloud_8gpu.sh
 #
+# 八卡每卡96条至少需要768条才能有一步；576只适用于上面的两卡示例。
+# 八卡32步短测可用 SAMPLE_NUM_PER_EPOCH=24576，正式训练不要覆盖样本数。
+# 本次正式入口为 run_b6_mix_reproduction.sh；PTN120轮，LM显式固定第115轮。
 # =============================================================================
 
 set -Eeuo pipefail
@@ -110,10 +114,11 @@ esac
 
 # 是否用"复现官方结果"的那份配方。
 #
-# REPRO=1 时自动换成同目录下的 official_repro_*.yaml。那两份与普通配方只差两处：
+# REPRO=1 时自动换成同目录下的 official_repro_*.yaml，主要行为选择为：
 #   compile_backbone: null   关掉编译（实测编译会让训练连跑两次结果都不同）
 #   dataset_args.legacy_aug: true  退回官方（修复前）的增强行为
-# 两份文件都只读，脚本不改它们。要逐位对比官方结果时才开这个开关。
+# 两份还显式声明旧版学习率默认值。它们不保证与官方最终训练逐位相同。
+# 脚本只读配方；详见 docs/12-三语料B6官方复现配方核查.md。
 REPRO="${REPRO:-0}"
 case "$REPRO" in
     1|true|yes)

@@ -15,6 +15,10 @@
 
 import tableprint as tp
 import functools
+import json
+import math
+import time
+from pathlib import Path
 import os
 import sys
 import torch
@@ -68,6 +72,68 @@ def to_ohe(num_classes, targets):
     target_mask.scatter_(1, targets.view(-1, 1).long(), 1.0)
     return target_mask
 
+def _check_training_numerics(wav, embeds, loss, *, epoch, batch_index, rank,
+                             optimizer, scaler, diagnostic_dir=None, utts=None):
+    """Stop every rank before backward when any rank has non-finite values.
+
+    Finite steps add one scalar MIN reduction and a scalar read, without
+    modifying tensors or their gradients. The failure-only barrier lets a bad
+    rank finish writing evidence before torchrun observes another rank exiting.
+    """
+    local_checks = torch.stack([torch.isfinite(value.detach()).all()
+                                for value in (wav, embeds, loss)])
+    global_ok = local_checks.all().to(dtype=torch.int32)
+    distributed = torch.distributed.is_available() and torch.distributed.is_initialized()
+    if distributed:
+        torch.distributed.all_reduce(global_ok, op=torch.distributed.ReduceOp.MIN)
+    if bool(global_ok.item()):
+        return
+
+    flags = local_checks.cpu().tolist()
+    evidence_error = None
+    evidence_path = None
+    if not all(flags) and diagnostic_dir is not None:
+        try:
+            directory = Path(diagnostic_dir)
+            directory.mkdir(parents=True, exist_ok=True)
+            stem = f"numerical_failure_epoch_{epoch:03d}_batch_{batch_index:06d}_rank_{rank}_{time.time_ns()}"
+            evidence_path = directory / f"{stem}.json"
+            wav_path = directory / f"{stem}_wav.pt"
+
+            def number(value):
+                value = float(value)
+                return value if math.isfinite(value) else str(value)
+
+            def describe(value, finite):
+                detached = value.detach()
+                return {"finite": bool(finite), "dtype": str(value.dtype),
+                        "shape": list(value.shape),
+                        "max_abs": number(detached.abs().max().item()) if value.numel() else None}
+
+            record = {"epoch": int(epoch), "batch": int(batch_index), "rank": int(rank),
+                      "wav": describe(wav, flags[0]), "embeds": describe(embeds, flags[1]),
+                      "loss": describe(loss, flags[2]),
+                      "loss_value": number(loss.detach().item()),
+                      "learning_rates": [number(group['lr']) for group in optimizer.param_groups],
+                      "scaler_scale": number(scaler.get_scale()),
+                      "utterance_keys": list(utts) if utts is not None else None,
+                      "wav_file": str(wav_path)}
+            torch.save({"wav": wav.detach().cpu(), "utterance_keys": record['utterance_keys']}, wav_path)
+            with evidence_path.open('w') as stream:
+                json.dump(record, stream, ensure_ascii=False, indent=2, allow_nan=False)
+            print(f"Non-finite training values on rank {rank}: {evidence_path}", file=sys.stderr, flush=True)
+        except Exception as error:
+            evidence_error = f"{type(error).__name__}: {error}"
+            print(f"Could not write numerical failure evidence on rank {rank}: {evidence_error}",
+                  file=sys.stderr, flush=True)
+    if distributed:
+        torch.distributed.barrier()
+    raise FloatingPointError(
+        f"Non-finite training values detected before backward: epoch={epoch}, "
+        f"batch={batch_index}, rank={rank}, local_finite={flags}, "
+        f"evidence={evidence_path}, evidence_write_error={evidence_error}")
+
+
 def run_epoch(dataloader,
               epoch_iter,
               model,
@@ -82,7 +148,8 @@ def run_epoch(dataloader,
               mix_aug,
               enable_amp,
               log_batch_interval=100,
-              device=torch.device('cuda')):
+              device=torch.device('cuda'),
+              diagnostic_dir=None):
     model.train()
 
     # By default use average pooling
@@ -145,6 +212,11 @@ def run_epoch(dataloader,
                 outputs, loss = outputs
             else:
                 loss = criterion(outputs, targets)
+
+        _check_training_numerics(wav, embeds, loss, epoch=epoch,
+                                 batch_index=i + 1, rank=rank, optimizer=optimizer,
+                                 scaler=scaler, diagnostic_dir=diagnostic_dir,
+                                 utts=utts)
 
         # loss, acc
         if (i + 1) % 16 == 0:
