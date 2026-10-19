@@ -374,18 +374,38 @@ def as_int(name):
         sys.exit(4)
 
 
+# 超参覆盖：**只给冒烟测试用**。复现官方结果时必须一个都不设，
+# 否则跑出来的就不是官方那组超参了。下面每处覆盖都会打印一行 TRAIN_WARN，
+# 让"这次跑偏离了配方"这件事在日志里一眼可见，而不是悄悄发生。
+_ov = []
 num_epochs_override = as_int("NUM_EPOCHS")
 if num_epochs_override is not None:
+    _ov.append(("num_epochs", config.get("num_epochs"), num_epochs_override))
     config["num_epochs"] = num_epochs_override
 sample_override = as_int("SAMPLE_NUM_PER_EPOCH")
 if sample_override is not None:
+    _ov.append(("dataset_args.sample_num_per_epoch",
+                config.get("dataset_args", {}).get("sample_num_per_epoch"),
+                sample_override))
     config.setdefault("dataset_args", {})["sample_num_per_epoch"] = sample_override
 batch_override = as_int("BATCH_SIZE")
 if batch_override is not None:
+    _ov.append(("dataloader_args.batch_size",
+                config.get("dataloader_args", {}).get("batch_size"),
+                batch_override))
     config.setdefault("dataloader_args", {})["batch_size"] = batch_override
 save_override = as_int("SAVE_EPOCH_INTERVAL")
 if save_override is not None:
+    _ov.append(("save_epoch_interval", config.get("save_epoch_interval"),
+                save_override))
     config["save_epoch_interval"] = save_override
+for _k, _old, _new in _ov:
+    print("TRAIN_WARN 超参被环境变量覆盖，本次已偏离配方: {} = {} -> {}"
+          .format(_k, _old, _new))
+if _ov:
+    print("TRAIN_WARN 共 {} 处超参偏离配方；"
+          "复现官方结果请不要设 NUM_EPOCHS / SAMPLE_NUM_PER_EPOCH / "
+          "BATCH_SIZE / SAVE_EPOCH_INTERVAL".format(len(_ov)))
 vox1_override = env("VOX1_TEST_DIR").strip()
 if vox1_override:
     if not isinstance(config.get("validation"), dict):
