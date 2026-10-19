@@ -41,6 +41,23 @@ from abc import abstractmethod
 from typing import Union, List, Tuple
 
 
+# ── 是否使用官方（修复前）的增强行为 ──────────────────────────────────
+#
+# 这个开关是为了**逐位复现官方训练结果**而存在的，平时保持 False。
+#
+# 本文件有两处修复改变了增强的随机流与内容（都是修真实缺陷）：
+#   1. `_random_int` 的上界：官方用 `np.random.randint(lo, hi)`，
+#      而本模块的范围是**两端都含**的，于是 hi 永远取不到
+#      （babble 只可能抽到 3~6，抽不到 7）。
+#   2. `CustomNoise` 取噪声：官方对短文件用 `np.pad(..., 'wrap')` 循环补齐，
+#      实测 5%~15% 的抽取会命中比目标短的噪声文件，补出来的尾巴是开头的
+#      逐字复制（有一个 0.065 秒的文件被补成 97% 是重复内容）。
+#
+# 置 True 时这两处都退回官方行为，用于和官方数字做逐位对比；
+# **新实验不要打开它**。由配置项 `legacy_aug` 控制（见 dataset.py）。
+LEGACY_AUG_BEHAVIOR = False
+
+
 # ── helpers ──────────────────────────────────────────────────────────
 
 def _random_int(val: Union[int, Tuple[int, int], List[int]]) -> int:
@@ -52,6 +69,9 @@ def _random_int(val: Union[int, Tuple[int, int], List[int]]) -> int:
         # convention). np.random.randint is exclusive on the upper bound, so the
         # old call never produced hi -- babble only ever drew {3,4,5,6}. The +1
         # restores the documented range. [1, 1] still yields exactly 1.
+        if LEGACY_AUG_BEHAVIOR:
+            # 官方行为：上界开区间，因此 hi 取不到（保留缺陷，只为复现）。
+            return lo if lo >= hi else np.random.randint(lo, hi)
         return lo if lo >= hi else np.random.randint(lo, hi + 1)
     return int(val)
 
@@ -284,9 +304,14 @@ class CustomNoise(Augmentor):
             # loop-padding a short one (see _draw_noise_at_least); the resample
             # below can shrink the signal, so request the margin in source
             # frames and let _crop_or_pad handle any remaining shortfall.
-            noise, noise_sr = _draw_noise_at_least(
-                self._source, read_frames, self.noise_category,
-                read_frames=read_frames)
+            if LEGACY_AUG_BEHAVIOR:
+                # 官方行为：直接从源里抽一条，短了就用循环补齐（保留缺陷）。
+                noise, noise_sr = self._source.random_one(
+                    self.noise_category, frames=read_frames)
+            else:
+                noise, noise_sr = _draw_noise_at_least(
+                    self._source, read_frames, self.noise_category,
+                    read_frames=read_frames)
             if noise_sr != sample_rate:
                 from scipy.signal import resample as sp_resample
                 noise = sp_resample(noise, int(len(noise) / noise_sr * sample_rate))

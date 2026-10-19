@@ -456,8 +456,17 @@ def Dataset(data_type,
         # New format: composable Sequential/OneOf tree from dataset.augs.
         # Detected by presence of 'aug_type' at the root (vs legacy 'type').
         if 'aug_type' in aug_cfg:
-            from wespeaker_lite.dataset.augs import deserialize_augmentor
-            augmentor = deserialize_augmentor(aug_cfg)
+            from wespeaker_lite.dataset import augs as _augs
+            # `legacy_aug: true` 时退回官方（修复前）的增强行为，
+            # 用于逐位复现官方训练结果。默认 false = 用修复后的行为。
+            _legacy = bool(configs.get('legacy_aug', False))
+            if _legacy != _augs.LEGACY_AUG_BEHAVIOR:
+                print(f"LEGACY_AUG : {_legacy}（"
+                      + ("退回官方增强行为，用于复现官方结果" if _legacy
+                         else "使用修复后的增强行为")
+                      + "）")
+            _augs.LEGACY_AUG_BEHAVIOR = _legacy
+            augmentor = _augs.deserialize_augmentor(aug_cfg)
             print(f"AUG_TYPE : augmentor_chain -> {repr(augmentor)}")
             dataset = Processor(dataset, processor.apply_augmentor,
                                 augmentor, resample_rate)
