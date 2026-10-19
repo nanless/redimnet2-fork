@@ -108,6 +108,24 @@ case "$STAGE" in
         ;;
 esac
 
+# 是否用"复现官方结果"的那份配方。
+#
+# REPRO=1 时自动换成同目录下的 official_repro_*.yaml。那两份与普通配方只差两处：
+#   compile_backbone: null   关掉编译（实测编译会让训练连跑两次结果都不同）
+#   dataset_args.legacy_aug: true  退回官方（修复前）的增强行为
+# 两份文件都只读，脚本不改它们。要逐位对比官方结果时才开这个开关。
+REPRO="${REPRO:-0}"
+case "$REPRO" in
+    1|true|yes)
+        case "$STAGE" in
+            ptn) DEFAULT_RECIPE="$REPO_ROOT/applications/speaker_rec/examples/vb2_vox2_cnc2/recipes/redimnet2/b6/official_repro_ptn.yaml" ;;
+            lm)  DEFAULT_RECIPE="$REPO_ROOT/applications/speaker_rec/examples/vb2_vox2_cnc2/recipes/redimnet2/b6/official_repro_lm.yaml" ;;
+        esac
+        REPRO=1
+        ;;
+    *) REPRO=0 ;;
+esac
+
 # 配方文件（本脚本只读它，不改它）
 RECIPE="${RECIPE:-$DEFAULT_RECIPE}"
 # 云端数据根目录：配方里所有以 RECIPE_DATA_PREFIX 开头的路径都会改成它下面的同名子路径
