@@ -20,6 +20,7 @@
 | EER、PTN、LM、ASTP 是什么？ | [06 术语表与 FAQ](06-glossary-faq.md) |
 | 想让一批里各句长度不同、少补点零？ | [08 变长训练与长度分桶](08-变长训练与长度分桶.md) |
 | 想让训练片段切在完整字词上、不切到静音？ | [09 用语音活动检测给音频加时间标注](09-VAD标注与RTTM.md) |
+| 想在一台 8 卡机器上跑 b6 混合数据训练？ | [10 在火山引擎上用 8 张卡训练](10-云端八卡训练.md) |
 | 官方权重复现得怎样？EER 差多少？ | [评测报告入口](../checkpoints/reports/README.md) |
 
 ---
@@ -159,6 +160,7 @@ flowchart LR
 | 07 本机数据 | `AGENTS.md` 第 3、6 节、`checkpoints/reports/05-训练数据检查.md` |
 | 08 变长训练与长度分桶（含按语音边界取样，第 9 节） | `wespeaker_lite/dataset/{dataset,processor}.py`、`utils/executor.py` |
 | 09 用语音活动检测给音频加时间标注 | `applications/speaker_rec/scripts/vad/**` |
+| 10 在火山引擎上用 8 张卡训练 | `applications/speaker_rec/scripts/cloud/*.sh` |
 | 评测报告 | `checkpoints/eval_*.csv`、`checkpoints/reports/**` |
 
 ---
