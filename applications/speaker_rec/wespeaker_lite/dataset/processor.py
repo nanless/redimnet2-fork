@@ -1313,6 +1313,22 @@ def apply_augmentor(data, augmentor, resample_rate=16000):
 
 
 
+def _legacy_aug_enabled():
+    """读 `augs.py` 里的"退回官方增强行为"开关。
+
+    这个开关由配置项 `dataset_args.legacy_aug` 控制（见 `dataset.py`），
+    目的是让"逐位复现官方结果"这件事也能覆盖到本函数里的修复。
+
+    用惰性 import 而不是顶层 import：`processor.py` 被很多地方导入，
+    顶层再导入 `augs.py` 会把两个模块的加载顺序绑在一起，容易出意外。
+    """
+    try:
+        from wespeaker_lite.dataset import augs as _augs
+        return bool(getattr(_augs, 'LEGACY_AUG_BEHAVIOR', False))
+    except Exception:
+        return False
+
+
 def add_reverb_noise_gain(data,
                           reverb_source,
                           noise_source,
@@ -1446,7 +1462,15 @@ def add_reverb_noise_gain(data,
                         # the upper bound, so the old call never produced
                         # max_num: bubble only ever drew {3,4,5,6}. +1 restores
                         # the documented range.
-                        num_noises = np.random.randint(min_num, max_num + 1)
+                        #
+                        # 需要逐位复现官方结果时（配置里写 `dataset_args.legacy_aug: true`），
+                        # 退回官方那个取不到上界的写法。以前这里没有开关，所以
+                        # 走这条旧链路的配方即使开了 legacy_aug 也退不回去 —— 那是个漏洞，
+                        # 现在补上了。新实验不要打开这个开关。
+                        if _legacy_aug_enabled():
+                            num_noises = np.random.randint(min_num, max_num)
+                        else:
+                            num_noises = np.random.randint(min_num, max_num + 1)
                     else:
                         num_noises = max_num
 

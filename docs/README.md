@@ -167,6 +167,9 @@ flowchart LR
 | 10 在火山引擎上用 8 张卡训练 | `applications/speaker_rec/scripts/cloud/*.sh` |
 | 评测报告 | `checkpoints/eval_*.csv`、`checkpoints/reports/**` |
 
+> 编号从 01 到 15，但**没有 11**。11 这个编号在整理文档时被并入 10（云端八卡训练）
+> 与 12（配核查），为了不打乱已有链接就空着没重排。看到 10 直接跳 12 不是漏了一篇。
+
 ---
 
 ## 引用

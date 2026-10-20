@@ -49,14 +49,32 @@ from wespeaker_lite.utils.utils import get_logger, parse_config_or_kwargs, set_s
     spk2id, save_spk2id, load_spk2id, reassemble_projection_head
 from wespeaker_lite.utils.utils import seed_worker
 
-def _select_resume_training_state(checkpoint_extra, resume_checkpoint):
-    """Return optimizer/scaler state only for a same-stage checkpoint resume.
+def _select_resume_training_state(checkpoint_extra, resume_checkpoint,
+                                  state_dict=None, model=None):
+    """只在**同阶段续训**时恢复优化器与梯度缩放器状态。
 
-    model_ckpt initializes a new training stage from model parameters. It must
-    not import the previous stage's momentum or mixed-precision loss scale.
+    `model_ckpt` 是"用模型参数启动新阶段"，不能继承上一阶段的动量和混合精度缩放系数。
+    同理，用配置项 `checkpoint:` 钉住一个**跨阶段**的文件（例如拿主训练的第 115 轮
+    去启动大间隔微调）也一样不能继承。
+
+    以前这里只判断 `resume_checkpoint` 是否为空，那是**不够的**：只要用
+    `checkpoint:` 钉住任何文件它都非空，于是跨阶段初始化照样会把上一阶段的
+    动量读进来。现在再加一层判断——**分类头的形状变了就是跨阶段**：
+    主训练因为做语速扰动会把类别数乘 3（119274 × 3 = 357822），
+    大间隔微调不做，类别数是 115362，两者形状必然不同。
+
+    返回 `(optimizer_state, scaler_state)`；跨阶段时返回 `(None, None)`。
     """
     if resume_checkpoint is None:
         return None, None
+    if state_dict is not None and model is not None:
+        old = state_dict.get('projection.weight')
+        cur = model.state_dict().get('projection.weight')
+        if old is not None and cur is not None and tuple(old.shape) != tuple(cur.shape):
+            print('cross-stage resume: projection head shape {} -> {}; '
+                  'optimizer/scaler start fresh'.format(
+                      tuple(old.shape), tuple(cur.shape)))
+            return None, None
     return checkpoint_extra.get('optimizer'), checkpoint_extra.get('scaler')
 
 
@@ -478,7 +496,7 @@ def train(config='conf/config.yaml', **kwargs):
         # that additionally carries optimizer/scaler/epoch.
         state_dict, ckpt_extra = extract_state_dict(raw_checkpoint)
         resume_optimizer_state, resume_scaler_state = _select_resume_training_state(
-            ckpt_extra, checkpoint)
+            ckpt_extra, checkpoint, state_dict=state_dict, model=model)
         if checkpoint is None:
             print('cold start: model_ckpt loads model parameters only; '
                   'optimizer/scaler start fresh')
