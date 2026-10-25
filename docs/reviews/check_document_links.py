@@ -33,8 +33,21 @@ def public_paths(root):
                               and not (Path(folder) / name).is_symlink()]
             paths.update(Path(folder) / name for name in names)
         mode = '非独立Git目录的合成夹具剪枝遍历；不跟随软链'
-    return sorted(path for path in paths if not LOCAL_ONLY.intersection(path.relative_to(root).parts)
-                  and not path.is_symlink() and path.is_file()), mode
+    selected = []
+    for path in sorted(paths):
+        parts = path.relative_to(root).parts
+        if LOCAL_ONLY.intersection(parts):
+            continue
+        current = root
+        aliased = current.is_symlink()
+        for part in parts:
+            if aliased:
+                break
+            current = current / part
+            aliased = current.is_symlink()
+        if not aliased and path.is_file():
+            selected.append(path)
+    return selected, mode
 
 
 def inspect(root):

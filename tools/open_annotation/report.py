@@ -60,7 +60,7 @@ def verify_run(contract, index, queue_root, output_root, full=False):
     if not (broker["completed_chunks"] == len(index["shards"]) and not broker["leases"]):
         add_error({"stage": "broker", "error": "queue not globally complete", "completed_chunks": broker["completed_chunks"], "leases": len(broker["leases"])})
     if completed_sources != index["source_count"]: add_error({"stage": "denominator", "completed": completed_sources, "planned": index["source_count"]})
-    full_count = 0; sidecar_bytes = 0; full_errors = 0
+    full_count = 0; sidecar_bytes = 0; full_errors = 0; full_decisions = Counter()
     if full:
         need(index_path is not None, "full CPU verification requires original index path")
         # Scratch index is never an authoritative shared queue and never WAL.
@@ -75,7 +75,9 @@ def verify_run(contract, index, queue_root, output_root, full=False):
                     need(len(sources) == shard["count"], "source shard count differs")
                     p = queue_root / "completed" / (shard["id"] + ".json")
                     value = json.loads(p.read_text())
-                    need(value["contract_sha256"] == contract_sha and value["index_sha256"] == index_sha
+                    need(value["schema"] == "redimnet2-chunk-commit/v1" and value["shard_id"] == shard["id"]
+                         and value["source_count"] == shard["count"]
+                         and value["contract_sha256"] == contract_sha and value["index_sha256"] == index_sha
                          and value["shard_sha256"] == shard["sha256"], "chunk receipt identity differs")
                     receipts = {r["source_id"]: r for r in value["sources"]}
                     need(len(receipts) == len(value["sources"]) == len(sources)
@@ -83,6 +85,7 @@ def verify_run(contract, index, queue_root, output_root, full=False):
                     with completion.open("rb") as f:
                         f.seek(ordinal * SLOT_BYTES); slot = decode_completion_slot(f.read(SLOT_BYTES))
                     need(sha_file(p) == slot["commit_sha256"] and digest(sorted(receipts)) == slot["source_ids_sha256"], "chunk receipt is not bound to completion map")
+                    chunk_decisions = Counter()
                     for source in sources:
                         connection.execute("INSERT INTO seen VALUES (?)", (source["source_id"],))
                         receipt = receipts[source["source_id"]]
@@ -96,11 +99,16 @@ def verify_run(contract, index, queue_root, output_root, full=False):
                         commit = sidecar.with_name(sidecar.name + ".commit.json")
                         need(sha_file(commit) == receipt["commit_sha256"], "per-source commit bytes differ")
                         descriptor = json.loads(commit.read_text())
-                        need(descriptor["sidecar_sha256"] == receipt["sidecar_sha256"] and descriptor["job_key"] == receipt["job_key"]
-                             and descriptor["source_record_sha256"] == digest(source) and descriptor["contract_sha256"] == contract_sha,
-                             "per-source commit contract differs")
+                        expected_descriptor = {"schema":"redimnet2-sidecar-commit/v1", "source_id":source["source_id"],
+                            "job_key":receipt["job_key"], "contract_sha256":contract_sha,
+                            "source_record_sha256":digest(source), "sidecar_sha256":hashlib.sha256(raw).hexdigest(), "bytes":len(raw)}
+                        need(descriptor == expected_descriptor, "per-source commit contract differs")
                         need(receipt["decision"] == record["decision"]["state"], "decision ledger differs")
+                        chunk_decisions[record["decision"]["state"]] += 1
+                        full_decisions[record["decision"]["state"]] += 1
                         full_count += 1; sidecar_bytes += len(raw)
+                    need(slot["decision_counts"] == {key:chunk_decisions[key] for key in ("candidate","unknown","failed")},
+                         "completion aggregate differs from actual source decisions")
                     connection.commit()
                 except Exception:
                     full_errors += 1
@@ -115,6 +123,7 @@ def verify_run(contract, index, queue_root, output_root, full=False):
             "mode": "full_sidecars" if full else "completion_map_protocol", "source_count": index["source_count"],
             "completed_source_count": completed_sources, "completed_shard_count": completed_shards,
             "decision_counts": dict(counts), "errors": errors, "error_count": error_count, "error_examples_truncated": error_count > len(errors),
+            "full_sidecar_decision_counts": {key:full_decisions[key] for key in ("candidate","unknown","failed")} if full else None,
             "full_sidecar_readback_verified": bool(full and error_count == 0), "sidecars_individually_reopened": full_count,
             "sidecar_bytes_reopened": sidecar_bytes, "input_audio_rehashed_in_this_audit": False,
             "source_ID_global_disjointness_rechecked": bool(full and error_count == 0),

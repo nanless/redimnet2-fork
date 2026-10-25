@@ -81,4 +81,115 @@ class WordSchemaTest(unittest.TestCase):
             with self.assertRaises(ValueError):s.protect_output(p)
         self.assertEqual(s.protect_output(self.root/'results'),(self.root/'results').resolve())
 
+
+class TrainingSourceScopeTest(unittest.TestCase):
+    def data(self, **fields):
+        return {'metadata': {'split':'train'}, 'records': [dict(split='train', **fields)]}
+
+    def test_train_scope_without_extra_origin_is_preserved(self):
+        data = self.data(audio_path='/synthetic/vox2/dev/source.wav', provenance={'original_split':'provider_train'})
+        self.assertIs(s.validate_training_dataset(data),data)
+
+    def test_explicit_heldout_is_not_erased_by_split_train(self):
+        for fields in [
+            {'original_splits':['provider_evaluation']},
+            {'provenance':{'original_split':'test'}},
+            {'provenance':{'source':{'roles':['train_ptn','evaluation:vox1']}}},
+            {'roles':['validation']},
+        ]:
+            with self.subTest(fields=fields),self.assertRaises(ValueError):
+                s.validate_training_dataset(self.data(**fields))
+
+    def test_protection_and_explicit_noneligibility_always_refused(self):
+        for fields in [
+            {'protection':{'training_forbidden':True}},
+            {'provenance':{'protection':{'training_forbidden':True}}},
+            {'usable_for_training':False},
+            {'provenance':{'source':{'usable_for_training':False}}},
+        ]:
+            with self.subTest(fields=fields),self.assertRaises(ValueError):
+                s.validate_training_dataset(self.data(**fields))
+
+    def test_malformed_optional_scope_cannot_coerce_permission(self):
+        for fields in [{'protection':{'training_forbidden':0}}, {'usable_for_training':1},
+                       {'roles':'train_ptn'}, {'original_splits':'provider_train'},
+                       {'provenance':{'source':[]}}]:
+            with self.subTest(fields=fields),self.assertRaises(ValueError):
+                s.validate_training_dataset(self.data(**fields))
+
+    def test_training_metadata_and_record_split_both_required(self):
+        for data in [{'metadata':{'split':'train'},'records':[]},
+                     {'metadata':{'split':'test'},'records':[{'split':'train'}]},
+                     {'metadata':{'split':'train'},'records':[{'split':'test'}]}]:
+            with self.subTest(data=data),self.assertRaises(ValueError):
+                s.validate_training_dataset(data)
+
+
+class RealUnitRegisteredSourceSemanticsTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name)/'dev/synthetic.wav'; self.path.parent.mkdir()
+        sf.write(self.path,np.linspace(-.1,.1,800,dtype='float32'),16000,subtype='FLOAT')
+
+    def data(self, fields=None, metadata=None):
+        record = s.make_unit(self.path,'synthetic-speaker','开灯',split='train')
+        record.update(fields or {})
+        data = s.seal_dataset([record],metadata or {'split':'train'})
+        s.validate_unit(record,verify_audio=True)
+        return data
+
+    def test_registered_heldout_roles_splits_refuse_real_unit(self):
+        from tools.open_annotation.quality_axes import heldout_source
+        cases = [{'roles':['supplemental:test']},{'roles':['protected_regression']},
+                 {'roles':['calibration:threshold']},{'roles':['regression:codec']},
+                 {'roles':['supplemental:dev']},{'original_splits':['calibration']},
+                 {'original_splits':['dev']},{'original_splits':['provider_evaluation']}]
+        for scope in cases:
+            self.assertTrue(heldout_source(scope))
+            with self.subTest(scope=scope), self.assertRaises(ValueError):
+                s.validate_training_dataset(self.data(scope))
+
+    def test_explicit_original_source_split_and_metadata_are_not_erased(self):
+        for scope in [{'split':'test'},{'roles':['supplemental:test']}]:
+            with self.subTest(provenance=scope),self.assertRaises(ValueError):
+                s.validate_training_dataset(self.data({'provenance':{'source':scope}}))
+            with self.subTest(metadata=scope),self.assertRaises(ValueError):
+                s.validate_training_dataset(self.data(metadata={'split':'train','source':scope}))
+        with self.assertRaises(ValueError):
+            s.validate_training_dataset(self.data(metadata={'split':'test'}))
+
+    def test_canonical_training_source_in_dev_path_is_still_legal(self):
+        data = self.data({'original_splits':['provider_train'],'roles':['train_ptn','train_lm'],
+                          'provenance':{'source':{'split':'train'}}})
+        self.assertIn('/dev/',data['records'][0]['audio_path'])
+        self.assertIs(s.validate_training_dataset(data),data)
+
+    def test_adapter_source_original_and_source_both_retain_forbidden_scope(self):
+        bad = {'original_splits':['provider_evaluation'],'roles':['evaluation:synthetic'],
+               'protection':{'training_forbidden':True}}
+        good = {'original_splits':['provider_train'],'roles':['train_ptn'],
+                'protection':{'training_forbidden':False}}
+        for scopes in [{'source_original':bad}, {'source':good,'source_original':bad},
+                       {'source':bad,'source_original':good}]:
+            for parent in ('provenance','metadata'):
+                data = (self.data({'provenance':scopes}) if parent=='provenance'
+                        else self.data(metadata={'split':'train',**scopes}))
+                with self.subTest(parent=parent,scopes=scopes),self.assertRaises(ValueError):
+                    s.validate_training_dataset(data)
+
+    def test_adapter_source_original_malformed_scope_refused(self):
+        for value in (None, [], 'provider_train', False):
+            for parent in ('provenance','metadata'):
+                data = (self.data({'provenance':{'source_original':value}}) if parent=='provenance'
+                        else self.data(metadata={'split':'train','source_original':value}))
+                with self.subTest(parent=parent,value=value),self.assertRaises(ValueError):
+                    s.validate_training_dataset(data)
+
+    def test_adapter_source_original_training_scope_still_legal(self):
+        source = {'original_splits':['provider_train'],'roles':['train_ptn','train_lm'],
+                  'protection':{'training_forbidden':False},'split':'train'}
+        data = self.data({'provenance':{'source':source,'source_original':source}},
+                         metadata={'split':'train','source_original':source})
+        self.assertIs(s.validate_training_dataset(data),data)
+
 if __name__=='__main__':unittest.main()

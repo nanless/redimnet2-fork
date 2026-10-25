@@ -157,8 +157,9 @@
 
 - 配置里用 `dataset_dir` 指向目录。  
 - 全部 `recipes/redimnet2/**/*.yaml` **不应再出现** `lmdb_file`、`noise_lmdb_file`、`reverb_lmdb_file`、`lmdb_to_ram`。
-  （原有 18 份，加上变长训练新增的 6 份 `varlen_*.yaml` 与按语音边界取段的 6 份
-  `vadseg_*.yaml`，共 30 份，逐份查过都不含这几个键。）  
+  （原有 18 份，加上变长训练新增的 6 份 `varlen_*.yaml`、按语音边界取段的 6 份
+  `vadseg_*.yaml`，以及后加的 2 份 `official_repro_*.yaml`，当前共 32 份。
+  2026-10-25 重新逐份检查，这 32 份都不含这几个键。）
 - `prepare_data.py` 默认阶段不含 `lmdb`；只有有人显式传入 `--stages lmdb` 才会构建那种旧格式。  
 - 代码里仍保留读 LMDB 的能力，只为兼容旧配置；**新实验不要依赖它。**
 

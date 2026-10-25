@@ -8,6 +8,10 @@
 
 This is an official implementation of a neural network architecture presented in the paper: [ReDimNet2: Scaling Speaker Verification via Time-Pooled Dimension Reshaping](https://arxiv.org/abs/2603.11841).
 
+This fork also maintains reproduction, continuation, offline annotation and complete-word variable-length experiment tools. See the [Chinese documentation](docs/README.md) and [maintenance and acceptance boundaries](docs/16-实验维护与验收边界.md). Repository CPU tests do not transfer historical GPU acceptance or grant training eligibility to machine-generated labels; the upstream model results below retain their original scope.
+
+The dated [repository audit and task-failure report](docs/reviews/2026-10-26-全仓二次审查与任务故障核验.md) records the maintenance fixes and their tests separately from the PTN numerical failure and ongoing annotation quality review.
+
 ## Overview
 
 ReDimNet2 extends the [ReDimNet](https://github.com/IDRnD/redimnet) dimension-reshaping framework by introducing pooling over the time dimension in the 1D processing pathway. This allows significantly more aggressive channel scaling without proportional compute increase, yielding a strictly better accuracy–efficiency Pareto front at every scale point.

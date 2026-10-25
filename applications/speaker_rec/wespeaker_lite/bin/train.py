@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import os
-import re
 import sys
 import math
 import copy
@@ -42,12 +41,22 @@ from wespeaker_lite.dataset.dataset import Dataset, Vox1TestEvalDataset, Vox1Tes
 from wespeaker_lite.models.projections import get_projection
 from wespeaker_lite.models.mix_augs import Cutmix, Mixup, MixCutUp, OverlapMix
 from wespeaker_lite.models.speaker_model import get_speaker_model, SpeakerModel
-from wespeaker_lite.utils.checkpoint import save_checkpoint, extract_state_dict
+from wespeaker_lite.utils.checkpoint import (save_checkpoint, extract_state_dict,
+                                              select_resume_checkpoint, resume_start_epoch,
+                                              validate_same_stage_resume)
 from wespeaker_lite.utils.executor import run_epoch, eval_epoch, eval_epoch_simple
 from wespeaker_lite.utils.file_utils import read_table
 from wespeaker_lite.utils.utils import get_logger, parse_config_or_kwargs, set_seed, \
     spk2id, save_spk2id, load_spk2id, reassemble_projection_head
 from wespeaker_lite.utils.utils import seed_worker
+
+def _projection_shape_changed(state_dict, model):
+    if state_dict is None or model is None:
+        return False
+    old = state_dict.get('projection.weight')
+    current = model.state_dict().get('projection.weight')
+    return old is not None and current is not None and tuple(old.shape) != tuple(current.shape)
+
 
 def _select_resume_training_state(checkpoint_extra, resume_checkpoint,
                                   state_dict=None, model=None):
@@ -67,14 +76,10 @@ def _select_resume_training_state(checkpoint_extra, resume_checkpoint,
     """
     if resume_checkpoint is None:
         return None, None
-    if state_dict is not None and model is not None:
-        old = state_dict.get('projection.weight')
-        cur = model.state_dict().get('projection.weight')
-        if old is not None and cur is not None and tuple(old.shape) != tuple(cur.shape):
-            print('cross-stage resume: projection head shape {} -> {}; '
-                  'optimizer/scaler start fresh'.format(
-                      tuple(old.shape), tuple(cur.shape)))
-            return None, None
+    if _projection_shape_changed(state_dict, model):
+        print('cross-stage resume: projection head shape changed; '
+              'optimizer/scaler and stage epoch start fresh')
+        return None, None
     return checkpoint_extra.get('optimizer'), checkpoint_extra.get('scaler')
 
 
@@ -195,28 +200,8 @@ def train(config='conf/config.yaml', **kwargs):
     # recipe sets it; it exists for one-off resumes from a specific file.
     pinned_checkpoint = configs.get('checkpoint', None)
 
-    checkpoint = None
-    start_epoch = 1
-    if pinned_checkpoint is not None:
-        checkpoint = pinned_checkpoint
-        pinned_match = re.search(r'model_(\d+)\.pt$', str(pinned_checkpoint))
-        if pinned_match:
-            start_epoch = int(pinned_match.group(1)) + 1
-    elif os.path.exists(model_dir):
-        epoch_pattern = re.compile(r'model_(\d+)\.pt$')
-        models = os.listdir(model_dir)
-        last_epoch_time = 0
-        for model in models:
-            match = epoch_pattern.search(model)
-            if not match:
-                continue
-            full_path = os.path.join(model_dir, model)
-            if Path(full_path).is_file():
-                print(full_path)
-                if os.path.getmtime(full_path) > last_epoch_time:
-                    last_epoch_time = os.path.getmtime(full_path)
-                    checkpoint = full_path
-                    start_epoch = int(match.group(1)) + 1
+    checkpoint = select_resume_checkpoint(model_dir, pinned_checkpoint)
+    start_epoch = 1  # Final clock is checked after reading the payload and stage head.
 
     logger = _make_train_logger(configs['exp_dir'], rank)
     if world_size > 1:
@@ -244,10 +229,6 @@ def train(config='conf/config.yaml', **kwargs):
         logger.info("<== Data statistics ==>")
         logger.info("train data num: {}, spk num: {}".format(
             len(train_utt_spk_list), len(spk2id_dict)))
-        # Auto-save spk2id mapping for head reassembly in later stages
-        spk2id_path = os.path.join(configs['exp_dir'], 'spk2id.json')
-        save_spk2id(spk2id_dict, spk2id_path)
-        logger.info(f"Saved spk2id mapping to {spk2id_path}")
 
     # projection layer
     configs['projection_args']['embed_dim'] = configs['model_args'][
@@ -495,6 +476,11 @@ def train(config='conf/config.yaml', **kwargs):
         # save_checkpoint (and the published weight files), and the dict format
         # that additionally carries optimizer/scaler/epoch.
         state_dict, ckpt_extra = extract_state_dict(raw_checkpoint)
+        if checkpoint is not None and not _projection_shape_changed(state_dict, model):
+            validate_same_stage_resume(state_dict, model, checkpoint, spk2id_dict,
+                                       configs.get('spk2id_map_path'))
+        start_epoch = resume_start_epoch(
+            checkpoint, ckpt_extra, cross_stage=_projection_shape_changed(state_dict, model))
         resume_optimizer_state, resume_scaler_state = _select_resume_training_state(
             ckpt_extra, checkpoint, state_dict=state_dict, model=model)
         if checkpoint is None:
@@ -504,8 +490,7 @@ def train(config='conf/config.yaml', **kwargs):
             'training dict' if ckpt_extra else 'bare state_dict',
             ', '.join(sorted(ckpt_extra.keys())) if ckpt_extra else 'state_dict only'))
         if ckpt_extra.get('epoch') is not None:
-            # Informational only: start_epoch is derived from the model_N.pt
-            # filename, which is authoritative for both layout variants.
+            # 同阶段已核文件名/保存轮数一致；跨阶段不沿用旧阶段时钟。
             print('checkpoint records epoch: {}'.format(ckpt_extra['epoch']))
 
         # Load backbone (everything except projection head)
@@ -572,6 +557,14 @@ def train(config='conf/config.yaml', **kwargs):
                         print(traceback.format_exc())
     else:
         logger.info('Train model from scratch ...')
+
+    # Every rank must finish reading the old map before rank0 publishes this stage map.
+    dist.barrier(device_ids=[gpu])
+    # Preserve the old mapping until checkpoint/head/epoch admission is complete.
+    if rank == 0:
+        spk2id_path = os.path.join(configs['exp_dir'], 'spk2id.json')
+        save_spk2id(spk2id_dict, spk2id_path)
+        logger.info(f"Saved spk2id mapping to {spk2id_path}")
 
     logger.info('start_epoch: {}'.format(start_epoch))
 

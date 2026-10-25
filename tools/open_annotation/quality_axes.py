@@ -49,8 +49,22 @@ def native_observation_errors(alignment):
     check(f.get('module_training') is False and f.get('inference_mode') is True and f.get('grad_enabled') is False,
           'ultra_actual_thinker_not_eval_inference')
     shape = f.get('input_ids_shape')
-    check(isinstance(shape, list) and len(shape) == 2 and shape[0] == 1,
+    input_shape_valid = (isinstance(shape, list) and len(shape) == 2
+                         and all(type(x) is int for x in shape) and shape[0] == 1 and shape[1] > 0)
+    check(input_shape_valid,
           'ultra_actual_thinker_row_count_differs')
+    if input_shape_valid and all(type(x) is int for x in slots):
+        check(all(x < shape[1] for x in slots), 'ultra_timestamp_position_outside_input')
+    logit_shape = f.get('slot_logit_shape')
+    logit_shape_valid = (isinstance(logit_shape, list) and len(logit_shape) == 2
+                         and all(type(x) is int for x in logit_shape)
+                         and logit_shape[0] == len(slots) and logit_shape[1] > 0)
+    check(logit_shape_valid, 'ultra_native_logit_shape_not_bound_to_slots')
+    if logit_shape_valid and all(type(x) is int for x in classes):
+        check(all(0 <= x < logit_shape[1] for x in classes), 'ultra_native_class_outside_logits')
+    logit_sha = f.get('slot_logits_sha256')
+    check(isinstance(logit_sha, str) and len(logit_sha) == 64
+          and all(x in '0123456789abcdef' for x in logit_sha), 'ultra_native_logits_digest_missing_or_invalid')
     if type(segment_ms) is int and all(type(x) is int for x in classes):
         check(raw == [x * segment_ms for x in classes], 'ultra_raw_classes_not_bound_to_milliseconds')
     check(raw == f.get('raw_timestamps_ms') == fix.get('native_timestamps_ms'), 'ultra_raw_to_FIX_binding_differs')

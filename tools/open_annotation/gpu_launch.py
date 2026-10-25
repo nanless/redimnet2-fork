@@ -20,6 +20,7 @@ from gpu_common import (need, sha, write, verify_bundle, model_facts, verify_mod
                         open_pidfd, process_start, own_members, cleanup, DrainState, wait_attested_context_drain)
 from gpu_challenge import ParentChallenge, minor_map
 from gpu_vendor import resources as G
+from contracts import read_contract
 
 HERE = Path(__file__).resolve().parent
 
@@ -88,7 +89,10 @@ def run(args):
     files = verify_bundle(HERE, args.bundle_sha)
     need(sha(args.contract) == args.contract_sha and sha(args.shard_index) == args.index_sha,
          'contract/index pin differs')
-    contract = json.loads(Path(args.contract).read_text())
+    # Refuse invalid schema/precision/source pins before reading model payloads,
+    # creating aliases or admitting CUDA resources, not only inside the worker.
+    contract = read_contract(args.contract, args.contract_sha)
+    need(contract['purpose'] in {'pilot_validation','silver_annotation'}, 'GPU parent requires real offline inference contract')
     root,global_locks,output=validate_output_paths(args)
     ensure_alias()
     t0 = time.monotonic()

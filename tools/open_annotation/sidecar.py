@@ -11,9 +11,10 @@ class SidecarStore:
     def __init__(self, output_root, contract, contract_sha):
         self.contract, self.contract_sha = contract, contract_sha
         self.root = Path(output_root).resolve() / contract["version"]
+        need(not self.root.is_symlink(), "versioned sidecar root symlink refused")
         self.root.mkdir(parents=True, exist_ok=True)
         identity = {"schema": "redimnet2-sidecar-tree/v1", "version": contract["version"], "contract_sha256": contract_sha}
-        p = self.root / "identity.json"
+        p = safe_join(self.root, "identity.json")
         if p.exists(): need(json.loads(p.read_text()) == identity, "output version already belongs to another contract")
         else: atomic_new(p, identity)
 
@@ -75,10 +76,10 @@ def digest_bytes(data):
 
 class StageCache:
     """Content-addressed raw stage results. Identity is checked on every hit."""
-    def __init__(self, root): self.root = Path(root)
+    def __init__(self, root): self.root = Path(root).absolute()
     def path(self, stage, key):
         need(stage in {"asr", "aligner"} and len(key) == 64 and all(c in "0123456789abcdef" for c in key), "unsafe stage cache key")
-        return self.root / stage / key[:2] / key[2:4] / (key + ".json")
+        return safe_join(self.root, stage + "/" + key[:2] + "/" + key[2:4] + "/" + key + ".json")
     def get(self, stage, inputs):
         key = digest(inputs); path = self.path(stage, key)
         if not path.exists(): return None

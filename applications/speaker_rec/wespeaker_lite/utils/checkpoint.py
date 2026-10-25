@@ -14,6 +14,9 @@
 # limitations under the License.
 
 import os
+import re
+import json
+from pathlib import Path
 
 import torch
 
@@ -23,6 +26,78 @@ CKPT_MODEL_KEY = 'model'
 CKPT_OPTIMIZER_KEY = 'optimizer'
 CKPT_SCALER_KEY = 'scaler'
 CKPT_EPOCH_KEY = 'epoch'
+
+
+def select_resume_checkpoint(model_dir, pinned_checkpoint=None):
+    """显式文件优先；自动恢复按轮数选最新，不能按拷贝后的mtime倒退。"""
+    if pinned_checkpoint is not None:
+        path = Path(pinned_checkpoint)
+        if not path.is_file():
+            raise ValueError(f'explicit checkpoint is not a file: {path}')
+        return str(path)
+    root = Path(model_dir)
+    if not root.exists():
+        return None
+    candidates = []
+    for path in root.iterdir():
+        found = re.fullmatch(r'model_([0-9]+)\.pt', path.name)
+        if found and path.is_file():
+            epoch = int(found[1])
+            if epoch < 1:
+                raise ValueError('checkpoint epoch must be positive')
+            candidates.append((epoch, path))
+    if not candidates:
+        return None
+    epochs = [epoch for epoch, _ in candidates]
+    if len(epochs) != len(set(epochs)):
+        raise ValueError('ambiguous checkpoint epoch names')
+    return str(max(candidates, key=lambda item: item[0])[1])
+
+
+def resume_start_epoch(checkpoint, extra, *, cross_stage=False):
+    """核文件名与保存轮数；跨阶段重新从第1轮计，不继承主训练时钟。"""
+    if type(cross_stage) is not bool:
+        raise ValueError('cross_stage must be boolean')
+    if checkpoint is None:
+        return 1
+    found = re.fullmatch(r'model_([0-9]+)\.pt', Path(checkpoint).name)
+    named_epoch = int(found[1]) if found else None
+    recorded_epoch = extra.get(CKPT_EPOCH_KEY)
+    if named_epoch is not None and named_epoch < 1:
+        raise ValueError('checkpoint filename epoch must be positive')
+    if recorded_epoch is not None and (type(recorded_epoch) is not int or recorded_epoch < 1):
+        raise ValueError('invalid checkpoint payload epoch')
+    if named_epoch is not None and recorded_epoch is not None and named_epoch != recorded_epoch:
+        raise ValueError('checkpoint filename and payload epoch differ')
+    if cross_stage:
+        return 1
+    epoch = named_epoch if named_epoch is not None else recorded_epoch
+    return 1 if epoch is None else epoch + 1
+
+
+def validate_same_stage_resume(state_dict, model, checkpoint, speaker_map,
+                               speaker_map_path=None):
+    """恢复旧动量前，核完整模型集合与原说话人到分类行的映射；本函数不写文件。"""
+    expected = model.state_dict()
+    if set(state_dict) != set(expected) or any(
+            not torch.is_tensor(state_dict[key]) or tuple(state_dict[key].shape) != tuple(value.shape)
+            for key, value in expected.items()):
+        raise ValueError('same-stage checkpoint model/head keys or shapes differ')
+    path = Path(speaker_map_path) if speaker_map_path is not None else Path(checkpoint).parent.parent/'spk2id.json'
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate speaker-map key')
+            result[key] = value
+        return result
+    if not path.is_file():
+        raise ValueError('same-stage resume requires original spk2id.json or spk2id_map_path')
+    old = json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=unique)
+    if (not isinstance(old, dict) or any(type(v) is not int for v in old.values())
+            or old != speaker_map):
+        raise ValueError('same-stage speaker mapping differs; source evidence was not overwritten')
+    return path
 
 
 def _unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
@@ -83,8 +158,8 @@ def save_checkpoint(model: torch.nn.Module,
     objects, and none of them defines `state_dict()`/`load_state_dict()` -- so
     asking one for its state would raise `AttributeError` at the first save.
     Nothing is lost: both schedules are driven purely by the absolute iteration
-    `(epoch - 1) * epoch_iter + i`, and the starting epoch comes back from the
-    `model_<epoch>.pt` filename, so they re-derive themselves on resume.
+    `(epoch - 1) * epoch_iter + i`, and the starting epoch is checked against the
+    `model_<epoch>.pt` filename and saved epoch, so they re-derive themselves on resume.
     """
     state_dict = _unwrap_model(model).state_dict()
     # Strip torch.compile's `_orig_mod.` prefix so checkpoints stay

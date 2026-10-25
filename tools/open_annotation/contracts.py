@@ -56,9 +56,9 @@ def native_json(value):
 
 
 def relative_path(raw):
-    need(isinstance(raw, str) and raw and "\\" not in raw, "invalid relative path")
+    need(isinstance(raw, str) and raw and "\\" not in raw and "\x00" not in raw, "invalid relative path")
     p = PurePosixPath(raw)
-    need(not p.is_absolute() and all(x not in ("", ".", "..") for x in p.parts), "unsafe relative path")
+    need(bool(p.parts) and not p.is_absolute() and all(x not in ("", ".", "..") for x in p.parts), "unsafe relative path")
     need(str(p) == raw, "relative path is not canonical")
     return p
 
@@ -67,6 +67,11 @@ def safe_join(root, raw):
     rel = relative_path(raw)
     root = Path(root).absolute()
     target = root.joinpath(*rel.parts)
+    need(not root.is_symlink(), "output root symlink refused")
+    current = root
+    for part in rel.parts:
+        current = current / part
+        need(not current.is_symlink(), "output descendant symlink refused")
     need(root.resolve() in target.resolve().parents, "output escapes root")
     return target
 

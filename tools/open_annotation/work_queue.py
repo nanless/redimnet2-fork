@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import secrets
 import struct
-from contracts import atomic_new, canonical_bytes, digest, job_key, need, relative_path, sha_file, utcnow
+from contracts import atomic_new, canonical_bytes, digest, job_key, need, relative_path, safe_join, sha_file, utcnow
 
 SLOT_BYTES = 1024
 SLOT_MAGIC = b"RDMAP001"
@@ -77,13 +77,16 @@ def read_index(path, expected_sha=None):
     ids = set()
     for shard in shards:
         need(isinstance(shard["id"], str) and shard["id"] and "/" not in shard["id"] and shard["id"] not in ids, "duplicate/unsafe shard ID")
-        ids.add(shard["id"]); relative_path(shard["path"])
+        relative_path(shard["id"]); ids.add(shard["id"]); relative_path(shard["path"])
         need(type(shard["count"]) is int and shard["count"] > 0 and len(shard["sha256"]) == 64, "invalid shard pin")
     need(sum(s["count"] for s in shards) == value["source_count"], "index denominator differs")
     return value
 
 
 class WorkQueue:
+    def path(self, *parts):
+        return safe_join(self.root, "/".join(parts))
+
     def __init__(self, index_path, index_sha, root, contract_sha):
         self.index_path = Path(index_path).resolve(); self.index_sha = index_sha
         self.index = read_index(self.index_path, index_sha)
@@ -94,19 +97,19 @@ class WorkQueue:
         self.identity = {"schema": "redimnet2-work-queue/v1", "index_sha256": index_sha,
                          "contract_sha256": contract_sha, "source_count": self.index["source_count"],
                          "shard_count": len(self.shards)}
-        with stable_lock(self.root / "broker.lock"):
-            p = self.root / "identity.json"
+        with stable_lock(self.path("broker.lock")):
+            p = self.path("identity.json")
             if p.exists(): need(json.loads(p.read_text()) == self.identity, "queue belongs to another input/contract")
             else: atomic_new(p, self.identity)
-            if not (self.root / "broker.json").exists():
-                _replace(self.root / "broker.json", {"next": 0, "leases": {}, "completed_chunks": 0})
-            completion = self.root / "completion_map.bin"
+            if not (self.path("broker.json")).exists():
+                _replace(self.path("broker.json"), {"next": 0, "leases": {}, "completed_chunks": 0})
+            completion = self.path("completion_map.bin")
             if not completion.exists():
                 with completion.open("xb") as f:
                     f.truncate(len(self.shards) * SLOT_BYTES); f.flush(); os.fsync(f.fileno())
             need(completion.stat().st_size == len(self.shards) * SLOT_BYTES, "completion map shape differs")
 
-    def chunk_receipt_path(self, shard_id): return self.root / "completed" / (shard_id + ".json")
+    def chunk_receipt_path(self, shard_id): return self.path("completed", shard_id + ".json")
 
     def receipt(self, shard_id):
         path = self.chunk_receipt_path(shard_id)
@@ -139,8 +142,9 @@ class WorkQueue:
                  "source_count": receipt["source_count"], "source_ids_sha256": digest(sorted(s["source_id"] for s in receipt["sources"])),
                  "commit_sha256": sha_file(self.chunk_receipt_path(shard_id)), "index_sha256": self.index_sha,
                  "contract_sha256": self.contract_sha, "decision_counts": {key: sum(s["decision"] == key for s in receipt["sources"]) for key in ("candidate", "unknown", "failed")}}
-        data = encode_completion_slot(value); fd = os.open(str(self.root / "completion_map.bin"), os.O_RDWR)
+        data = encode_completion_slot(value); fd = os.open(str(self.path("completion_map.bin")), os.O_RDWR | getattr(os, "O_NOFOLLOW", 0))
         try:
+            need(os.fstat(fd).st_size == len(self.shards) * SLOT_BYTES, "completion map shape changed")
             start = self.ordinal[shard_id] * SLOT_BYTES; written = 0
             while written < len(data):
                 n = os.pwrite(fd, data[written:], start + written); need(n > 0, "short completion slot write"); written += n
@@ -150,8 +154,8 @@ class WorkQueue:
         return value
 
     def claim_next(self, worker_id):
-        with stable_lock(self.root / "broker.lock"):
-            state = json.loads((self.root / "broker.json").read_text())
+        with stable_lock(self.path("broker.lock")):
+            state = json.loads((self.path("broker.json")).read_text())
             candidates = []
             if state["next"] < len(self.shards):
                 candidates.append(self.shards[state["next"]]["id"])
@@ -159,7 +163,7 @@ class WorkQueue:
                 # At most the number of active workers. No repeated corpus scan.
                 candidates.extend(sorted(state["leases"]))
             for shard_id in candidates:
-                lock_path = self.root / "claims" / (shard_id + ".lock")
+                lock_path = self.path("claims", shard_id + ".lock")
                 lock_path.parent.mkdir(parents=True, exist_ok=True)
                 need(not lock_path.is_symlink(), "claim lock symlink refused")
                 handle = lock_path.open("a+b")
@@ -172,23 +176,23 @@ class WorkQueue:
                         state["leases"].pop(shard_id); state["completed_chunks"] += 1
                     if state["next"] < len(self.shards) and self.shards[state["next"]]["id"] == shard_id:
                         state["next"] += 1
-                    handle.close(); _replace(self.root / "broker.json", state)
+                    handle.close(); _replace(self.path("broker.json"), state)
                     continue
-                token_path = self.root / "attempt_state" / (shard_id + ".json")
+                token_path = self.path("attempt_state", shard_id + ".json")
                 generation = json.loads(token_path.read_text())["generation"] + 1 if token_path.exists() else 1
                 token = {"generation": generation, "nonce": secrets.token_hex(24), "worker_id": str(worker_id),
                          "pid": os.getpid(), "claimed_utc": utcnow()}
                 _replace(token_path, token)
                 if state["next"] < len(self.shards) and self.shards[state["next"]]["id"] == shard_id: state["next"] += 1
                 state["leases"][shard_id] = token
-                _replace(self.root / "broker.json", state)
+                _replace(self.path("broker.json"), state)
                 return Claim(self, self.by_id[shard_id], handle, token)
             # If a committed stale lease was retired, broker state was saved above.
             return None
 
     def is_complete(self):
-        with stable_lock(self.root / "broker.lock"):
-            value = json.loads((self.root / "broker.json").read_text())
+        with stable_lock(self.path("broker.lock")):
+            value = json.loads((self.path("broker.json")).read_text())
             return value["completed_chunks"] == len(self.shards) and not value["leases"]
 
 
@@ -196,16 +200,16 @@ class Claim:
     def __init__(self, queue, shard, handle, token):
         self.queue, self.shard, self.handle, self.token = queue, shard, handle, token
         self.attempt_id = "%08d-%s" % (token["generation"], token["nonce"])
-        self.attempt_root = queue.root / "attempts" / shard["id"] / self.attempt_id
+        self.attempt_root = queue.path("attempts", shard["id"], self.attempt_id)
         self.attempt_root.mkdir(parents=True, exist_ok=False)
-        atomic_new(self.attempt_root / "claim.json", token)
+        atomic_new(queue.path("attempts", shard["id"], self.attempt_id, "claim.json"), token)
         self.closed = False
 
     def assert_current(self):
         need(not self.closed and not self.handle.closed, "claim already released")
-        st = os.fstat(self.handle.fileno()); current = (self.queue.root / "claims" / (self.shard["id"] + ".lock")).stat()
+        st = os.fstat(self.handle.fileno()); current = self.queue.path("claims", self.shard["id"] + ".lock").stat()
         need((st.st_dev, st.st_ino) == (current.st_dev, current.st_ino), "claim inode replaced")
-        token = json.loads((self.queue.root / "attempt_state" / (self.shard["id"] + ".json")).read_text())
+        token = json.loads(self.queue.path("attempt_state", self.shard["id"] + ".json").read_text())
         need(token == self.token, "stale attempt fence refused publication")
 
     def sources(self):
@@ -221,7 +225,9 @@ class Claim:
 
     def journal(self, value):
         self.assert_current()
-        with (self.attempt_root / "journal.jsonl").open("ab") as f:
+        journal = self.queue.path("attempts", self.shard["id"], self.attempt_id, "journal.jsonl")
+        fd = os.open(str(journal), os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "ab") as f:
             f.write(canonical_bytes(value)); f.flush(); os.fsync(f.fileno())
 
     def finish(self, receipts):
@@ -236,12 +242,12 @@ class Claim:
                  "attempt_id": self.attempt_id, "sources": receipts, "committed_utc": utcnow()}
         atomic_new(self.queue.chunk_receipt_path(self.shard["id"]), value)
         self.assert_current(); self.queue.write_completion(self.shard["id"], value)
-        with stable_lock(self.queue.root / "broker.lock"):
+        with stable_lock(self.queue.path("broker.lock")):
             self.assert_current()
-            state = json.loads((self.queue.root / "broker.json").read_text())
+            state = json.loads((self.queue.path("broker.json")).read_text())
             need(state["leases"].get(self.shard["id"]) == self.token, "broker fence differs")
             state["leases"].pop(self.shard["id"]); state["completed_chunks"] += 1
-            _replace(self.queue.root / "broker.json", state)
+            _replace(self.queue.path("broker.json"), state)
         return value
 
     def close(self):

@@ -326,6 +326,7 @@ def _run_impl(config,dataset_path,official_path,output,device='cpu',resume=None,
         data=schema.load_dataset(dataset_path,verify=True,allow_candidates=config['allow_candidates'])
         if data.get('metadata',{}).get('split')!='train' or any(r.get('split')!='train' for r in data['records']):
             raise ValueError('only train split is allowed')
+        schema.validate_training_dataset(data)
         families=build_family_index(data['records']) if config['sampling']=='matched_prefix_family' else None
         pool_size=len(families) if families is not None else len(data['records'])
         if pool_size<world*config['items_per_rank']:raise ValueError('insufficient items/families for global step')

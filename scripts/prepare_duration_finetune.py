@@ -10,8 +10,9 @@ from duration_ft.data import inspect_record,verify_record,seal_dataset,DataError
 
 def prepare(manifest,rttm_root,output,train_speakers=24,heldout_speakers=4,utterances=8,
             max_lines=2000000,max_checked_per_corpus=20000,candidate_speakers_per_corpus=96):
-    if min(train_speakers,heldout_speakers,utterances,max_lines,max_checked_per_corpus)<1:
-        raise ValueError('all selection limits must be positive')
+    limits=(train_speakers,heldout_speakers,utterances,max_lines,max_checked_per_corpus,candidate_speakers_per_corpus)
+    if any(type(value) is not int or value < 1 for value in limits):
+        raise ValueError('all selection limits must be positive integers, not booleans')
     if candidate_speakers_per_corpus<train_speakers+heldout_speakers:
         raise ValueError('candidate speaker bound smaller than required speakers')
     root=validate_output_path(output,Path(__file__).resolve().parents[1]);root.mkdir(parents=True,exist_ok=False)
@@ -24,6 +25,10 @@ def prepare(manifest,rttm_root,output,train_speakers=24,heldout_speakers=4,utter
             except Exception as exc:
                 excluded['bad_json']+=1
                 if len(examples)<100:examples.append({'line':scanned,'reason':'bad_json','detail':str(exc)})
+                continue
+            if not isinstance(obj,dict) or any(not isinstance(obj.get(key),str) or not obj[key] for key in ('key','spk','wav')):
+                excluded['bad_record']+=1
+                if len(examples)<100:examples.append({'line':scanned,'reason':'bad_record','detail':'nonempty string key/spk/wav required'})
                 continue
             corpus=obj.get('key','').split('_',1)[0]
             if corpus not in pools:excluded['unknown_corpus']+=1;continue

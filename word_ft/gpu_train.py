@@ -409,6 +409,7 @@ def _run_impl(config,dataset_path,official_path,output,device='cuda',resume=None
         data=schema.load_dataset(dataset_path,verify=True,allow_candidates=config['allow_candidates'])
         if data.get('metadata',{}).get('split')!='train' or any(r.get('split')!='train' for r in data['records']):
             raise ValueError('only train split is allowed')
+        schema.validate_training_dataset(data)
         families=build_family_index(data['records']) if config['sampling']=='matched_prefix_family' else None
         pool_size=len(families) if families is not None else len(data['records'])
         if len(data['speaker_map'])<2:raise ValueError('GPU classification requires at least two speakers')

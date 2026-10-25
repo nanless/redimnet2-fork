@@ -41,6 +41,18 @@ class DocumentAudits(unittest.TestCase):
             self.assertEqual(result['document_count'], 1)
             self.assertTrue(result['file_selection'].startswith('git ls-files'))
 
+    def test_git_cached_document_parent_symlink_is_not_read(self):
+        check=load('check_document_links')
+        with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as outside:
+            root=Path(folder)
+            subprocess.run(['git','init',str(root)],check=True,capture_output=True)
+            nested=root/'nested';nested.mkdir();(nested/'README.md').write_text('# public')
+            subprocess.run(['git','-C',str(root),'add','nested/README.md'],check=True,capture_output=True)
+            (nested/'README.md').unlink();nested.rmdir()
+            (Path(outside)/'README.md').write_bytes(b'\xff-private-not-read')
+            nested.symlink_to(outside,target_is_directory=True)
+            self.assertEqual(check.inspect(root)['document_count'],0)
+
     def test_missing_link_and_excluded_example(self):
         check = load('check_document_links')
         with tempfile.TemporaryDirectory() as folder:

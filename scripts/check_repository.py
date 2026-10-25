@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 import re
 import subprocess
 from pathlib import Path
@@ -31,7 +32,8 @@ def local_links(path: Path, root: Path) -> list[dict]:
     """检查仓库内相对文件链接；网络地址、页内锚点和明确外部数据路径不在此范围。"""
     text = path.read_text(encoding='utf-8')
     # fenced代码段的示例不是文档链接；去掉后再解析普通Markdown链接。
-    text = re.sub(r'(?ms)^```.*?^```[^\n]*$', '', text)
+    text = re.sub(r'(?ms)^```.*?^```[^\n]*$',
+                  lambda match: '\n' * match.group().count('\n'), text)
     result = []
     for match in re.finditer(r'!?\[[^\]\n]*\]\((<[^>]+>|[^\s)]+)(?:\s+[^)]*)?\)', text):
         target = match.group(1).strip('<>')
@@ -54,6 +56,18 @@ def check(root: Path) -> dict:
     errors = []
     counts = {'files': len(files), 'python': 0, 'shell': 0, 'json': 0, 'markdown': 0}
     for path in files:
+        current = root
+        aliased = current.is_symlink()
+        for part in path.relative_to(root).parts:
+            if aliased:
+                break
+            current = current / part
+            aliased = current.is_symlink()
+        if aliased:
+            # Git记录的是链接本身；不能把外部目标当作本仓库源码读取或检查。
+            errors.append({'check': 'symlink', 'file': str(path.relative_to(root)),
+                           'detail': '受控或待提交文件及其仓库内祖先不能通过软链读取目标'})
+            continue
         if not path.is_file():
             continue  # Git已记录的删除由diff/审阅处理，不把缺文件当成语法检查。
         kind = path.suffix.lower()
@@ -68,7 +82,23 @@ def check(root: Path) -> dict:
                     errors.append({'check': 'bash_syntax', 'file': str(path.relative_to(root)), 'detail': run.stderr})
             elif kind == '.json':
                 counts['json'] += 1
-                json.loads(path.read_text(encoding='utf-8-sig'))
+                def unique_object(items):
+                    value = {}
+                    for key, item in items:
+                        if key in value:
+                            raise ValueError('重复JSON键: ' + key)
+                        value[key] = item
+                    return value
+                def reject_constant(value):
+                    raise ValueError('JSON不接受非有限常量: ' + value)
+                def finite_float(text):
+                    value = float(text)
+                    if not math.isfinite(value):
+                        raise ValueError('JSON浮点数超出有限范围: ' + text)
+                    return value
+                json.loads(path.read_text(encoding='utf-8-sig'),
+                           object_pairs_hook=unique_object, parse_constant=reject_constant,
+                           parse_float=finite_float)
             elif kind == '.md':
                 counts['markdown'] += 1
                 errors.extend(local_links(path, root))
@@ -82,9 +112,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True, help='检查结果JSON路径；建议本仓库.audit-local内')
     args = parser.parse_args(argv)
+    if args.output.exists() or args.output.is_symlink():
+        parser.error('检查结果必须写到不存在的新文件，不能覆盖源码或已有证据')
     result = check(ROOT)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    with args.output.open('x', encoding='utf-8') as stream:
+        stream.write(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + '\n')
     print(json.dumps({'counts': result['counts'], 'error_count': len(result['errors']), 'passed': result['passed']}, ensure_ascii=False))
     return 0 if result['passed'] else 1
 

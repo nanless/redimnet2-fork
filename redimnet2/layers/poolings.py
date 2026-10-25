@@ -128,7 +128,7 @@ class TSTP_var(nn.Module):
     """
 
     def __init__(self, in_dim=0, **kwargs):
-        super(TSTP, self).__init__()
+        super(TSTP_var, self).__init__()
         self.in_dim = in_dim
 
     def forward(self, x):

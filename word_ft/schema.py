@@ -132,6 +132,61 @@ def load_dataset(path,verify=True,allow_candidates=False):
     return obj
 load_manifest=load_dataset
 
+def validate_training_dataset(dataset):
+    """重分配split不能清除明确的留出、保护或禁止训练证据。
+
+    只识别已经写明的用途字段；不把VoxCeleb的dev目录名猜成评测集，
+    也不把显式候选开关解释为覆盖来源禁训资格。
+    """
+    metadata = dataset.get('metadata', {})
+    if not isinstance(metadata, dict) or metadata.get('split') != 'train' or not dataset.get('records'):
+        raise ValueError('only train split is allowed')
+    # Registered consumer semantics, matching quality_axes.heldout_source.
+    # A source label dev is explicit heldout evidence; a pathname containing dev is not.
+    heldout = {'test', 'dev', 'eval', 'evaluation', 'validation', 'val', 'valid', 'dev-cal',
+               'calibration', 'protected_regression', 'provider_evaluation', 'provider_test', 'provider_validation'}
+    heldout_roles = heldout | {'regression'}
+    for record in dataset['records']:
+        if record.get('split') != 'train':
+            raise ValueError('only train split is allowed')
+        provenance = record.get('provenance', {})
+        if not isinstance(provenance, dict):
+            raise ValueError('source provenance must be an object')
+        scopes = [metadata, record, provenance]
+        for parent in (metadata, provenance):
+            for field in ('source', 'source_original'):
+                if field in parent:
+                    if not isinstance(parent[field], dict):
+                        raise ValueError('original source scope must be an object: ' + field)
+                    scopes.append(parent[field])
+        for scope in scopes:
+            if 'split' in scope and (not isinstance(scope['split'], str) or scope['split'] not in {'train', 'provider_train'}):
+                raise ValueError('original source split cannot be relabeled as train')
+            if 'usable_for_training' in scope and scope['usable_for_training'] is not True:
+                raise ValueError('source explicitly lacks training eligibility')
+            protection = scope.get('protection', {})
+            if not isinstance(protection, dict):
+                raise ValueError('source protection must be an object')
+            if 'training_forbidden' in protection and protection['training_forbidden'] is not False:
+                raise ValueError('protected source cannot be used for training')
+            original = scope.get('original_splits', [])
+            if 'original_split' in scope:
+                original = [*original, scope['original_split']] if isinstance(original, list) else None
+            if not isinstance(original, list) or any(not isinstance(x, str) for x in original):
+                raise ValueError('original splits must retain string labels')
+            if any(x.casefold() in heldout for x in original):
+                raise ValueError('original heldout source cannot be relabeled as train')
+            roles = scope.get('roles', [])
+            if not isinstance(roles, list) or any(not isinstance(x, str) for x in roles):
+                raise ValueError('source roles must be a list')
+            for raw in roles:
+                head, separator, tail = raw.casefold().partition(':')
+                if ((head in heldout_roles and (not separator or tail))
+                        or (head == 'supplemental' and tail in heldout)):
+                    raise ValueError('heldout source role cannot be relabeled as train')
+    return dataset
+
+
 def read_unit(record,*,verify_content=False,return_info=False):
     import numpy as np,soundfile as sf
     r=validate_unit(record,allow_candidates=True,verify_audio=verify_content);p=Path(r['audio_path'])
