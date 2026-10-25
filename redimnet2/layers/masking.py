@@ -27,16 +27,14 @@ real sample, for the sample-level mask at the very input), ``0`` marks the zero
 padding used to make a batch rectangular.  ``(B, 1, T)`` broadcasts both against
 1D feature maps ``(B, C, T)`` and against 2D ones ``(B, C, F, T)``.
 
-The invariant that makes a padded batch match per-utterance inference is:
-**the padded region is exactly zero when it enters every time-mixing
-operation.**  A convolution with ``padding='same'`` treats the positions just
-outside its input as zeros, so a padded batch whose padded region is zero
-produces the same values at the real frames as running that one utterance on
-its own.  ``MaskSequential`` below enforces the invariant: children that accept
-a mask (``mask_aware``) handle it themselves, and every other child is followed
-by a re-zeroing step.
+补齐区域在每次混合时间位置的运算前必须归零，避免补零参与有效区间的统计。
+这只是减少补齐污染的必要条件，不能保证补齐成批与逐条推理逐位相等：前端
+取帧、卷积边界以及跨时间操作仍可能不同。MaskSequential让支持mask的模块
+自行传递掩码，并在其他模块后归零；完整字质量和实际向量偏差需另做实验。
 """
 
+import numbers
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -47,10 +45,32 @@ def make_sample_mask(lengths, max_len, device=None, dtype=torch.float32):
 
     ``lengths`` may be a tensor, a list or a numpy array.  Samples are assumed
     to be padded on the right, so entry ``(b, 0, t)`` is 1 for ``t < lengths[b]``.
+    每项必须是1到max_len内的有限整数采样点数；布尔、分数、空批和多维输入
+    不具有合法音频长度含义，不能先转long再静默截断。
     """
+    if not isinstance(max_len, numbers.Integral) or isinstance(max_len, bool) or max_len <= 0:
+        raise ValueError('max_len必须是正整数采样点数')
+    if isinstance(lengths, (list, tuple)) and any(
+        isinstance(value, (bool, np.bool_)) or
+        (torch.is_tensor(value) and value.dtype == torch.bool)
+        for value in lengths
+    ):
+        raise ValueError('真实长度不能是布尔值')
     if not torch.is_tensor(lengths):
         lengths = torch.as_tensor(lengths)
-    lengths = lengths.to(device=device, dtype=torch.long).reshape(-1)
+    if lengths.ndim != 1 or lengths.numel() == 0:
+        raise ValueError('lengths必须是非空一维真实长度数组')
+    if lengths.dtype == torch.bool or lengths.is_complex():
+        raise ValueError('真实长度必须是有限整数采样点数')
+    if not bool(torch.isfinite(lengths).all()):
+        raise ValueError('真实长度包含非有限值')
+    if lengths.is_floating_point() and not bool((lengths == lengths.round()).all()):
+        raise ValueError('真实长度不能静默截断小数')
+    lengths = lengths.to(device=device, dtype=torch.long)
+    # 先统一整数存储类型，保留NumPy uint64等合法输入；超出int64的正数转换
+    # 后为负数，会由下面的范围门拒绝，不能变成有效长度。
+    if not bool(((lengths >= 1) & (lengths <= max_len)).all()):
+        raise ValueError('真实长度必须在1到输入采样点数之间')
     idx = torch.arange(max_len, device=lengths.device)
     return (idx.unsqueeze(0) < lengths.unsqueeze(1)).to(dtype).unsqueeze(1)
 
@@ -94,10 +114,9 @@ def frame_mask_from_sample_mask(sample_mask, win_length, hop_length, pad=None):
     are the convolution's own zero padding, which a lone utterance and a padded
     batch agree on, so they are treated as valid (the ``value=1.0`` above).
 
-    A frame is therefore valid only if its whole window fits inside the
-    utterance, which is the same count a lone call produces: an ``L``-sample
-    utterance yields ``(L + 2 * pad - win_length) // hop + 1`` frames and this
-    test accepts exactly that many.
+    有效帧的整个取样窗必须落在实际输入允许的位置。注意：单条前端的右侧
+    卷积补齐，与批内显式补齐的无效区域不是同一标记；某些长度下此严格规则
+    会比单条取帧公式少一个边界帧，不能承诺两条路径帧数或向量完全一致。
     """
     if pad is None:
         pad = hop_length // 2

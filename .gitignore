@@ -40,3 +40,22 @@ checkpoints/**/master.log
 /tmp/
 *.tmp
 *.bak
+
+# 本机审查、隔离依赖和原始运行证据；只提交可复现工具与精简中文结论。
+.audit-local/
+.venv-*/
+/runs/
+/outputs/
+/reports/raw/
+
+# 原声、视频及概率/张量原件不能随维护代码进入公开仓库。
+*.wav
+*.flac
+*.mp3
+*.aac
+*.m4a
+*.ogg
+*.mp4
+*.webm
+*.npy
+*.npz

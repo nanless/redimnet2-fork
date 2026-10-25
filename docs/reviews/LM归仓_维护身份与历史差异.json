@@ -1,0 +1,35 @@
+{
+  "scope": "New maintenance files only; historical frozen copies unchanged",
+  "dependencies": [
+    {
+      "file": "audio_review.py",
+      "historical_sha256": "30f0f1f6fb9aecd9b5b4f8f00187ef6014982153a5df7107cf0ed4dcfcd06156",
+      "maintenance_sha256": "f5d69d59148df4f2c8693f8f67dbd432823a41c3642016b07819210e6533c507",
+      "changed": true
+    },
+    {
+      "file": "legacy_preflight.py",
+      "historical_sha256": "aeefd70892bbac972d15c2d7f06ea9787dbc5c5c5d3165d0834d0cb2fab431df",
+      "maintenance_sha256": "aeefd70892bbac972d15c2d7f06ea9787dbc5c5c5d3165d0834d0cb2fab431df",
+      "changed": false
+    },
+    {
+      "file": "decoder_runtime.py",
+      "historical_sha256": "573a3511a7d633fe4b4782b88c27d643115a9eb223b5d7858e1d46b6263b611e",
+      "maintenance_sha256": "573a3511a7d633fe4b4782b88c27d643115a9eb223b5d7858e1d46b6263b611e",
+      "changed": false
+    },
+    {
+      "file": "reviewed_events.py",
+      "historical_sha256": "1d3ec275ea961beaf98c000b824965cdcf485411281a6c4004ff024d54d84280",
+      "maintenance_sha256": "1d3ec275ea961beaf98c000b824965cdcf485411281a6c4004ff024d54d84280",
+      "changed": false
+    }
+  ],
+  "readiness_changes": [
+    "portable explicit build --references, no Mac source tree",
+    "new package dependency directory",
+    "generic seek points on all legal sources, no private sample key branches",
+    "new maintenance helper SHA pinned; historical SHA retained only as evidence"
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "scope": "Only owned duration_ft/word_ft/word_ft_v3 + specific scripts/tests/configs; no media/lists",
+  "files": [
+    {
+      "relative": "duration_ft/__init__.py",
+      "v3_sha256": "8259eee88239587b9862000d613ebd259aebea721ea35f38baf55a49d1c2ff44",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "duration_ft/data.py",
+      "v3_sha256": "7722e1a7f364cfd9f4b6f70422ba3114bb4a8fae1eb02a42db5e784564c29010",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "duration_ft/train.py",
+      "v3_sha256": "ec6dc3d1df87450198bfa0fda2f11aa5eece204ce082701eb1a885a0ded80854",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "word_ft/__init__.py",
+      "v3_sha256": "471e720804f4297f5ab6be6711790eb4f82b9a35467933efc72ad75741b5a6c5",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "word_ft/schema.py",
+      "v3_sha256": "e3b5cfa35a8e849cad7065a70e3b05791c958fd86f32703a5d7b436bdc02a955",
+      "new_snapshot_sha256": "e3b5cfa35a8e849cad7065a70e3b05791c958fd86f32703a5d7b436bdc02a955",
+      "same": true,
+      "chosen": "latest_20261025",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "word_ft_v3/__init__.py",
+      "v3_sha256": "71072f6dfa31ef3b329debecaf293c31c9549160700ca8b5f5f4169c6dcb7d5c",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "word_ft_v3/resources.py",
+      "v3_sha256": "c6523f631631b2cfb6611ace0e2ca447bf715cbf0e6c15cd85c9af31c389a4bb",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "word_ft_v3/topology.py",
+      "v3_sha256": "278382dd8f349a136570d5426128f596fe6e7c2341771d8a96795a368bc7961a",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "word_ft_v3/train.py",
+      "v3_sha256": "4212439ea997ee42448e1a64abde68c0664595fe642089240c301cd0701bd37a",
+      "new_snapshot_sha256": "4212439ea997ee42448e1a64abde68c0664595fe642089240c301cd0701bd37a",
+      "same": true,
+      "chosen": "latest_20261025",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "scripts/launch_word_v3.py",
+      "v3_sha256": "e849b80b967966a49ae0f23ad099cff3f830bea58b5a82e4f502de2d0c44f852",
+      "new_snapshot_sha256": "e849b80b967966a49ae0f23ad099cff3f830bea58b5a82e4f502de2d0c44f852",
+      "same": true,
+      "chosen": "latest_20261025",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "tests/test_word_v3.py",
+      "v3_sha256": "26abf89ae0ba3e91566dbb6fd02ce49d7a972de655176c83e63a59491a457956",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "configs/word_ft_v3/m1_fixed6_w2_silver_engineering.json",
+      "v3_sha256": "512a80f9c23c979fb52731a7bf37f468a08c9823e45ce9b147ad951357ce9627",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "configs/word_ft_v3/m1_fixed6_w8_silver_engineering.json",
+      "v3_sha256": "d1505fe962cd82f1808cbb488a1d55351051670ae395ece53d5c7fc02818e68e",
+      "new_snapshot_sha256": null,
+      "same": null,
+      "chosen": "v3_complete_snapshot",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "configs/word_ft_v3/m2_mixed1236_w2_silver_engineering.json",
+      "v3_sha256": "3e1c50263ea0754ecbbcc450fe7c984f91ded5d6810aeb1ce82b7451a9fe5b9e",
+      "new_snapshot_sha256": "3e1c50263ea0754ecbbcc450fe7c984f91ded5d6810aeb1ce82b7451a9fe5b9e",
+      "same": true,
+      "chosen": "latest_20261025",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "configs/word_ft_v3/m2_mixed1236_w8_silver_engineering.json",
+      "v3_sha256": "6a7b10bb9ddafa699f8dbc6d7a8e3865b66b589b98b8fab8a23e03822234df7f",
+      "new_snapshot_sha256": "6a7b10bb9ddafa699f8dbc6d7a8e3865b66b589b98b8fab8a23e03822234df7f",
+      "same": true,
+      "chosen": "latest_20261025",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "scripts/eval_word_matrix.py",
+      "new_snapshot_sha256": "0f6910bc48cf37d3029bf75f195dd011a172693d3d734bd4c81d35a6066d824d",
+      "chosen": "latest_20261025",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "word_ft/evaluate.py",
+      "new_snapshot_sha256": "de08e333def4d5fe3f7c71c8832d1763b9ab17ba5ecfc1dc0b4aec8d24c0e2d7",
+      "chosen": "latest_20261025",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "word_ft/gpu_train.py",
+      "new_snapshot_sha256": "48fe0c1f443608fc95da64a8c08cf61c450387501410eb3cec235d8200fcbd78",
+      "chosen": "latest_20261025",
+      "repo_target_exists": false
+    },
+    {
+      "relative": "word_ft/prepare.py",
+      "new_snapshot_sha256": "a043c184c0e2f038d9c6d89e5167bc44ea6542939b2c69c4190ee715d80f380c",
+      "chosen": "latest_20261025",
+      "repo_target_exists": false
+    }
+  ]
+}

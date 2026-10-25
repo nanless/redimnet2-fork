@@ -1,0 +1,93 @@
+{
+  "schema": "open-annotation-repository-CPU-review/v1",
+  "source_files": {
+    "tools/open_annotation/__init__.py": "d19d3cc43b1ed1572c5afcf9d7f5eab0905a138e555b042d46bbf4471de0319c",
+    "tools/open_annotation/alignment_observer.py": "2e99b4438fa8d96fd4e2f31922b039f34423740b6ec3687da6e7c5e77e01f5e6",
+    "tools/open_annotation/audio_windows.py": "557469e2c59b3cbf899d4e3ec8a90080e1bd80c8e0690bb9005a237969b80c3d",
+    "tools/open_annotation/audit_outputs.py": "ed8b4e55124304fc7f17d1b6637351bc66913e78fcf4e83a526106342cc7f737",
+    "tools/open_annotation/audit_source_filter.py": "78b9db120a4831bed33d84030693223512e5da3a198719091186219d319b7bac",
+    "tools/open_annotation/cloud_gate.py": "765fb3f3890324ddc5e66ced49e7e5996222ddeaf3748670dd5b9b300c872cff",
+    "tools/open_annotation/contracts.py": "50d80d00638ad0283828f3ed4ed95b940bc92c1b5706bada40bf106bdf99abf0",
+    "tools/open_annotation/freeze_contract.py": "a3140e87793777e013543d3cc40938b9d5c9b1abbc53b73cc5ca689dea64e090",
+    "tools/open_annotation/gpu_bootstrap.py": "88340f354383f7559e654c264102eb6704bc9ac578a06d9798710a35da13a8ea",
+    "tools/open_annotation/gpu_challenge.py": "2ed974d601a33ebc6714b904837c0dc6183970020a7becfd1371e16332452e44",
+    "tools/open_annotation/gpu_common.py": "9055ffc0284d9149b40a72a8a561ee322dd128c7424aa3de1b6b9130aa459a57",
+    "tools/open_annotation/gpu_launch.py": "30b379cd7f931875a9aa03285e74376424327849d82de016e11a2b952d2036f3",
+    "tools/open_annotation/gpu_vendor/__init__.py": "71072f6dfa31ef3b329debecaf293c31c9549160700ca8b5f5f4169c6dcb7d5c",
+    "tools/open_annotation/gpu_vendor/resources.py": "12da19e4d9a06d1c1e9c9c5d50d15f94a6b6d4a442ec8ab56871b31e3bcedf3f",
+    "tools/open_annotation/gpu_vendor/topology.py": "278382dd8f349a136570d5426128f596fe6e7c2341771d8a96795a368bc7961a",
+    "tools/open_annotation/make_admission_spec.py": "9fdeb23365a47e0ab1c894cbb46b431526cc004adc6d9cabcfda333e4fab44ce",
+    "tools/open_annotation/make_cloud_launcher.py": "d2c153c8248d6987a83e1c60afd57ebf2160b22175cffaf974933e0163aa18f5",
+    "tools/open_annotation/manifest_builder.py": "252eaa67fb18b52bbbbde7fff453f7187975a86f240cf2136efa80223b260233",
+    "tools/open_annotation/normalization.py": "eda903ccdb861f43a891de4bd9cca19bbd78ac82ef94a0fadcad50c09e83e19e",
+    "tools/open_annotation/quality_axes.py": "bd7ddbc91c45d4557477d712990e1f4f4613b3b93072b002905b6e9740216ed7",
+    "tools/open_annotation/quality_figures.py": "1b66c5ee12289c43d9222386cbd5a99805a6bd8d05040fe617a3e6527486d99f",
+    "tools/open_annotation/qwen_backend.py": "e37032fd4cb60ab97933cc678e69e4c0ee1efc94d350cb9800704022090558b2",
+    "tools/open_annotation/report.py": "e28981437acd022f0ab5bccc070ba01176ccf0287c66589367790b7710179cf8",
+    "tools/open_annotation/schema.py": "c81c484538be9e263026f5e00afcdb5aafd5986ae0a4f1d2ce5da37eb195f562",
+    "tools/open_annotation/sidecar.py": "49ba09ad22104cd0e3e63f80ac8f6f521254f78e423e1bf792ffa84aa1269c0d",
+    "tools/open_annotation/sidecar.schema.json": "734d759fe96ec5e8a729eab6032d63ce58483a0f4c8f622ef333741a810cc063",
+    "tools/open_annotation/source_filter.py": "e8aeb70990eaa8687019b5c35010fa92a99bbd1e18bdc172a9dd115a4e50c614",
+    "tools/open_annotation/source_registry.py": "96a5516a6530a1187620be5520131a838c49afbcb4066efe875ecd3e1e140d0d",
+    "tools/open_annotation/validate_two_gpu.py": "6e5d5f284aebf0304e58b775ab3138515c8de4c327057e7d3231e5b9d676481c",
+    "tools/open_annotation/verify_cloud_mounts.py": "03968c9e96fcfc4cee1ac35d8ccf21cfa6de6392fadb9fac133462597b540883",
+    "tools/open_annotation/word_adapter.py": "86168338b68aae82de02a05460bddf192ad06c66d6765c777f5f50cd0b61baca",
+    "tools/open_annotation/work_queue.py": "d3c5998da9fde6e1041a5c872699dd9716c94d37ad36f3d07b55b49c25ff17b9",
+    "tools/open_annotation/worker.py": "f8924ee33b171551a6b586783a451a65a7db3e5ae9854eab0d02d8cff9c5f44f"
+  },
+  "test_source_files": {
+    "tools/open_annotation/tests/test_audit_outputs.py": "6a37d96332499e3790712b1fdaf375b0c3b412d2ed0bf35b30c2315e06d5a3ef",
+    "tools/open_annotation/tests/test_gpu_execution.py": "31b475b3d595da71c02cc5949387e24e700417b01ea2e45ac22f6470993a275e",
+    "tools/open_annotation/tests/test_heldout_source.py": "ef4472576352c6b42a4f97dc8b1daca0bd99340a03b962aa2d4949c5f1404a9f",
+    "tools/open_annotation/tests/test_maintenance_entries.py": "a3a1ef22fdf9819eca5a380933bca43ec72dcbf96ef5248180cdc61ccc396a9f",
+    "tools/open_annotation/tests/test_publication_recovery.py": "56d2cd137a2632bfc4533c415a6e78cd4af1c97fc61fcf6d03a3d62199c9c2dd",
+    "tools/open_annotation/tests/test_quality_figures.py": "f0195b07fc6bbae3d754e9b9b1ef1ef09d8a7fd8a132e26763887ee021fbcd77",
+    "tools/open_annotation/tests/test_quality_schema.py": "7dbb237f032c870ceb3be5f667a214e6fd739f10b8fcdb3da27f80596d05ec3e",
+    "tools/open_annotation/tests/test_ultra_observation.py": "3bfa012dcc31328d84d12634b1b75bd4df90b650bf9f5f280695caf5c2560499",
+    "tools/open_annotation/tests/test_word_adapter.py": "3b761d3e2b67f26c685345214acb1398547f9e8a92502615ea6c1b9287d641c5"
+  },
+  "command": "PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tools/open_annotation/tests -v",
+  "collected_tests": 104,
+  "passed_tests": 103,
+  "skipped_tests": 1,
+  "skipped_reason": "Matplotlib is absent; actual PNG rendering is not claimed",
+  "GPU_or_API_or_remote_execution": false,
+  "real_audio_or_sidecars_or_protection_list_in_repository": false,
+  "fixtures": "synthetic WAV, source records, model metadata, native observations, protection cases and filesystem faults",
+  "failure_then_fix": [
+    {
+      "issue": "legal task/code hierarchy rejected by new root guard",
+      "fix": "pure path gate admits parent task root and rejects all code/output overlaps",
+      "independent_review_requested": true
+    },
+    {
+      "issue": "equal formal/stage run and equal shared-lock/task root were not excluded",
+      "fix": "explicit equality and both ancestry directions are refused"
+    },
+    {
+      "issue": "repository inferred from arbitrary frozen-copy parent",
+      "fix": "repository markers or own-code protection, with frozen-copy execution tests"
+    },
+    {
+      "issue": "two new test expectations did not resolve macOS temporary-directory aliases",
+      "fix": "only normalize expected paths; source guards unchanged"
+    }
+  ],
+  "not_validated": [
+    "new maintenance bundle real model inference",
+    "new maintenance bundle physical GPU challenge",
+    "new cloud submission",
+    "PFS quotas",
+    "human transcript and complete-word truth"
+  ],
+  "independent_review": {
+    "passed": true,
+    "receipt": "docs/reviews/标注与模型输入有限独立复验.json",
+    "receipt_sha256": "c6f14e4620ab733a6a09f9be81b2b4ae4aad9bbbe60c8f4b96f959eec38b7d3c",
+    "independent_path_and_diagnostic_tests": 2,
+    "independent_complete_suite_tests": 104,
+    "independent_complete_suite_passed": 103,
+    "independent_complete_suite_skipped": 1
+  },
+  "syntax_checked_python_files": 41
+}

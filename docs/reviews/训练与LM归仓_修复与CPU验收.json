@@ -1,0 +1,328 @@
+{
+  "schema": "maintained-training-lm-review/v1",
+  "recorded_utc": "2026-10-25T06:59:37.535034+00:00",
+  "owned_code_files": 53,
+  "syntax_errors": [],
+  "historical_frozen_files_modified": false,
+  "real_GPU_used": false,
+  "real_model_downloads": false,
+  "network_scope": "Only explicitly authorized CPU/Gloo 127.0.0.1 temporary ports",
+  "tests": {
+    "lm": {
+      "run": 46,
+      "passed": 46,
+      "skipped": 0
+    },
+    "duration": {
+      "run": 109,
+      "passed": 109,
+      "skipped": 0
+    },
+    "word": {
+      "run": 163,
+      "passed": 163,
+      "skipped": 0
+    },
+    "new_guards": {
+      "run": 11,
+      "passed": 11,
+      "skipped": 0
+    },
+    "unique_tests_total": 329,
+    "note": "The standalone17 Gloo rerun and focused evaluator reruns are repeats, not added to unique total"
+  },
+  "changes": [
+    {
+      "id": "A1",
+      "before": "duration N5/global4/step1 produced [1,1,3,2]; word v1 had same independent-epoch construction",
+      "after": "LCM-aligned repeated permutation cycles; global step unique and epoch complete; source identity changed"
+    },
+    {
+      "id": "A2",
+      "before": "bool step/seed/length accepted; duration counts used isinstance(int); optimizer/head NaN not prevalidated",
+      "after": "exact integer/bool/finite range guards before runtime; official backbone SHA fixed; config_checks is part of checkpoint and GPU ticket source identity"
+    },
+    {
+      "id": "A3",
+      "before": "metrics.py absent from evaluator/model-result code identity",
+      "after": "metrics source SHA binds duration and word evaluator identity; metric-only change detected by two regressions"
+    },
+    {
+      "id": "A4",
+      "before": "external Mac build_current and sample-specific helper probe branches",
+      "after": "explicit references input; synthetic tests and generic legal seek regressions; new maintained helper SHA; no private sample list"
+    },
+    {
+      "id": "A5",
+      "before": "/var versus /private/var result assertion and in-repo TMPDIR mock protection conflict",
+      "after": "resolved-path assertion; launcher unit test has a separate synthetic protected repo, production guard unchanged"
+    }
+  ],
+  "files": [
+    {
+      "file": "duration_ft/__init__.py",
+      "bytes": 73,
+      "sha256": "8259eee88239587b9862000d613ebd259aebea721ea35f38baf55a49d1c2ff44"
+    },
+    {
+      "file": "duration_ft/config_checks.py",
+      "bytes": 1896,
+      "sha256": "655f9ce4faac546eb6739c803c526200320455106772faa8b002d2057ab56d0f"
+    },
+    {
+      "file": "duration_ft/data.py",
+      "bytes": 13379,
+      "sha256": "524d46634acfe0924c347586029c448881de5013f700ae0c5865e904dbf76b9b"
+    },
+    {
+      "file": "duration_ft/evaluate.py",
+      "bytes": 34902,
+      "sha256": "17749ea0a79c2ac0d00879597f9bd2152da9876818f2da0d33c123617d55cca4"
+    },
+    {
+      "file": "duration_ft/metrics.py",
+      "bytes": 14570,
+      "sha256": "8b78d42e5de9e722c6777395f6c9aebb0e7c64edb5f1138704f93e9aff124013"
+    },
+    {
+      "file": "duration_ft/plots.py",
+      "bytes": 6409,
+      "sha256": "d94f5c98581b68e1100c26bdf3a845e79ae91117cd830e726c590b0d3de66ef7"
+    },
+    {
+      "file": "duration_ft/resume_guard.py",
+      "bytes": 11370,
+      "sha256": "dbe325ea65a110937185e8ed55ef54d1cb48de1cec65ca7b98e70e2bd616d565"
+    },
+    {
+      "file": "duration_ft/train.py",
+      "bytes": 18119,
+      "sha256": "9030eb619b403fb4730dab5a27b8fcd62262cd1d85cad2a44e1beeb7d25a31c6"
+    },
+    {
+      "file": "scripts/align_training_units.py",
+      "bytes": 6115,
+      "sha256": "876f62118d9f78aed234b4f1a1a5ca4093b55aded96e411ec384345f42653fbf"
+    },
+    {
+      "file": "scripts/eval_duration_cpu_cell.py",
+      "bytes": 16978,
+      "sha256": "86e652a1b3504db3db3cdab856922107cf0f9d83f3ad9237b014115132edea05"
+    },
+    {
+      "file": "scripts/eval_duration_matrix.py",
+      "bytes": 3585,
+      "sha256": "27d46b7617319def0a2f66a40a0a73b6fb062a0891db8c7a93d831795e7a6a12"
+    },
+    {
+      "file": "scripts/eval_word_matrix.py",
+      "bytes": 2133,
+      "sha256": "0f6910bc48cf37d3029bf75f195dd011a172693d3d734bd4c81d35a6066d824d"
+    },
+    {
+      "file": "scripts/launch_duration_two_gpu.py",
+      "bytes": 6948,
+      "sha256": "457805071ac360dd4f872301c3cc34feb3630700ff37f40471202409f811ae3f"
+    },
+    {
+      "file": "scripts/launch_word_two_gpu.py",
+      "bytes": 12012,
+      "sha256": "5ac9cb2e6d28041fa5028b75af789b0e6afe02d92794e244e350a5899cc09a83"
+    },
+    {
+      "file": "scripts/launch_word_v3.py",
+      "bytes": 12865,
+      "sha256": "e849b80b967966a49ae0f23ad099cff3f830bea58b5a82e4f502de2d0c44f852"
+    },
+    {
+      "file": "scripts/prefill_word_cpu.py",
+      "bytes": 9381,
+      "sha256": "cf3a9fa386c05e9a08a526299215f86f01588d455e6e432d427a10da542ed975"
+    },
+    {
+      "file": "scripts/prepare_duration_finetune.py",
+      "bytes": 6044,
+      "sha256": "c2fce484f25216c64cedb185a07819ea3a092ddde71fc17eafe9dc864f6c1548"
+    },
+    {
+      "file": "scripts/prepare_word_eval.py",
+      "bytes": 884,
+      "sha256": "bed60d727fe4a343c7d5002c08992e46d7c4cb9198c082d2fc6c2bf6e3ae0e80"
+    },
+    {
+      "file": "scripts/summarize_duration_results.py",
+      "bytes": 10000,
+      "sha256": "c880a4379e7246805b358a262bfe3f7025fec759900a620af4f251efc9914dff"
+    },
+    {
+      "file": "scripts/train_duration_finetune.py",
+      "bytes": 928,
+      "sha256": "88e92af1031dc07349acdcb48a10c45ec99dc5914d1f6d1866c3abe2872fc10a"
+    },
+    {
+      "file": "scripts/train_word_finetune.py",
+      "bytes": 937,
+      "sha256": "38c6565e0b0699f9684a91c860cb3a7d8ad238fa59a57fa824b28cdd989f7a22"
+    },
+    {
+      "file": "tests/test_duration_data.py",
+      "bytes": 5363,
+      "sha256": "58af2e6efa3768f68767296f6f1a86f3452337e439e41effe4c91fa4db0b04e8"
+    },
+    {
+      "file": "tests/test_duration_eval.py",
+      "bytes": 20554,
+      "sha256": "101bba467c7f19160124c8cf724aed69f4f338d381e126f236824141174ccc0a"
+    },
+    {
+      "file": "tests/test_duration_metrics.py",
+      "bytes": 19753,
+      "sha256": "bf6d48d97e9da85d9b5352ea3de322c165961976bcd74615145d1baa4cceaaa1"
+    },
+    {
+      "file": "tests/test_duration_resources.py",
+      "bytes": 3428,
+      "sha256": "f7e4446108264c04d78718955d70ec5964391c8bcf7cd3dd08c6d8971e400fa7"
+    },
+    {
+      "file": "tests/test_duration_resume_guard.py",
+      "bytes": 9522,
+      "sha256": "20c721d04950c7f158b24302dc853151c5b0de3fa5cf81a98b19077490d8f0f5"
+    },
+    {
+      "file": "tests/test_duration_train.py",
+      "bytes": 8028,
+      "sha256": "40663447b00207aeec457fa3fdbec1d7ba609c05776bf09097c5a3f9c3e4dbf0"
+    },
+    {
+      "file": "tests/test_lm_continuation.py",
+      "bytes": 13687,
+      "sha256": "6c2059be0d86b6bbc0ad08ef5b5cac0f26af09124dd889995a9339ef673df657"
+    },
+    {
+      "file": "tests/test_training_numeric_sampling.py",
+      "bytes": 5075,
+      "sha256": "61302af62769b64ff7895b67aecd9637415b177df6c6eb305139bedaefc1ee13"
+    },
+    {
+      "file": "tests/test_word_align.py",
+      "bytes": 13466,
+      "sha256": "bf5bbd0d974beb4fa3ef703001752f659719d2384e4c928ce6dabccde4ae4e8c"
+    },
+    {
+      "file": "tests/test_word_eval.py",
+      "bytes": 11525,
+      "sha256": "bd0b108243a4fb65d26b5d1832922894565d95f429fcda0acde2b3c586ca5e82"
+    },
+    {
+      "file": "tests/test_word_gpu_resources.py",
+      "bytes": 33764,
+      "sha256": "a17f417e7c7bf1b62431a1198056071c1f05505b179977356187c0977fa6d92b"
+    },
+    {
+      "file": "tests/test_word_schema.py",
+      "bytes": 5519,
+      "sha256": "49b260326aefe51f07a5d5cf3647720b01b3497ae430b4967a4ed22fadf3288d"
+    },
+    {
+      "file": "tests/test_word_train.py",
+      "bytes": 17531,
+      "sha256": "7e9d0637d0e6e46c5c2289911035e35594e384247b7452c6bee9b07c4e83a4dd"
+    },
+    {
+      "file": "tests/test_word_v3.py",
+      "bytes": 15208,
+      "sha256": "4d22545f0755f7ba7fb2bc4b4a64e4c49f3a9f88a154a936779a26fc8cf2054c"
+    },
+    {
+      "file": "tools/lm_continuation/__init__.py",
+      "bytes": 69,
+      "sha256": "026edf9769b5f23d0fd0aa2ac26ffaec23a15dbc5b0ea6d3c6b2ba6a3a2a4404"
+    },
+    {
+      "file": "tools/lm_continuation/legacy_checks/audio_review.py",
+      "bytes": 17870,
+      "sha256": "f5d69d59148df4f2c8693f8f67dbd432823a41c3642016b07819210e6533c507"
+    },
+    {
+      "file": "tools/lm_continuation/legacy_checks/decoder_runtime.py",
+      "bytes": 5698,
+      "sha256": "573a3511a7d633fe4b4782b88c27d643115a9eb223b5d7858e1d46b6263b611e"
+    },
+    {
+      "file": "tools/lm_continuation/legacy_checks/legacy_preflight.py",
+      "bytes": 27404,
+      "sha256": "aeefd70892bbac972d15c2d7f06ea9787dbc5c5c5d3165d0834d0cb2fab431df"
+    },
+    {
+      "file": "tools/lm_continuation/legacy_checks/reviewed_events.py",
+      "bytes": 8014,
+      "sha256": "1d3ec275ea961beaf98c000b824965cdcf485411281a6c4004ff024d54d84280"
+    },
+    {
+      "file": "tools/lm_continuation/readiness.py",
+      "bytes": 18583,
+      "sha256": "f154039c37f1c96425af36c47da3226ebfe07f878b31ca1254dee5c467769178"
+    },
+    {
+      "file": "word_ft/__init__.py",
+      "bytes": 65,
+      "sha256": "471e720804f4297f5ab6be6711790eb4f82b9a35467933efc72ad75741b5a6c5"
+    },
+    {
+      "file": "word_ft/align.py",
+      "bytes": 22522,
+      "sha256": "b4a3427b5084ce1f834cfa276a9617d8d0e2d1b25f163f6539508c62850dc14a"
+    },
+    {
+      "file": "word_ft/evaluate.py",
+      "bytes": 15325,
+      "sha256": "e0fe85aa01fc655bf388e8c38bd048eb06252a5d70ac96b3fcb968601a4c9ad3"
+    },
+    {
+      "file": "word_ft/gpu_resources.py",
+      "bytes": 15147,
+      "sha256": "21ce14ffab9f754f452ad9afccb970da05faf8e23c2d6b343e4b47d0921a8c0b"
+    },
+    {
+      "file": "word_ft/gpu_train.py",
+      "bytes": 31472,
+      "sha256": "8f7a5b6326a4d6a8f8fc29c9528a305152105cefe16306c92aad95b65bf9d92c"
+    },
+    {
+      "file": "word_ft/prepare.py",
+      "bytes": 11463,
+      "sha256": "a043c184c0e2f038d9c6d89e5167bc44ea6542939b2c69c4190ee715d80f380c"
+    },
+    {
+      "file": "word_ft/schema.py",
+      "bytes": 11683,
+      "sha256": "e3b5cfa35a8e849cad7065a70e3b05791c958fd86f32703a5d7b436bdc02a955"
+    },
+    {
+      "file": "word_ft/train.py",
+      "bytes": 23924,
+      "sha256": "478db4b9725a1f6255af6bc7d3a068bf680c2affb32e1005b304d6e4b0129399"
+    },
+    {
+      "file": "word_ft_v3/__init__.py",
+      "bytes": 70,
+      "sha256": "71072f6dfa31ef3b329debecaf293c31c9549160700ca8b5f5f4169c6dcb7d5c"
+    },
+    {
+      "file": "word_ft_v3/resources.py",
+      "bytes": 15942,
+      "sha256": "5e024c2ba81212b649a29956868a52298d9444a1c604701ae5b38775811427f2"
+    },
+    {
+      "file": "word_ft_v3/topology.py",
+      "bytes": 2416,
+      "sha256": "278382dd8f349a136570d5426128f596fe6e7c2341771d8a96795a368bc7961a"
+    },
+    {
+      "file": "word_ft_v3/train.py",
+      "bytes": 31648,
+      "sha256": "e54f53c16f8d68ce0ca497f7436b5e90e9bdb9bb3426dbb43123951da726b772"
+    }
+  ]
+}

@@ -624,6 +624,8 @@ class ReDimNet2Wrap(nn.Module):
         else:
             max_len = x.size(-1)
             mask = make_sample_mask(lengths, max_len, device=x.device, dtype=x.dtype)
+            if mask.size(0) != x.size(0):
+                raise ValueError('lengths的条数必须与输入音频批大小一致')
         if self.pad_right_samples is not None:
             x = torch.nn.functional.pad(x, (0, self.pad_right_samples), mode='constant', value=0.0)
             if mask is not None:

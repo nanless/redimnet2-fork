@@ -1,0 +1,55 @@
+{
+  "schema": "redimnet2-independent-portable-review/v1",
+  "recorded_utc": "2026-10-25T06:58:32.647695+00:00",
+  "reviewer": "independent-quality-review",
+  "scope": "仓库维护版；本机CPU，无GPU、权重下载、业务音频或云端任务操作",
+  "source_sha256": {
+    "tools/lm_continuation/readiness.py": "f154039c37f1c96425af36c47da3226ebfe07f878b31ca1254dee5c467769178",
+    "tools/lm_continuation/legacy_checks/audio_review.py": "f5d69d59148df4f2c8693f8f67dbd432823a41c3642016b07819210e6533c507",
+    "duration_ft/data.py": "524d46634acfe0924c347586029c448881de5013f700ae0c5865e904dbf76b9b",
+    "duration_ft/config_checks.py": "655f9ce4faac546eb6739c803c526200320455106772faa8b002d2057ab56d0f",
+    "duration_ft/evaluate.py": "17749ea0a79c2ac0d00879597f9bd2152da9876818f2da0d33c123617d55cca4",
+    "word_ft/evaluate.py": "e0fe85aa01fc655bf388e8c38bd048eb06252a5d70ac96b3fcb968601a4c9ad3",
+    "applications/speaker_rec/wespeaker_lite/utils/schedulers.py": "d1240568705e7463bf33f3dc5c39b94e4988905e24d2301fda82f59f081e82e5",
+    "applications/speaker_rec/scripts/cloud/run_b6_mix_reproduction.sh": "04650b2461ce7c029d1696bf2671fbaf7d3cc37ed5688677c308b91445ca08b6"
+  },
+  "actual_checks": [
+    {
+      "command": "python3 -B -m unittest discover -s tests -p test_lm_continuation.py -v",
+      "tests": 46,
+      "passed": 46,
+      "skipped": 0,
+      "exit": 0
+    },
+    {
+      "command": ".venv/bin/python -m unittest discover -s tests -p test_training_numeric_sampling.py -v",
+      "tests": 11,
+      "passed": 11,
+      "skipped": 0,
+      "exit": 0
+    },
+    {
+      "command": "python3 -m unittest discover -s tests -p test_schedule_and_launch_guards.py -v",
+      "tests": 5,
+      "passed": 5,
+      "skipped": 0,
+      "exit": 0,
+      "shell": "系统Bash3.2.57；16个环境键各测空值/非空值共32拒绝分支"
+    },
+    {
+      "command": "python3 -B -m unittest discover -s docs/reviews -p test_independent_training_guards.py -v",
+      "tests": 2,
+      "passed": 2,
+      "skipped": 0,
+      "exit": 0,
+      "additional_scope": "230个池大小/全局批量/seed组合，每组60批及乱序重放；合成未来LM完整正向与3种额外裸异常拒绝"
+    }
+  ],
+  "result": "本有限范围未发现尚未修复的确定性问题；标注路径接线另已交实现者修复，尚待其新版复验。",
+  "limits": [
+    "未来完整LM正向使用显式合成checkpoint/runtime替身，未读取真实115/120权重",
+    "本轮不重新证明历史GPU、192数据worker或分类头真实训练",
+    "新源码不能继承历史冻结清单身份",
+    "独立采样仅核小规模组合不主张穷尽所有整数配置"
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "schema": "open-annotation-maintenance-parent-sources/v1",
+  "historical_only_not_active_bundle": true,
+  "files": [
+    {
+      "path": "tools/open_annotation/sidecar.schema.json",
+      "parent_source_sha256": "734d759fe96ec5e8a729eab6032d63ce58483a0f4c8f622ef333741a810cc063"
+    },
+    {
+      "path": "tools/open_annotation/worker.py",
+      "parent_source_sha256": "f8924ee33b171551a6b586783a451a65a7db3e5ae9854eab0d02d8cff9c5f44f"
+    },
+    {
+      "path": "tools/open_annotation/qwen_backend.py",
+      "parent_source_sha256": "e37032fd4cb60ab97933cc678e69e4c0ee1efc94d350cb9800704022090558b2"
+    },
+    {
+      "path": "tools/open_annotation/gpu_challenge.py",
+      "parent_source_sha256": "2ed974d601a33ebc6714b904837c0dc6183970020a7becfd1371e16332452e44"
+    },
+    {
+      "path": "tools/open_annotation/sidecar.py",
+      "parent_source_sha256": "49ba09ad22104cd0e3e63f80ac8f6f521254f78e423e1bf792ffa84aa1269c0d"
+    },
+    {
+      "path": "tools/open_annotation/audio_windows.py",
+      "parent_source_sha256": "557469e2c59b3cbf899d4e3ec8a90080e1bd80c8e0690bb9005a237969b80c3d"
+    },
+    {
+      "path": "tools/open_annotation/manifest_builder.py",
+      "parent_source_sha256": "252eaa67fb18b52bbbbde7fff453f7187975a86f240cf2136efa80223b260233"
+    },
+    {
+      "path": "tools/open_annotation/quality_axes.py",
+      "parent_source_sha256": "bd7ddbc91c45d4557477d712990e1f4f4613b3b93072b002905b6e9740216ed7"
+    },
+    {
+      "path": "tools/open_annotation/alignment_observer.py",
+      "parent_source_sha256": "2e99b4438fa8d96fd4e2f31922b039f34423740b6ec3687da6e7c5e77e01f5e6"
+    },
+    {
+      "path": "tools/open_annotation/contracts.py",
+      "parent_source_sha256": "50d80d00638ad0283828f3ed4ed95b940bc92c1b5706bada40bf106bdf99abf0"
+    },
+    {
+      "path": "tools/open_annotation/gpu_bootstrap.py",
+      "parent_source_sha256": "88340f354383f7559e654c264102eb6704bc9ac578a06d9798710a35da13a8ea"
+    },
+    {
+      "path": "tools/open_annotation/normalization.py",
+      "parent_source_sha256": "eda903ccdb861f43a891de4bd9cca19bbd78ac82ef94a0fadcad50c09e83e19e"
+    },
+    {
+      "path": "tools/open_annotation/gpu_launch.py",
+      "parent_source_sha256": "f39dea3d19433237859c85e67b871ef9830fd202bc3ada0a5d848e38579b2a9e"
+    },
+    {
+      "path": "tools/open_annotation/work_queue.py",
+      "parent_source_sha256": "d3c5998da9fde6e1041a5c872699dd9716c94d37ad36f3d07b55b49c25ff17b9"
+    },
+    {
+      "path": "tools/open_annotation/gpu_common.py",
+      "parent_source_sha256": "9055ffc0284d9149b40a72a8a561ee322dd128c7424aa3de1b6b9130aa459a57"
+    },
+    {
+      "path": "tools/open_annotation/source_registry.py",
+      "parent_source_sha256": "96a5516a6530a1187620be5520131a838c49afbcb4066efe875ecd3e1e140d0d"
+    },
+    {
+      "path": "tools/open_annotation/report.py",
+      "parent_source_sha256": "e28981437acd022f0ab5bccc070ba01176ccf0287c66589367790b7710179cf8"
+    },
+    {
+      "path": "tools/open_annotation/schema.py",
+      "parent_source_sha256": "c81c484538be9e263026f5e00afcdb5aafd5986ae0a4f1d2ce5da37eb195f562"
+    },
+    {
+      "path": "tools/open_annotation/gpu_vendor/__init__.py",
+      "parent_source_sha256": "71072f6dfa31ef3b329debecaf293c31c9549160700ca8b5f5f4169c6dcb7d5c"
+    },
+    {
+      "path": "tools/open_annotation/gpu_vendor/topology.py",
+      "parent_source_sha256": "278382dd8f349a136570d5426128f596fe6e7c2341771d8a96795a368bc7961a"
+    },
+    {
+      "path": "tools/open_annotation/gpu_vendor/resources.py",
+      "parent_source_sha256": "c6523f631631b2cfb6611ace0e2ca447bf715cbf0e6c15cd85c9af31c389a4bb"
+    },
+    {
+      "path": "tools/open_annotation/tests/test_ultra_observation.py",
+      "parent_source_sha256": "3bfa012dcc31328d84d12634b1b75bd4df90b650bf9f5f280695caf5c2560499"
+    },
+    {
+      "path": "tools/open_annotation/tests/test_gpu_execution.py",
+      "parent_source_sha256": "2e041ad04a324aa0181e2d2e1d7fd69612f8868b0a7b02948a20781046353a99"
+    },
+    {
+      "path": "tools/open_annotation/tests/test_heldout_source.py",
+      "parent_source_sha256": "ef4472576352c6b42a4f97dc8b1daca0bd99340a03b962aa2d4949c5f1404a9f"
+    },
+    {
+      "path": "tools/open_annotation/tests/test_publication_recovery.py",
+      "parent_source_sha256": "56d2cd137a2632bfc4533c415a6e78cd4af1c97fc61fcf6d03a3d62199c9c2dd"
+    },
+    {
+      "path": "tools/open_annotation/tests/test_quality_schema.py",
+      "parent_source_sha256": "7dbb237f032c870ceb3be5f667a214e6fd739f10b8fcdb3da27f80596d05ec3e"
+    }
+  ]
+}

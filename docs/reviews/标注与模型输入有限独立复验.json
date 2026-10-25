@@ -1,0 +1,79 @@
+{
+  "schema": "redimnet2-repository-independent-review/v1",
+  "recorded_utc": "2026-10-25T07:03:21.967496+00:00",
+  "reviewer": "independent-quality-review",
+  "git_base": "0a3f6dd501e224a2bed85b6207df7c99046b4272",
+  "tested_worktree_uncommitted": true,
+  "limited_CPU_review_passed": true,
+  "GPU_executed": false,
+  "model_weights_loaded": false,
+  "API_calls": 0,
+  "cloud_or_existing_training_modified": false,
+  "historical_GPU_acceptance_inherited": false,
+  "human_gold_claimed": false,
+  "training_or_evaluation_labels_released": false,
+  "source_sha256": {
+    "tools/open_annotation/gpu_launch.py": "30b379cd7f931875a9aa03285e74376424327849d82de016e11a2b952d2036f3",
+    "tools/open_annotation/make_cloud_launcher.py": "d2c153c8248d6987a83e1c60afd57ebf2160b22175cffaf974933e0163aa18f5",
+    "tools/open_annotation/freeze_contract.py": "a3140e87793777e013543d3cc40938b9d5c9b1abbc53b73cc5ca689dea64e090",
+    "tools/open_annotation/word_adapter.py": "86168338b68aae82de02a05460bddf192ad06c66d6765c777f5f50cd0b61baca",
+    "tools/open_annotation/validate_two_gpu.py": "6e5d5f284aebf0304e58b775ab3138515c8de4c327057e7d3231e5b9d676481c",
+    "tools/open_annotation/cloud_gate.py": "765fb3f3890324ddc5e66ced49e7e5996222ddeaf3748670dd5b9b300c872cff",
+    "redimnet2/layers/masking.py": "b7d76e22729ab3fd31c25d1a30b78d40b4b0ebb16c1aba39e3299c1f29b99b17",
+    "redimnet2/redimnet2.py": "79ee30b7e20ff04d058f7b6ec07197487ba6843795a8bddb34d379fada2d3ac1",
+    "tests/test_mask_input_contract.py": "5126344b00d243ac5bf23e7f8ee4b990f9f50dfb340d0d75b5ce400c1fbd9ec5",
+    "docs/reviews/test_independent_annotation_paths.py": "5c544d0831efdd892a235cf2d4c750f98f9d42843a7fffcdb5d2bbf5ec52852d"
+  },
+  "actual_checks": [
+    {
+      "command": ".venv/bin/python -m unittest discover -s tools/open_annotation/tests -v",
+      "exit": 0,
+      "tests": 104,
+      "passed": 103,
+      "skipped": 1,
+      "skip_reason": "Matplotlib缺失，实际渲染未执行，不能称渲染通过"
+    },
+    {
+      "command": ".venv/bin/python -B -m unittest discover -s docs/reviews -p test_independent_annotation_paths.py -v",
+      "exit": 0,
+      "tests": 2,
+      "passed": 2,
+      "scope": "部署路径/软链/锁作用域与合成诊断ID、原路径、别名的双层保护"
+    },
+    {
+      "command": ".venv/bin/python -B -m unittest discover -s tests -p test_mask_input_contract.py -v",
+      "exit": 0,
+      "tests": 7,
+      "passed": 7,
+      "scope": "严格整数长度、np.bool_/torch.bool混合标量拒绝、uint64兼容和溢出、批大小和39/40帧边界"
+    }
+  ],
+  "confirmed_repairs": [
+    {
+      "issue": "two_gpu要求任务总根包含冻结CODE，GPU路径门又拒绝该祖先布局，合法新部署必拒绝",
+      "resolution": "抽出真实CPU路径门，允许任务总根包含CODE；资源/队列/标签与源码及彼此分别禁止等同和祖先后代重叠",
+      "retested": true
+    },
+    {
+      "issue": "formal运行目录与两卡证据目录恰相等、设备锁与任务根恰相等漏过配置检查",
+      "resolution": "显式等同及双向祖先重叠拒绝",
+      "retested": true
+    },
+    {
+      "issue": "冻结部署父目录被误认作仓库，候选检查/再次冻结输出被过宽拒绝",
+      "resolution": "按仓库标记识别维护源；冻结副本只保护实际代码树",
+      "retested": true
+    },
+    {
+      "issue": "严格长度列表门仍把混合numpy.bool_(True)转换成整数1",
+      "resolution": "转换前拒绝numpy/torch布尔标量，另保留合法uint64并拒溢出",
+      "retested": true
+    }
+  ],
+  "remaining_limits": [
+    "未运行新仓库GPU、真实模型、跨节点资源证明或真实恢复；旧证据仍属于原冻结身份",
+    "Matplotlib实际图形渲染缺包未执行",
+    "外部诊断名单的业务完整性由受控引用及摘要提供，本轮公开测试只用合成输入",
+    "范围内未发现新的确定性软件阻断，不承诺所有输入和部署环境无缺陷"
+  ]
+}

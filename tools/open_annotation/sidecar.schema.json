@@ -1,0 +1,525 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:redimnet2:production-sidecar:v2",
+  "title": "ReDimNet2 production machine-silver sidecar; semantic schema.py checks are mandatory",
+  "type": "object",
+  "required": [
+    "schema",
+    "source",
+    "source_identity",
+    "contract",
+    "provenance",
+    "vad",
+    "windows",
+    "units",
+    "execution",
+    "errors",
+    "decision",
+    "quality_axes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "redimnet2-open-annotation/v2"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "source_identity": {
+      "$ref": "#/$defs/identity"
+    },
+    "contract": {
+      "type": "object",
+      "required": [
+        "version",
+        "sha256",
+        "api_calls"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha"
+        },
+        "api_calls": {
+          "const": 0
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "models"
+      ],
+      "properties": {
+        "models": {
+          "type": "object",
+          "required": [
+            "asr",
+            "aligner"
+          ],
+          "properties": {
+            "asr": {
+              "$ref": "#/$defs/model"
+            },
+            "aligner": {
+              "$ref": "#/$defs/model"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "vad": {
+      "type": "object",
+      "required": [
+        "status",
+        "reused",
+        "segments"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "reused": {
+          "type": "boolean"
+        },
+        "segments": {
+          "type": "array"
+        }
+      }
+    },
+    "windows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/window"
+      }
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unit"
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "job_key",
+        "attempt_id",
+        "worker_id",
+        "started_utc",
+        "finished_utc",
+        "api_calls"
+      ],
+      "properties": {
+        "api_calls": {
+          "const": 0
+        }
+      }
+    },
+    "errors": {
+      "type": "array"
+    },
+    "decision": {
+      "type": "object",
+      "required": [
+        "state",
+        "reasons",
+        "annotation_completed",
+        "usable_for_training",
+        "usable_for_evaluation",
+        "human_review",
+        "open_model_generated"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "candidate",
+            "unknown",
+            "failed"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "annotation_completed": {
+          "const": true
+        },
+        "usable_for_training": {
+          "const": false
+        },
+        "usable_for_evaluation": {
+          "const": false
+        },
+        "human_review": {
+          "type": "null"
+        },
+        "open_model_generated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "quality_axes": {
+      "type": "object",
+      "required": [
+        "schema",
+        "text_faithfulness",
+        "complete_word_boundary",
+        "native_geometry_and_repair",
+        "language_and_spoken_form",
+        "repetition_occurrences",
+        "source_and_split",
+        "source_clock",
+        "model_API_calls",
+        "human_review"
+      ],
+      "properties": {
+        "schema": {
+          "const": "redimnet2-annotation-quality-axes/v1"
+        },
+        "model_API_calls": {
+          "const": 0
+        },
+        "human_review": {
+          "type": "null"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "schema",
+        "source_id",
+        "dataset",
+        "relative_path",
+        "audio_path",
+        "sidecar_relpath",
+        "roles",
+        "original_splits",
+        "protection",
+        "channel_policy",
+        "source_interval"
+      ],
+      "properties": {
+        "schema": {
+          "const": "redimnet2-source/v1"
+        },
+        "source_id": {
+          "type": "string",
+          "pattern": "^src_[0-9a-f]{64}$"
+        },
+        "dataset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audio_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sidecar_relpath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "original_splits": {
+          "type": "array"
+        },
+        "protection": {
+          "type": "object",
+          "required": [
+            "training_forbidden"
+          ],
+          "properties": {
+            "training_forbidden": {
+              "type": "boolean"
+            }
+          }
+        },
+        "channel_policy": {
+          "const": "mean_channels_to_mono"
+        },
+        "source_interval": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "decode_status",
+        "file_sha256",
+        "pcm_sha256",
+        "bytes",
+        "sample_rate",
+        "channels",
+        "frames",
+        "duration_seconds",
+        "stat_before",
+        "stat_after"
+      ],
+      "properties": {
+        "decode_status": {
+          "enum": [
+            "decoded_complete",
+            "decode_failed",
+            "missing"
+          ]
+        },
+        "file_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pcm_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "sample_rate": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "channels": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "frames": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "duration_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "pcm_hash_policy": {
+          "const": "decoded_float32le_native_interleaved/v1"
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": [
+        "path",
+        "files",
+        "files_sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "files": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "files_sha256": {
+          "$ref": "#/$defs/sha"
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "required": [
+        "window_id",
+        "context_start_sample",
+        "context_end_sample",
+        "owned_start_sample",
+        "owned_end_sample",
+        "model_sample_rate",
+        "time_mapping",
+        "input_pcm_sha256",
+        "asr",
+        "alignment"
+      ],
+      "properties": {
+        "window_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_start_sample": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "context_end_sample": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "owned_start_sample": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "owned_end_sample": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "model_sample_rate": {
+          "const": 16000
+        },
+        "time_mapping": {
+          "const": "source_offset_floor_start_ceil_end_v1"
+        },
+        "asr": {
+          "type": "object",
+          "required": [
+            "status"
+          ]
+        },
+        "alignment": {
+          "type": "object",
+          "required": [
+            "status",
+            "items"
+          ]
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "input_pcm_sha256": {
+              "$ref": "#/$defs/sha"
+            }
+          }
+        },
+        {
+          "required": [
+            "preprocessing_status"
+          ],
+          "properties": {
+            "preprocessing_status": {
+              "const": "failed"
+            },
+            "input_pcm_sha256": {
+              "type": "null"
+            },
+            "asr": {
+              "properties": {
+                "status": {
+                  "const": "failed"
+                }
+              }
+            },
+            "alignment": {
+              "properties": {
+                "status": {
+                  "const": "not_applicable"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "unit": {
+      "type": "object",
+      "required": [
+        "text",
+        "start_sample",
+        "end_sample",
+        "sample_rate",
+        "window_id",
+        "native_index",
+        "occurrence_index",
+        "geometry_status",
+        "repair_applied",
+        "boundary_status"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_sample": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_sample": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sample_rate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "window_id": {
+          "type": "string"
+        },
+        "native_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "occurrence_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "geometry_status": {
+          "const": "valid"
+        },
+        "repair_applied": {
+          "type": "boolean"
+        },
+        "boundary_status": {
+          "const": "machine_candidate"
+        }
+      }
+    }
+  }
+}

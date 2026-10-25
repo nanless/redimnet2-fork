@@ -1,0 +1,43 @@
+{
+  "seed": 20261023,
+  "head_seed": 7319,
+  "items_per_rank": 2,
+  "total_steps": 4,
+  "checkpoint_every": 2,
+  "optimizer": {
+    "lr": 0.001,
+    "momentum": 0.9,
+    "nesterov": true,
+    "weight_decay": 0.0001
+  },
+  "head": {
+    "scale": 32.0,
+    "margin": 0.3,
+    "lanbuda": 0.7,
+    "t": 3,
+    "margin_type": "C",
+    "dynamic_margin": false
+  },
+  "official_sha256": "287365f6f485b19e65e5176554f8f7123bfa8d85185f3d2c040eab51acec9868",
+  "bn_policy": "frozen_statistics_trainable_affine",
+  "amp": false,
+  "decoder": {
+    "version": "1.2.2",
+    "library_sha256": "c872fb84af2afc0e96b603e0000f0f407af86c49ad1126f2785e5722c7bb27d7",
+    "library_root": "/root/experiments/redimnet2/duration-finetune-20261023/runtime_audio/lib"
+  },
+  "allow_candidates": false,
+  "sampling": "matched_prefix_family",
+  "unit_counts": [
+    1,
+    2,
+    3,
+    6
+  ],
+  "unit_probabilities": [
+    0.16666666666666666,
+    0.16666666666666666,
+    0.16666666666666666,
+    0.5
+  ]
+}

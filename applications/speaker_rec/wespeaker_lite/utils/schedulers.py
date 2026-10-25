@@ -303,9 +303,15 @@ class ExponentialDecayPlateauWithWarmup(BaseClass):
                     else:
                         current_lr = self.initial_lr * (eff_rate ** periods_done)
                 else:
-                    current_lr = self.initial_lr * math.exp(
-                        (decay_steps_adjusted / self.decay_steps) *
-                        math.log(eff_rate))
+                    # 与阶梯模式一样，最后一个实际优化步是max_iter-1；
+                    # 按total_decay_steps连续外推会少衰减一步，达不到声明的final_lr。
+                    # 仅修显式decay_to_final_lr模式，历史默认衰减路径保持原值。
+                    if step >= self.max_iter - 1:
+                        current_lr = target
+                    else:
+                        current_lr = self.initial_lr * math.exp(
+                            (decay_steps_adjusted / self.decay_steps) *
+                            math.log(eff_rate))
             elif self.staircase:
                 current_lr = self.initial_lr * (self.decay_rate ** (decay_steps_adjusted // self.decay_steps))
             else:

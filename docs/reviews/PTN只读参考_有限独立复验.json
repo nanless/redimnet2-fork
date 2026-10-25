@@ -1,0 +1,267 @@
+{
+  "schema": "redimnet2-ptn-reference-independent-review/v1",
+  "recorded_utc": "2026-10-25T07:16:19.490647+00:00",
+  "limited_static_review_passed": true,
+  "archive_index_sha256": "933d19945485c9de71e243e06f5db5cc1c47c936535f013f49edee49fe71dfc7",
+  "auditor_sha256": "b1eb1cc777e461e2cfb735bcf2dd28edba7237b874a8f1a2c568488658dfa771",
+  "files": [
+    {
+      "name": "audio_review.py",
+      "sha256": "f5d69d59148df4f2c8693f8f67dbd432823a41c3642016b07819210e6533c507",
+      "identity": "public_derived_without_fixed_sample_keys",
+      "same_as_local_historical_source": false
+    },
+    {
+      "name": "cpu_check.py",
+      "sha256": "d599676ee8348bc2c3d50b4eb92a83d4ff24cb161527a1afedee40abe39702f4",
+      "identity": "historical_byte_exact",
+      "same_as_local_historical_source": true
+    },
+    {
+      "name": "decoder_runtime.py",
+      "sha256": "573a3511a7d633fe4b4782b88c27d643115a9eb223b5d7858e1d46b6263b611e",
+      "identity": "historical_byte_exact",
+      "same_as_local_historical_source": true
+    },
+    {
+      "name": "entry.py",
+      "sha256": "399951b166d113a8d104f6048cd426628b2c747177701d6e83fdcb85c774a6e2",
+      "identity": "historical_byte_exact",
+      "same_as_local_historical_source": true
+    },
+    {
+      "name": "epoch_guard.py",
+      "sha256": "b5d14cc0626e0399d095fc45794a963cdf27c6fce3358163d51320b4fd7993b8",
+      "identity": "historical_byte_exact",
+      "same_as_local_historical_source": true
+    },
+    {
+      "name": "launch.sh",
+      "sha256": "bab4f0f8eef0bed39be21032ef86d1206b3e9a1d7df42fe3fcf03ae9da15c2b9",
+      "identity": "historical_byte_exact",
+      "same_as_local_historical_source": true
+    },
+    {
+      "name": "loader_worker_audit.py",
+      "sha256": "277ec9d8478f4fc5ebb15e3bece355e617906448536be086016bfb8abafdf8ff",
+      "identity": "historical_byte_exact",
+      "same_as_local_historical_source": true
+    },
+    {
+      "name": "predecessor_gate.py",
+      "sha256": "f1d975947bceebfbe7bf2997e84db622653bd6c4c3c11d28f36b16e05bc536d7",
+      "identity": "historical_byte_exact",
+      "same_as_local_historical_source": true
+    },
+    {
+      "name": "strict_restore.py",
+      "sha256": "476a78e3f003f9eaadae0c24b823955c2e259b7433df941ca35ad18dbce296f9",
+      "identity": "historical_byte_exact",
+      "same_as_local_historical_source": true
+    },
+    {
+      "name": "worker.py",
+      "sha256": "43462e49187a84ba2c5f87d0cd900b084879a2cb34d4b66becdf60a9385e9d5c",
+      "identity": "historical_byte_exact",
+      "same_as_local_historical_source": true
+    }
+  ],
+  "public_derivative_matches_reviewed_maintenance_source": true,
+  "fixed_sample_key_equality_branches_remaining": 0,
+  "unit_tests": {
+    "count": 6,
+    "passed": 6,
+    "skipped": 0,
+    "exit": 0
+  },
+  "CLI": [
+    {
+      "args": [],
+      "exit": 0,
+      "result": {
+        "file_set_and_syntax_verified": true,
+        "files": [
+          {
+            "name": "audio_review.py",
+            "bytes": 17870,
+            "sha256": "f5d69d59148df4f2c8693f8f67dbd432823a41c3642016b07819210e6533c507",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "cpu_check.py",
+            "bytes": 3316,
+            "sha256": "d599676ee8348bc2c3d50b4eb92a83d4ff24cb161527a1afedee40abe39702f4",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "decoder_runtime.py",
+            "bytes": 5698,
+            "sha256": "573a3511a7d633fe4b4782b88c27d643115a9eb223b5d7858e1d46b6263b611e",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "entry.py",
+            "bytes": 13167,
+            "sha256": "399951b166d113a8d104f6048cd426628b2c747177701d6e83fdcb85c774a6e2",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "epoch_guard.py",
+            "bytes": 775,
+            "sha256": "b5d14cc0626e0399d095fc45794a963cdf27c6fce3358163d51320b4fd7993b8",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "launch.sh",
+            "bytes": 816,
+            "sha256": "bab4f0f8eef0bed39be21032ef86d1206b3e9a1d7df42fe3fcf03ae9da15c2b9",
+            "syntax": "Bash -n only, not executed"
+          },
+          {
+            "name": "loader_worker_audit.py",
+            "bytes": 6566,
+            "sha256": "277ec9d8478f4fc5ebb15e3bece355e617906448536be086016bfb8abafdf8ff",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "predecessor_gate.py",
+            "bytes": 3080,
+            "sha256": "f1d975947bceebfbe7bf2997e84db622653bd6c4c3c11d28f36b16e05bc536d7",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "strict_restore.py",
+            "bytes": 8992,
+            "sha256": "476a78e3f003f9eaadae0c24b823955c2e259b7433df941ca35ad18dbce296f9",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "worker.py",
+            "bytes": 5708,
+            "sha256": "43462e49187a84ba2c5f87d0cd900b084879a2cb34d4b66becdf60a9385e9d5c",
+            "syntax": "Python compile only, not executed"
+          }
+        ],
+        "archived_module_imported": false,
+        "GPU_or_training_executed": false,
+        "runtime_admission": false,
+        "historical_execution_proven": false,
+        "reference_source_integrity_verified": true,
+        "historical_exact_files": 9,
+        "public_derived_files": 1,
+        "archive_index_sha256": "933d19945485c9de71e243e06f5db5cc1c47c936535f013f49edee49fe71dfc7",
+        "external_inputs_not_included": [
+          "bundle_files.json",
+          "dependencies.json",
+          "source_189.json",
+          "resume.yaml",
+          "parent_terminal_attestation.json",
+          "failed_task_terminal.json",
+          "audio_selfcheck.json",
+          "checkpoint files",
+          "reviewed audio event records",
+          "private decoder runtime and shared GPU libraries",
+          "the byte-frozen source tree"
+        ]
+      }
+    },
+    {
+      "args": [
+        "--require-runtime-admission"
+      ],
+      "exit": 2,
+      "result": {
+        "file_set_and_syntax_verified": true,
+        "files": [
+          {
+            "name": "audio_review.py",
+            "bytes": 17870,
+            "sha256": "f5d69d59148df4f2c8693f8f67dbd432823a41c3642016b07819210e6533c507",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "cpu_check.py",
+            "bytes": 3316,
+            "sha256": "d599676ee8348bc2c3d50b4eb92a83d4ff24cb161527a1afedee40abe39702f4",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "decoder_runtime.py",
+            "bytes": 5698,
+            "sha256": "573a3511a7d633fe4b4782b88c27d643115a9eb223b5d7858e1d46b6263b611e",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "entry.py",
+            "bytes": 13167,
+            "sha256": "399951b166d113a8d104f6048cd426628b2c747177701d6e83fdcb85c774a6e2",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "epoch_guard.py",
+            "bytes": 775,
+            "sha256": "b5d14cc0626e0399d095fc45794a963cdf27c6fce3358163d51320b4fd7993b8",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "launch.sh",
+            "bytes": 816,
+            "sha256": "bab4f0f8eef0bed39be21032ef86d1206b3e9a1d7df42fe3fcf03ae9da15c2b9",
+            "syntax": "Bash -n only, not executed"
+          },
+          {
+            "name": "loader_worker_audit.py",
+            "bytes": 6566,
+            "sha256": "277ec9d8478f4fc5ebb15e3bece355e617906448536be086016bfb8abafdf8ff",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "predecessor_gate.py",
+            "bytes": 3080,
+            "sha256": "f1d975947bceebfbe7bf2997e84db622653bd6c4c3c11d28f36b16e05bc536d7",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "strict_restore.py",
+            "bytes": 8992,
+            "sha256": "476a78e3f003f9eaadae0c24b823955c2e259b7433df941ca35ad18dbce296f9",
+            "syntax": "Python compile only, not executed"
+          },
+          {
+            "name": "worker.py",
+            "bytes": 5708,
+            "sha256": "43462e49187a84ba2c5f87d0cd900b084879a2cb34d4b66becdf60a9385e9d5c",
+            "syntax": "Python compile only, not executed"
+          }
+        ],
+        "archived_module_imported": false,
+        "GPU_or_training_executed": false,
+        "runtime_admission": false,
+        "historical_execution_proven": false,
+        "reference_source_integrity_verified": true,
+        "historical_exact_files": 9,
+        "public_derived_files": 1,
+        "archive_index_sha256": "933d19945485c9de71e243e06f5db5cc1c47c936535f013f49edee49fe71dfc7",
+        "external_inputs_not_included": [
+          "bundle_files.json",
+          "dependencies.json",
+          "source_189.json",
+          "resume.yaml",
+          "parent_terminal_attestation.json",
+          "failed_task_terminal.json",
+          "audio_selfcheck.json",
+          "checkpoint files",
+          "reviewed audio event records",
+          "private decoder runtime and shared GPU libraries",
+          "the byte-frozen source tree"
+        ],
+        "refusal": "reference source cannot grant runtime admission; external originals and new execution review are absent"
+      }
+    }
+  ],
+  "runtime_admission": false,
+  "archived_module_imported": false,
+  "GPU_or_training_executed": false,
+  "probe_correction": "初次AST辅助探针把合法sample_key去重比较也算成固定标识分支而触发AssertionError；现只检查与字面字符串相等的定点分支，归档代码未因该探针改变。",
+  "history_identity_claim": "仅9文件原字节；audio_review为明确公开派生，不能以本索引替代原运行凭证。"
+}

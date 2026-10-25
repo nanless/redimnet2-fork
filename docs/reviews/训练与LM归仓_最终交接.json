@@ -1,0 +1,39 @@
+{
+  "schema": "training-lm-final-handoff/v1",
+  "recorded_utc": "2026-10-25T07:01:54.622499+00:00",
+  "tests_unique": 329,
+  "skip": 0,
+  "own_code_matches_independent_receipt": true,
+  "independent_receipt_sha256": "301a0cc9769287667f232dcc7e027958490a683d85b0408da733ffca7729e1b9",
+  "local_raw_logs_are_gitignored": true,
+  "README_local_links": [
+    {
+      "from": "duration_ft/README.md",
+      "target": "../word_ft/README.md",
+      "exists": true
+    },
+    {
+      "from": "duration_ft/README.md",
+      "target": "../word_ft_v3/README.md",
+      "exists": true
+    },
+    {
+      "from": "word_ft/README.md",
+      "target": "../word_ft_v3/README.md",
+      "exists": true
+    },
+    {
+      "from": "word_ft_v3/README.md",
+      "target": "../duration_ft/config_checks.py",
+      "exists": true
+    },
+    {
+      "from": "tools/lm_continuation/README.md",
+      "target": "../../docs/reviews/LM归仓_维护身份与历史差异.json",
+      "exists": true
+    }
+  ],
+  "historical_server_or_frozen_source_changed": false,
+  "Git_commit_push_done_by_child": false,
+  "scope": "Only owned training/LM modules and corresponding tests/configs/scripts/readmes/review notes"
+}

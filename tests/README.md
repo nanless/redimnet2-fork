@@ -1,8 +1,10 @@
 # tests/ 目录
 
-这里的脚本不是单元测试框架，而是**能直接跑、直接看数字**的检查脚本。
-用装了 torch 的那个 Python 跑（本机是 `/root/miniforge3/envs/redimnet2/bin/python`），
-根目录的 `python3` 没有 torch。
+这里同时有可直接执行的模型检查和 `unittest` 合成回归。本文原有的掩码实测是历史模型实验，下面单独说明；新增工具的测试范围与依赖应按各目录 README 和本次检查记录区分。
+
+纯标准库测试可以用 `python3`，需要张量计算或模型权重的测试则使用已安装相应依赖的解释器。历史开发机曾使用 `/root/miniforge3/envs/redimnet2/bin/python`，这不是任意机器上必然存在的路径，也不能据旧记录断定现在的 `python3` 有无 torch。
+
+训练接续、自动标注和完整字消费的入口见 [实验维护与验收边界](../docs/16-实验维护与验收边界.md)。`tools/open_annotation/tests/` 的测试使用合成输入，不证明新仓库版本已通过真实 GPU；完整字正式训练仍需满足独立的数据资格检查。
 
 ## `test_varlen_masking.py`
 

@@ -1,0 +1,1544 @@
+{
+  "schema": "redimnet2-report-table-check/v1",
+  "scope": "两篇历史报告的逐型号表格与现存CSV数字；不证明音频、模型、协议或总体准确率",
+  "checked_numeric_cells": 192,
+  "errors": [],
+  "values": [
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 24,
+      "checkpoint": "b0-vox2-lm",
+      "field": "Vox1-O",
+      "report": "1.042",
+      "csv": "1.042"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 24,
+      "checkpoint": "b0-vox2-lm",
+      "field": "official-O",
+      "report": "1.04",
+      "csv": "1.04"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 24,
+      "checkpoint": "b0-vox2-lm",
+      "field": "delta-O",
+      "report": "+0.002",
+      "csv": "0.002"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 24,
+      "checkpoint": "b0-vox2-lm",
+      "field": "Vox1-E",
+      "report": "1.157",
+      "csv": "1.157"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 24,
+      "checkpoint": "b0-vox2-lm",
+      "field": "official-E",
+      "report": "1.16",
+      "csv": "1.16"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 24,
+      "checkpoint": "b0-vox2-lm",
+      "field": "delta-E",
+      "report": "-0.003",
+      "csv": "-0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 24,
+      "checkpoint": "b0-vox2-lm",
+      "field": "Vox1-H",
+      "report": "1.972",
+      "csv": "1.972"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 24,
+      "checkpoint": "b0-vox2-lm",
+      "field": "official-H",
+      "report": "1.97",
+      "csv": "1.97"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 24,
+      "checkpoint": "b0-vox2-lm",
+      "field": "delta-H",
+      "report": "+0.002",
+      "csv": "0.002"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 25,
+      "checkpoint": "b1-vox2-lm",
+      "field": "Vox1-O",
+      "report": "0.787",
+      "csv": "0.787"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 25,
+      "checkpoint": "b1-vox2-lm",
+      "field": "official-O",
+      "report": "0.78",
+      "csv": "0.78"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 25,
+      "checkpoint": "b1-vox2-lm",
+      "field": "delta-O",
+      "report": "+0.007",
+      "csv": "0.007"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 25,
+      "checkpoint": "b1-vox2-lm",
+      "field": "Vox1-E",
+      "report": "0.959",
+      "csv": "0.959"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 25,
+      "checkpoint": "b1-vox2-lm",
+      "field": "official-E",
+      "report": "0.96",
+      "csv": "0.96"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 25,
+      "checkpoint": "b1-vox2-lm",
+      "field": "delta-E",
+      "report": "-0.001",
+      "csv": "-0.001"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 25,
+      "checkpoint": "b1-vox2-lm",
+      "field": "Vox1-H",
+      "report": "1.721",
+      "csv": "1.721"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 25,
+      "checkpoint": "b1-vox2-lm",
+      "field": "official-H",
+      "report": "1.72",
+      "csv": "1.72"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 25,
+      "checkpoint": "b1-vox2-lm",
+      "field": "delta-H",
+      "report": "+0.001",
+      "csv": "0.001"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 26,
+      "checkpoint": "b2-vox2-lm",
+      "field": "Vox1-O",
+      "report": "0.574",
+      "csv": "0.574"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 26,
+      "checkpoint": "b2-vox2-lm",
+      "field": "official-O",
+      "report": "0.57",
+      "csv": "0.57"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 26,
+      "checkpoint": "b2-vox2-lm",
+      "field": "delta-O",
+      "report": "+0.004",
+      "csv": "0.004"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 26,
+      "checkpoint": "b2-vox2-lm",
+      "field": "Vox1-E",
+      "report": "0.758",
+      "csv": "0.758"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 26,
+      "checkpoint": "b2-vox2-lm",
+      "field": "official-E",
+      "report": "0.76",
+      "csv": "0.76"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 26,
+      "checkpoint": "b2-vox2-lm",
+      "field": "delta-E",
+      "report": "-0.002",
+      "csv": "-0.002"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 26,
+      "checkpoint": "b2-vox2-lm",
+      "field": "Vox1-H",
+      "report": "1.409",
+      "csv": "1.409"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 26,
+      "checkpoint": "b2-vox2-lm",
+      "field": "official-H",
+      "report": "1.41",
+      "csv": "1.41"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 26,
+      "checkpoint": "b2-vox2-lm",
+      "field": "delta-H",
+      "report": "-0.001",
+      "csv": "-0.001"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 27,
+      "checkpoint": "b3-vox2-lm",
+      "field": "Vox1-O",
+      "report": "0.420",
+      "csv": "0.42"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 27,
+      "checkpoint": "b3-vox2-lm",
+      "field": "official-O",
+      "report": "0.42",
+      "csv": "0.42"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 27,
+      "checkpoint": "b3-vox2-lm",
+      "field": "delta-O",
+      "report": "0.000",
+      "csv": "0.0"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 27,
+      "checkpoint": "b3-vox2-lm",
+      "field": "Vox1-E",
+      "report": "0.663",
+      "csv": "0.663"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 27,
+      "checkpoint": "b3-vox2-lm",
+      "field": "official-E",
+      "report": "0.66",
+      "csv": "0.66"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 27,
+      "checkpoint": "b3-vox2-lm",
+      "field": "delta-E",
+      "report": "+0.003",
+      "csv": "0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 27,
+      "checkpoint": "b3-vox2-lm",
+      "field": "Vox1-H",
+      "report": "1.223",
+      "csv": "1.223"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 27,
+      "checkpoint": "b3-vox2-lm",
+      "field": "official-H",
+      "report": "1.22",
+      "csv": "1.22"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 27,
+      "checkpoint": "b3-vox2-lm",
+      "field": "delta-H",
+      "report": "+0.003",
+      "csv": "0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 28,
+      "checkpoint": "b4-vox2-lm",
+      "field": "Vox1-O",
+      "report": "0.367",
+      "csv": "0.367"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 28,
+      "checkpoint": "b4-vox2-lm",
+      "field": "official-O",
+      "report": "0.37",
+      "csv": "0.37"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 28,
+      "checkpoint": "b4-vox2-lm",
+      "field": "delta-O",
+      "report": "-0.003",
+      "csv": "-0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 28,
+      "checkpoint": "b4-vox2-lm",
+      "field": "Vox1-E",
+      "report": "0.583",
+      "csv": "0.583"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 28,
+      "checkpoint": "b4-vox2-lm",
+      "field": "official-E",
+      "report": "0.58",
+      "csv": "0.58"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 28,
+      "checkpoint": "b4-vox2-lm",
+      "field": "delta-E",
+      "report": "+0.003",
+      "csv": "0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 28,
+      "checkpoint": "b4-vox2-lm",
+      "field": "Vox1-H",
+      "report": "1.067",
+      "csv": "1.067"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 28,
+      "checkpoint": "b4-vox2-lm",
+      "field": "official-H",
+      "report": "1.07",
+      "csv": "1.07"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 28,
+      "checkpoint": "b4-vox2-lm",
+      "field": "delta-H",
+      "report": "-0.003",
+      "csv": "-0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 29,
+      "checkpoint": "b5-vox2-lm",
+      "field": "Vox1-O",
+      "report": "0.330",
+      "csv": "0.33"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 29,
+      "checkpoint": "b5-vox2-lm",
+      "field": "official-O",
+      "report": "0.33",
+      "csv": "0.33"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 29,
+      "checkpoint": "b5-vox2-lm",
+      "field": "delta-O",
+      "report": "0.000",
+      "csv": "0.0"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 29,
+      "checkpoint": "b5-vox2-lm",
+      "field": "Vox1-E",
+      "report": "0.557",
+      "csv": "0.557"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 29,
+      "checkpoint": "b5-vox2-lm",
+      "field": "official-E",
+      "report": "0.56",
+      "csv": "0.56"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 29,
+      "checkpoint": "b5-vox2-lm",
+      "field": "delta-E",
+      "report": "-0.003",
+      "csv": "-0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 29,
+      "checkpoint": "b5-vox2-lm",
+      "field": "Vox1-H",
+      "report": "1.067",
+      "csv": "1.067"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 29,
+      "checkpoint": "b5-vox2-lm",
+      "field": "official-H",
+      "report": "1.07",
+      "csv": "1.07"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 29,
+      "checkpoint": "b5-vox2-lm",
+      "field": "delta-H",
+      "report": "-0.003",
+      "csv": "-0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 30,
+      "checkpoint": "b6-vox2-lm",
+      "field": "Vox1-O",
+      "report": "0.282",
+      "csv": "0.282"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 30,
+      "checkpoint": "b6-vox2-lm",
+      "field": "official-O",
+      "report": "0.29",
+      "csv": "0.29"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 30,
+      "checkpoint": "b6-vox2-lm",
+      "field": "delta-O",
+      "report": "-0.008",
+      "csv": "-0.008"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 30,
+      "checkpoint": "b6-vox2-lm",
+      "field": "Vox1-E",
+      "report": "0.519",
+      "csv": "0.519"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 30,
+      "checkpoint": "b6-vox2-lm",
+      "field": "official-E",
+      "report": "0.52",
+      "csv": "0.52"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 30,
+      "checkpoint": "b6-vox2-lm",
+      "field": "delta-E",
+      "report": "-0.001",
+      "csv": "-0.001"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 30,
+      "checkpoint": "b6-vox2-lm",
+      "field": "Vox1-H",
+      "report": "0.988",
+      "csv": "0.988"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 30,
+      "checkpoint": "b6-vox2-lm",
+      "field": "official-H",
+      "report": "0.99",
+      "csv": "0.99"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 30,
+      "checkpoint": "b6-vox2-lm",
+      "field": "delta-H",
+      "report": "-0.002",
+      "csv": "-0.002"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "Vox1-O",
+      "report": "0.170",
+      "csv": "0.17"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "official-O",
+      "report": "0.23",
+      "csv": "0.23"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "delta-O",
+      "report": "-0.060",
+      "csv": "-0.06"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "Vox1-E",
+      "report": "0.339",
+      "csv": "0.339"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "official-E",
+      "report": "0.35",
+      "csv": "0.35"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "delta-E",
+      "report": "-0.011",
+      "csv": "-0.011"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "Vox1-H",
+      "report": "0.679",
+      "csv": "0.679"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "official-H",
+      "report": "0.67",
+      "csv": "0.67"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "delta-H",
+      "report": "+0.009",
+      "csv": "0.009"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 32,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "Vox1-O",
+      "report": "0.293",
+      "csv": "0.293"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 32,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "official-O",
+      "report": "0.29",
+      "csv": "0.29"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 32,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "delta-O",
+      "report": "+0.003",
+      "csv": "0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 32,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "Vox1-E",
+      "report": "0.500",
+      "csv": "0.5"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 32,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "official-E",
+      "report": "0.50",
+      "csv": "0.5"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 32,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "delta-E",
+      "report": "0.000",
+      "csv": "0.0"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 32,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "Vox1-H",
+      "report": "0.943",
+      "csv": "0.943"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 32,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "official-H",
+      "report": "0.94",
+      "csv": "0.94"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 32,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "delta-H",
+      "report": "+0.003",
+      "csv": "0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 33,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "Vox1-O",
+      "report": "0.505",
+      "csv": "0.505"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 33,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "official-O",
+      "report": "0.51",
+      "csv": "0.51"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 33,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-O",
+      "report": "-0.005",
+      "csv": "-0.005"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 33,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "Vox1-E",
+      "report": "0.605",
+      "csv": "0.605"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 33,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "official-E",
+      "report": "0.60",
+      "csv": "0.6"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 33,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-E",
+      "report": "+0.005",
+      "csv": "0.005"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 33,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "Vox1-H",
+      "report": "1.142",
+      "csv": "1.142"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 33,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "official-H",
+      "report": "1.14",
+      "csv": "1.14"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 33,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-H",
+      "report": "+0.002",
+      "csv": "0.002"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 34,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "Vox1-O",
+      "report": "0.686",
+      "csv": "0.686"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 34,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-O",
+      "report": "0.69",
+      "csv": "0.69"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 34,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-O",
+      "report": "-0.004",
+      "csv": "-0.004"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 34,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "Vox1-E",
+      "report": "0.817",
+      "csv": "0.817"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 34,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-E",
+      "report": "0.82",
+      "csv": "0.82"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 34,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-E",
+      "report": "-0.003",
+      "csv": "-0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 34,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "Vox1-H",
+      "report": "1.472",
+      "csv": "1.472"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 34,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-H",
+      "report": "1.47",
+      "csv": "1.47"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 34,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-H",
+      "report": "+0.002",
+      "csv": "0.002"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 35,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "Vox1-O",
+      "report": "0.255",
+      "csv": "0.255"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 35,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "official-O",
+      "report": "0.26",
+      "csv": "0.26"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 35,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-O",
+      "report": "-0.005",
+      "csv": "-0.005"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 35,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "Vox1-E",
+      "report": "0.409",
+      "csv": "0.409"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 35,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "official-E",
+      "report": "0.41",
+      "csv": "0.41"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 35,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-E",
+      "report": "-0.001",
+      "csv": "-0.001"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 35,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "Vox1-H",
+      "report": "0.790",
+      "csv": "0.79"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 35,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "official-H",
+      "report": "0.79",
+      "csv": "0.79"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 35,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-H",
+      "report": "0.000",
+      "csv": "0.0"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 36,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "Vox1-O",
+      "report": "0.420",
+      "csv": "0.42"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 36,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-O",
+      "report": "0.42",
+      "csv": "0.42"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 36,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-O",
+      "report": "0.000",
+      "csv": "0.0"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 36,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "Vox1-E",
+      "report": "0.577",
+      "csv": "0.577"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 36,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-E",
+      "report": "0.58",
+      "csv": "0.58"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 36,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-E",
+      "report": "-0.003",
+      "csv": "-0.003"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 36,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "Vox1-H",
+      "report": "1.070",
+      "csv": "1.07"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 36,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-H",
+      "report": "1.07",
+      "csv": "1.07"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 36,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-H",
+      "report": "0.000",
+      "csv": "0.0"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 73,
+      "checkpoint": "b0-vox2-ptn",
+      "field": "Vox1-O",
+      "report": "1.377",
+      "csv": "1.377"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 73,
+      "checkpoint": "b0-vox2-ptn",
+      "field": "Vox1-E",
+      "report": "1.447",
+      "csv": "1.447"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 73,
+      "checkpoint": "b0-vox2-ptn",
+      "field": "Vox1-H",
+      "report": "2.502",
+      "csv": "2.502"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 74,
+      "checkpoint": "b1-vox2-ptn",
+      "field": "Vox1-O",
+      "report": "1.047",
+      "csv": "1.047"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 74,
+      "checkpoint": "b1-vox2-ptn",
+      "field": "Vox1-E",
+      "report": "1.182",
+      "csv": "1.182"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 74,
+      "checkpoint": "b1-vox2-ptn",
+      "field": "Vox1-H",
+      "report": "2.119",
+      "csv": "2.119"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 75,
+      "checkpoint": "b2-vox2-ptn",
+      "field": "Vox1-O",
+      "report": "0.872",
+      "csv": "0.872"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 75,
+      "checkpoint": "b2-vox2-ptn",
+      "field": "Vox1-E",
+      "report": "0.951",
+      "csv": "0.951"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 75,
+      "checkpoint": "b2-vox2-ptn",
+      "field": "Vox1-H",
+      "report": "1.738",
+      "csv": "1.738"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 76,
+      "checkpoint": "b3-vox2-ptn",
+      "field": "Vox1-O",
+      "report": "0.670",
+      "csv": "0.67"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 76,
+      "checkpoint": "b3-vox2-ptn",
+      "field": "Vox1-E",
+      "report": "0.848",
+      "csv": "0.848"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 76,
+      "checkpoint": "b3-vox2-ptn",
+      "field": "Vox1-H",
+      "report": "1.500",
+      "csv": "1.5"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 77,
+      "checkpoint": "b4-vox2-ptn",
+      "field": "Vox1-O",
+      "report": "0.532",
+      "csv": "0.532"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 77,
+      "checkpoint": "b4-vox2-ptn",
+      "field": "Vox1-E",
+      "report": "0.749",
+      "csv": "0.749"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 77,
+      "checkpoint": "b4-vox2-ptn",
+      "field": "Vox1-H",
+      "report": "1.318",
+      "csv": "1.318"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 78,
+      "checkpoint": "b5-vox2-ptn",
+      "field": "Vox1-O",
+      "report": "0.558",
+      "csv": "0.558"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 78,
+      "checkpoint": "b5-vox2-ptn",
+      "field": "Vox1-E",
+      "report": "0.764",
+      "csv": "0.764"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 78,
+      "checkpoint": "b5-vox2-ptn",
+      "field": "Vox1-H",
+      "report": "1.348",
+      "csv": "1.348"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 79,
+      "checkpoint": "b6-vox2-ptn",
+      "field": "Vox1-O",
+      "report": "0.447",
+      "csv": "0.447"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 79,
+      "checkpoint": "b6-vox2-ptn",
+      "field": "Vox1-E",
+      "report": "0.679",
+      "csv": "0.679"
+    },
+    {
+      "document": "02-VoxCeleb1结果.md",
+      "line": 79,
+      "checkpoint": "b6-vox2-ptn",
+      "field": "Vox1-H",
+      "report": "1.244",
+      "csv": "1.244"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 26,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "Vox1-B",
+      "report": "0.954",
+      "csv": "0.954"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 26,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "official-Vox1-B",
+      "report": "0.89",
+      "csv": "0.89"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 26,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "delta-Vox1-B",
+      "report": "+0.064",
+      "csv": "0.064"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 26,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "VOICES",
+      "report": "2.590",
+      "csv": "2.59"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 26,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "official-VOICES",
+      "report": "2.55",
+      "csv": "2.55"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 26,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "delta-VOICES",
+      "report": "+0.040",
+      "csv": "0.04"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 26,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "CN-Celeb",
+      "report": "7.399",
+      "csv": "7.399"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 26,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "official-CN-Celeb",
+      "report": "7.49",
+      "csv": "7.49"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 26,
+      "checkpoint": "b6-vb2+vox2_v0-lm",
+      "field": "delta-CN-Celeb",
+      "report": "-0.091",
+      "csv": "-0.091"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 27,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "Vox1-B",
+      "report": "1.268",
+      "csv": "1.268"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 27,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "official-Vox1-B",
+      "report": "1.27",
+      "csv": "1.27"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 27,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "delta-Vox1-B",
+      "report": "-0.002",
+      "csv": "-0.002"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 27,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "VOICES",
+      "report": "3.254",
+      "csv": "3.254"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 27,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "official-VOICES",
+      "report": "3.25",
+      "csv": "3.25"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 27,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "delta-VOICES",
+      "report": "+0.004",
+      "csv": "0.004"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 27,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "CN-Celeb",
+      "report": "8.510",
+      "csv": "8.51"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 27,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "official-CN-Celeb",
+      "report": "8.50",
+      "csv": "8.5"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 27,
+      "checkpoint": "b6-vb2+vox2_v0-ptn",
+      "field": "delta-CN-Celeb",
+      "report": "+0.010",
+      "csv": "0.01"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 28,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "Vox1-B",
+      "report": "1.722",
+      "csv": "1.722"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 28,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "official-Vox1-B",
+      "report": "1.72",
+      "csv": "1.72"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 28,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-Vox1-B",
+      "report": "+0.002",
+      "csv": "0.002"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 28,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "VOICES",
+      "report": "3.875",
+      "csv": "3.875"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 28,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "official-VOICES",
+      "report": "3.87",
+      "csv": "3.87"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 28,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-VOICES",
+      "report": "+0.005",
+      "csv": "0.005"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 28,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "CN-Celeb",
+      "report": "4.776",
+      "csv": "4.776"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 28,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "official-CN-Celeb",
+      "report": "4.78",
+      "csv": "4.78"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 28,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-CN-Celeb",
+      "report": "-0.004",
+      "csv": "-0.004"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 29,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "Vox1-B",
+      "report": "2.163",
+      "csv": "2.163"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 29,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-Vox1-B",
+      "report": "2.16",
+      "csv": "2.16"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 29,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-Vox1-B",
+      "report": "+0.003",
+      "csv": "0.003"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 29,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "VOICES",
+      "report": "5.957",
+      "csv": "5.957"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 29,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-VOICES",
+      "report": "5.96",
+      "csv": "5.96"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 29,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-VOICES",
+      "report": "-0.003",
+      "csv": "-0.003"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 29,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "CN-Celeb",
+      "report": "5.294",
+      "csv": "5.294"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 29,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-CN-Celeb",
+      "report": "5.29",
+      "csv": "5.29"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 29,
+      "checkpoint": "b3-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-CN-Celeb",
+      "report": "+0.004",
+      "csv": "0.004"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 30,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "Vox1-B",
+      "report": "1.153",
+      "csv": "1.153"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 30,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "official-Vox1-B",
+      "report": "1.15",
+      "csv": "1.15"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 30,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-Vox1-B",
+      "report": "+0.003",
+      "csv": "0.003"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 30,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "VOICES",
+      "report": "3.029",
+      "csv": "3.029"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 30,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "official-VOICES",
+      "report": "3.03",
+      "csv": "3.03"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 30,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-VOICES",
+      "report": "-0.001",
+      "csv": "-0.001"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 30,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "CN-Celeb",
+      "report": "3.605",
+      "csv": "3.605"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 30,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "official-CN-Celeb",
+      "report": "3.59",
+      "csv": "3.59"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 30,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-lm",
+      "field": "delta-CN-Celeb",
+      "report": "+0.015",
+      "csv": "0.015"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "Vox1-B",
+      "report": "1.507",
+      "csv": "1.507"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-Vox1-B",
+      "report": "1.51",
+      "csv": "1.51"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-Vox1-B",
+      "report": "-0.003",
+      "csv": "-0.003"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "VOICES",
+      "report": "4.302",
+      "csv": "4.302"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-VOICES",
+      "report": "4.30",
+      "csv": "4.3"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-VOICES",
+      "report": "+0.002",
+      "csv": "0.002"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "CN-Celeb",
+      "report": "4.316",
+      "csv": "4.316"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "official-CN-Celeb",
+      "report": "4.32",
+      "csv": "4.32"
+    },
+    {
+      "document": "03-域外试验结果.md",
+      "line": 31,
+      "checkpoint": "b6-vb2+vox2+cnc2_v0-ptn",
+      "field": "delta-CN-Celeb",
+      "report": "-0.004",
+      "csv": "-0.004"
+    }
+  ]
+}

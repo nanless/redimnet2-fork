@@ -1,0 +1,53 @@
+{
+  "schema": "ptn-read-only-reference-CPU-audit/v2",
+  "source_copy": "nine byte-exact historical sources and one explicitly public-derived audio reviewer",
+  "historical_exact_files": 9,
+  "public_derived_files": 1,
+  "source_archive_index_sha256": "933d19945485c9de71e243e06f5db5cc1c47c936535f013f49edee49fe71dfc7",
+  "auditor_sha256": "b1eb1cc777e461e2cfb735bcf2dd28edba7237b874a8f1a2c568488658dfa771",
+  "self_contained_CPU_tests": 6,
+  "tests_passed": 6,
+  "actual_CLI_checks": [
+    {
+      "mode": "public-identity-and-syntax",
+      "expected_returncode": 0,
+      "actual_returncode": 0,
+      "file_count": 10,
+      "reference_source_integrity_verified": true,
+      "historical_exact_files": 9,
+      "public_derived_files": 1,
+      "runtime_admission": false,
+      "historical_execution_proven": false
+    },
+    {
+      "mode": "public-runtime-refusal",
+      "expected_returncode": 2,
+      "actual_returncode": 2,
+      "file_count": 10,
+      "reference_source_integrity_verified": true,
+      "historical_exact_files": 9,
+      "public_derived_files": 1,
+      "runtime_admission": false,
+      "historical_execution_proven": false
+    }
+  ],
+  "archived_modules_imported": false,
+  "GPU_network_or_training_execution": false,
+  "runtime_credential_JSON_model_audio_config_or_source_tree_copied": false,
+  "privacy_repair": {
+    "historical_sample_keys_removed_from_public_derivative": 2,
+    "private_identifiers_in_reference_tree": 0,
+    "original_external_source_modified": false,
+    "historical_audio_reviewer_sha256": "30f0f1f6fb9aecd9b5b4f8f00187ef6014982153a5df7107cf0ed4dcfcd06156",
+    "public_audio_reviewer_sha256": "f5d69d59148df4f2c8693f8f67dbd432823a41c3642016b07819210e6533c507"
+  },
+  "independent_review": {
+    "passed": true,
+    "receipt": "docs/reviews/PTN只读参考_有限独立复验.json",
+    "receipt_sha256": "84b93cac81b799816185de77c66336f7c9cb5280b3d53e2bd13b980422e32ed9",
+    "byte_exact_historical_files": 9,
+    "explicit_public_derivative_files": 1,
+    "independently_rerun_tests": 6,
+    "runtime_admission": false
+  }
+}

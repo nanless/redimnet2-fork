@@ -13,7 +13,8 @@ DATA_AUDIT_FILE="${DATA_AUDIT_FILE:?必须指定已完成完整数据检查的 d
 [[ -x "$PYTHON_BIN" && -f "$SOURCE_CHECKSUM_FILE" && -f "$DATA_AUDIT_FILE" ]] || { echo 'Python、源码校验文件或数据检查报告不存在' >&2; exit 2; }
 # 专用流程不接受外部训练参数，防止平台环境悄悄改变正式配方。
 for key in NUM_EPOCHS SAMPLE_NUM_PER_EPOCH BATCH_SIZE SAVE_EPOCH_INTERVAL RECIPE MODEL_CKPT STAGE EXP_DIR PTN_EXP_DIR REPRO NUM_GPUS RECIPE_DATA_PREFIX VOX1_TEST_DIR EXPECT_TRAIN_LINES; do
-    if [[ -v "$key" ]]; then echo "专用流程拒绝外部训练覆盖: $key" >&2; exit 2; fi
+    # 间接检查“是否定义”，空字符串也必须拒绝；不用仅Bash4.2支持的-v。
+    if [[ ${!key+x} ]]; then echo "专用流程拒绝外部训练覆盖: $key" >&2; exit 2; fi
 done
 export REPO_ROOT PYTHON_BIN MODE
 export PYTHONPATH="$REPO_ROOT:$REPO_ROOT/applications/speaker_rec"

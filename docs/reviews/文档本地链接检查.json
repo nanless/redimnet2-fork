@@ -1,0 +1,1274 @@
+{
+  "schema": "redimnet2-document-link-check/v1",
+  "file_selection": "git ls-files --cached --others --exclude-standard；额外排除本地环境与私有审计目录",
+  "scope": "UTF-8说明文件与Markdown/HTML内联本地路径；不检查网络、标题锚点、代码示例和正文语义",
+  "documents": [
+    {
+      "path": ".agents/skills/redimnet2-reproduction-ops/SKILL.md",
+      "sha256": "e3810d0fc495c976a491647c81326f48b7d91a149cc60fcd08b178bf6f96328b",
+      "bytes": 2272
+    },
+    {
+      "path": ".agents/skills/redimnet2-reproduction-ops/references/complete-word-experiments.md",
+      "sha256": "f2210bea0a95b150e10515ca992230164f8e72dd9833a7b7d6a5d1061e39976c",
+      "bytes": 1759
+    },
+    {
+      "path": ".agents/skills/redimnet2-reproduction-ops/references/open-annotation.md",
+      "sha256": "7c3545f9d33b3febc3d89ed43cb14e170174f70d5b003bdae2790c12886b3bfd",
+      "bytes": 1859
+    },
+    {
+      "path": ".agents/skills/redimnet2-reproduction-ops/references/repository-and-evidence.md",
+      "sha256": "306ee578d122afd6ea50b0f6a8a1c3ca33db78afd84aa3fc24a686d435cad30b",
+      "bytes": 1400
+    },
+    {
+      "path": ".agents/skills/redimnet2-reproduction-ops/references/training-and-continuation.md",
+      "sha256": "a25f4eacb79afd959e4bcf26306b8048dbe393fb0faf839c0da3d0fe8d2938f2",
+      "bytes": 2133
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "625fa6a42c15247e1b4ed27886801333683e00588aee4f62f0a16bbd50edade6",
+      "bytes": 19778
+    },
+    {
+      "path": "README.md",
+      "sha256": "b4eaf028816f6dbf5f29268d0aae51554750d28a0202e13138f834b78878a76d",
+      "bytes": 8065
+    },
+    {
+      "path": "applications/speaker_rec/README.md",
+      "sha256": "95fc9410540210c7d1af950c078ef9a9ae5ce56d716aa652d49ed9626004e669",
+      "bytes": 3829
+    },
+    {
+      "path": "applications/speaker_rec/examples/vb2_vox2_cnc2/README.md",
+      "sha256": "4842c94faa56ba0850a92f18deac472685886d72d0c8f1d7ebc664dc52c09da3",
+      "bytes": 10967
+    },
+    {
+      "path": "applications/speaker_rec/examples/vox2/README.md",
+      "sha256": "3593d7d100df3c90bd8d623f3951430a5e854eb9a94e408ab4f8069ef476555f",
+      "bytes": 12183
+    },
+    {
+      "path": "applications/speaker_rec/launch.md",
+      "sha256": "c4a858dc498579ea856337e2df340172acddcde88153c146bf103224fe3ee956",
+      "bytes": 2061
+    },
+    {
+      "path": "checkpoints/eval_per_ckpt_OOD/README-这份数据已过期.md",
+      "sha256": "73558281c54621dbb7e11211a06ca2cfa1076bf804c7299e5b5d19c644014069",
+      "bytes": 2019
+    },
+    {
+      "path": "checkpoints/reports/01-背景与评测说明.md",
+      "sha256": "025a05aa1ab39569d5cd2361662cab944b70750a7e18a6e28766d7ff16d7bd60",
+      "bytes": 4156
+    },
+    {
+      "path": "checkpoints/reports/02-VoxCeleb1结果.md",
+      "sha256": "79c311bc117309b6adb5c461d6ba454afc7276b8f765eab2c9702be195f17807",
+      "bytes": 4337
+    },
+    {
+      "path": "checkpoints/reports/03-域外试验结果.md",
+      "sha256": "b3fbdd9f1f7d75584c049580ba76cf0d913725c6ad69846cc5f5445ad41644ee",
+      "bytes": 3804
+    },
+    {
+      "path": "checkpoints/reports/04-数据与复现步骤.md",
+      "sha256": "38d348a25c52caf285f3ca013f702eb281dbafea385e7f87ee7323a9f3de2376",
+      "bytes": 4508
+    },
+    {
+      "path": "checkpoints/reports/05-训练数据检查.md",
+      "sha256": "7cd367f8629814d6683c3277aa1db70d179f486d1f16521a2570cb570ec949c2",
+      "bytes": 10934
+    },
+    {
+      "path": "checkpoints/reports/06-数据审计报告.md",
+      "sha256": "13382d28769aad52b855d7d72f04288dbe1cc29edb85f40ede0c3ff697ba5a08",
+      "bytes": 21398
+    },
+    {
+      "path": "checkpoints/reports/README.md",
+      "sha256": "1d6d80d5d2e20d16696d43d40ea66a21cbdf5b0b7e1008b1b25b4a434d327ced",
+      "bytes": 4958
+    },
+    {
+      "path": "docs/01-background.md",
+      "sha256": "d0e89185893cba64915385e3bae93bc350d1a937c7ae224349fb7cc6a7385440",
+      "bytes": 4769
+    },
+    {
+      "path": "docs/02-architecture.md",
+      "sha256": "c9bac966c6095257cee4209f59cc750737341d703fe26d97641ada591951d973",
+      "bytes": 6485
+    },
+    {
+      "path": "docs/03-code-walkthrough.md",
+      "sha256": "7bebfa1c94109265dd487daa58144bb32f71f2360dfdb3bf58c6b3b107532624",
+      "bytes": 9967
+    },
+    {
+      "path": "docs/04-训练流程.md",
+      "sha256": "74d83b1008dbd3dcd7031a5685d90bde6af93499b37c9d2ad89de2c3794fc079",
+      "bytes": 29814
+    },
+    {
+      "path": "docs/05-recipes-and-repro.md",
+      "sha256": "a13402432e9cdee5f090b622a969ad825f1183f31e9300693bc704b6a1c0a0ad",
+      "bytes": 20128
+    },
+    {
+      "path": "docs/06-glossary-faq.md",
+      "sha256": "9c4161abc63e1120f76f52284ea372b9147a092f2672e2ec93ea64542e36ef36",
+      "bytes": 13228
+    },
+    {
+      "path": "docs/07-本机数据与开训检查.md",
+      "sha256": "bedd434141467ff794040d2e4bae40bbd41f17440a881eb9dafd8cdbbc31ff1f",
+      "bytes": 14156
+    },
+    {
+      "path": "docs/08-变长训练与长度分桶.md",
+      "sha256": "54370a49840bcdd26e592ad5047d0043aef47e7fdefcc21eeb8264f32d8d205b",
+      "bytes": 33180
+    },
+    {
+      "path": "docs/09-VAD标注与RTTM.md",
+      "sha256": "413d4481e79f7727522c67fe0e190528ceb6bf23c748682ea5b92087dbb4660c",
+      "bytes": 30688
+    },
+    {
+      "path": "docs/10-云端八卡训练.md",
+      "sha256": "1bad2e7b1a20e99241c6583d1d0a55cac139639e0b29aa489b5aae3188a82c41",
+      "bytes": 48699
+    },
+    {
+      "path": "docs/12-三语料B6官方复现配方核查.md",
+      "sha256": "4cdc499a6043f410dd8a6428cbc3bd98dd90480939ba5989ec2e1fb83aef0efd",
+      "bytes": 16309
+    },
+    {
+      "path": "docs/13-训练权重导出与评测.md",
+      "sha256": "c3149c58a4e7f258ffcce13cf329295de8ff5cdc01eafbfb196cc27bf901a3cd",
+      "bytes": 9265
+    },
+    {
+      "path": "docs/14-三语料B6云端数据路径.md",
+      "sha256": "c9987b869ddbfec0715bec3951898f6869ed7b7b5566b887e8df13e3efdc9f93",
+      "bytes": 6848
+    },
+    {
+      "path": "docs/15-三语料B6八卡短测与正式训练记录.md",
+      "sha256": "b0019b1ce9031ed6132c9b1b81a9d0c4a0403041b4c001874645e345fb7a6a88",
+      "bytes": 16958
+    },
+    {
+      "path": "docs/16-实验维护与验收边界.md",
+      "sha256": "b840cb0dab7ac2ff99c06bdb17792351c6a3697ce96f62174b7559d28802543f",
+      "bytes": 5942
+    },
+    {
+      "path": "docs/README.md",
+      "sha256": "4752a3b26ecd58a5fed2b7da31df075ae3b3257544c4877d738669a9bc0bb608",
+      "bytes": 10076
+    },
+    {
+      "path": "docs/plans/2026-10-25-全仓检查与实验代码归仓.md",
+      "sha256": "e209d4266f7861a82ffbe3b52015978b84128427a7802915f651c38123d29403",
+      "bytes": 4628
+    },
+    {
+      "path": "docs/reviews/2026-10-25-开源标注工具归仓清单.md",
+      "sha256": "70388b77018f7c3e2700cc0c1c28a9dfb63630c5fc16a9c4e0ddb5c4abd74a39",
+      "bytes": 4052
+    },
+    {
+      "path": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "sha256": "3701916a29d861d278f520fc2138c731349d44bdebc4e04de667e65562b5324a",
+      "bytes": 5602
+    },
+    {
+      "path": "docs/reviews/文档与技能检查计划.md",
+      "sha256": "fcef4ed51029a7b854fe353cc2cc625971b693d11162ba231f4aac800e65302f",
+      "bytes": 1985
+    },
+    {
+      "path": "docs/reviews/文档与技能首轮审阅.md",
+      "sha256": "ee1b802aef977cd3696a33820f281da4e8795f693e2a58a83102207f0f0fa1de",
+      "bytes": 4452
+    },
+    {
+      "path": "docs/reviews/训练与LM归仓_实施计划.md",
+      "sha256": "c19b216bff2e0e293d15c0bc320f5634b891b007d4f3823ce2d64ec978958f2b",
+      "bytes": 2018
+    },
+    {
+      "path": "duration_ft/README.md",
+      "sha256": "b6ff44e4e653439fe15e20adece3910d33801285a526d236d2ba61404f6df1d8",
+      "bytes": 2231
+    },
+    {
+      "path": "tests/README.md",
+      "sha256": "390dcce003333803dd6b8e658888b548a9ced967e280cc5eb6d6d0b12fdf4811",
+      "bytes": 4672
+    },
+    {
+      "path": "tools/lm_continuation/README.md",
+      "sha256": "fc54c13058daac2d5deb27215e22b7190402b7a42d9634022d7e9aa12b14e7f8",
+      "bytes": 3162
+    },
+    {
+      "path": "tools/open_annotation/README.md",
+      "sha256": "7157da56b4c664dcd1211bceb40d6c77575bb368e0a3f5d65585164d4633a7ce",
+      "bytes": 8919
+    },
+    {
+      "path": "tools/ptn_reference/README.md",
+      "sha256": "5025f4faee392b58d79ddc16c2f7826fc5f3447f0c1fab2d00119f8b72f096b5",
+      "bytes": 5657
+    },
+    {
+      "path": "word_ft/README.md",
+      "sha256": "365eb295e6d570414a5918cf83918242e8d6e986ea0d27eae1c3ad048f3e1501",
+      "bytes": 2109
+    },
+    {
+      "path": "word_ft_v3/README.md",
+      "sha256": "23b750ff1840daa1f463faada517cc51f2446d8ea39104f7b59a1debd8daa6a7",
+      "bytes": 1739
+    }
+  ],
+  "document_count": 48,
+  "local_links": [
+    {
+      "document": ".agents/skills/redimnet2-reproduction-ops/SKILL.md",
+      "line": 19,
+      "target": "references/training-and-continuation.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": ".agents/skills/redimnet2-reproduction-ops/SKILL.md",
+      "line": 20,
+      "target": "references/open-annotation.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": ".agents/skills/redimnet2-reproduction-ops/SKILL.md",
+      "line": 21,
+      "target": "references/complete-word-experiments.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": ".agents/skills/redimnet2-reproduction-ops/SKILL.md",
+      "line": 22,
+      "target": "references/repository-and-evidence.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "AGENTS.md",
+      "line": 11,
+      "target": "docs/16-实验维护与验收边界.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "README.md",
+      "line": 16,
+      "target": "assets/pareto.png",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/01-背景与评测说明.md",
+      "line": 31,
+      "target": "03-域外试验结果.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/01-背景与评测说明.md",
+      "line": 65,
+      "target": "04-数据与复现步骤.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/05-训练数据检查.md",
+      "line": 45,
+      "target": "../../docs/07-本机数据与开训检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/05-训练数据检查.md",
+      "line": 166,
+      "target": "../../docs/07-本机数据与开训检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/README.md",
+      "line": 21,
+      "target": "01-背景与评测说明.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/README.md",
+      "line": 22,
+      "target": "02-VoxCeleb1结果.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/README.md",
+      "line": 23,
+      "target": "03-域外试验结果.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/README.md",
+      "line": 24,
+      "target": "04-数据与复现步骤.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/README.md",
+      "line": 25,
+      "target": "05-训练数据检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/README.md",
+      "line": 26,
+      "target": "06-数据审计报告.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "checkpoints/reports/README.md",
+      "line": 62,
+      "target": "04-数据与复现步骤.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/01-background.md",
+      "line": 3,
+      "target": "README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/01-background.md",
+      "line": 3,
+      "target": "02-architecture.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/01-background.md",
+      "line": 126,
+      "target": "02-architecture.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/02-architecture.md",
+      "line": 3,
+      "target": "01-background.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/02-architecture.md",
+      "line": 3,
+      "target": "03-code-walkthrough.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/02-architecture.md",
+      "line": 183,
+      "target": "03-code-walkthrough.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/03-code-walkthrough.md",
+      "line": 3,
+      "target": "02-architecture.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/03-code-walkthrough.md",
+      "line": 3,
+      "target": "04-训练流程.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/03-code-walkthrough.md",
+      "line": 113,
+      "target": "04-训练流程.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/03-code-walkthrough.md",
+      "line": 133,
+      "target": "02-architecture.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/03-code-walkthrough.md",
+      "line": 234,
+      "target": "04-训练流程.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/04-训练流程.md",
+      "line": 3,
+      "target": "03-code-walkthrough.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/04-训练流程.md",
+      "line": 3,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/04-训练流程.md",
+      "line": 244,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/04-训练流程.md",
+      "line": 400,
+      "target": "../checkpoints/reports/README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/04-训练流程.md",
+      "line": 403,
+      "target": "08-变长训练与长度分桶.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/04-训练流程.md",
+      "line": 424,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 3,
+      "target": "04-训练流程.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 3,
+      "target": "07-本机数据与开训检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 3,
+      "target": "06-glossary-faq.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 19,
+      "target": "08-变长训练与长度分桶.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 313,
+      "target": "04-训练流程.md#写了但不起作用的键",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 325,
+      "target": "../README.md#model-zoo",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 347,
+      "target": "04-训练流程.md#训练中验证读的是开头-8-秒的窗口",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 362,
+      "target": "04-训练流程.md#续训的真实行为有一处容易踩",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 364,
+      "target": "04-训练流程.md#一条样本读进来之后实际做了什么",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 365,
+      "target": "04-训练流程.md#写了但不起作用的键",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 386,
+      "target": "04-训练流程.md#训练中验证读的是开头-8-秒的窗口",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 394,
+      "target": "../checkpoints/reports/README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 395,
+      "target": "../checkpoints/reports/01-背景与评测说明.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 396,
+      "target": "../checkpoints/reports/02-VoxCeleb1结果.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 397,
+      "target": "../checkpoints/reports/03-域外试验结果.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 398,
+      "target": "../checkpoints/reports/04-数据与复现步骤.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/05-recipes-and-repro.md",
+      "line": 404,
+      "target": "06-glossary-faq.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 3,
+      "target": "07-本机数据与开训检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 3,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 3,
+      "target": "README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 55,
+      "target": "01-background.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 55,
+      "target": "README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 56,
+      "target": "02-architecture.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 58,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 109,
+      "target": "04-训练流程.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 131,
+      "target": "04-训练流程.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 148,
+      "target": "07-本机数据与开训检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 175,
+      "target": "04-训练流程.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 199,
+      "target": "../README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/06-glossary-faq.md",
+      "line": 202,
+      "target": "README.md#建议学习路径约一周",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/07-本机数据与开训检查.md",
+      "line": 3,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/07-本机数据与开训检查.md",
+      "line": 3,
+      "target": "06-glossary-faq.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/07-本机数据与开训检查.md",
+      "line": 235,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/07-本机数据与开训检查.md",
+      "line": 238,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/07-本机数据与开训检查.md",
+      "line": 251,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/08-变长训练与长度分桶.md",
+      "line": 3,
+      "target": "07-本机数据与开训检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/08-变长训练与长度分桶.md",
+      "line": 3,
+      "target": "06-glossary-faq.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/08-变长训练与长度分桶.md",
+      "line": 3,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/08-变长训练与长度分桶.md",
+      "line": 307,
+      "target": "09-VAD标注与RTTM.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/08-变长训练与长度分桶.md",
+      "line": 449,
+      "target": "16-实验维护与验收边界.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/09-VAD标注与RTTM.md",
+      "line": 3,
+      "target": "16-实验维护与验收边界.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/09-VAD标注与RTTM.md",
+      "line": 638,
+      "target": "08-变长训练与长度分桶.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/10-云端八卡训练.md",
+      "line": 9,
+      "target": "12-三语料B6官方复现配方核查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/10-云端八卡训练.md",
+      "line": 9,
+      "target": "13-训练权重导出与评测.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/10-云端八卡训练.md",
+      "line": 9,
+      "target": "14-三语料B6云端数据路径.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/10-云端八卡训练.md",
+      "line": 167,
+      "target": "14-三语料B6云端数据路径.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/10-云端八卡训练.md",
+      "line": 183,
+      "target": "16-实验维护与验收边界.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/10-云端八卡训练.md",
+      "line": 318,
+      "target": "13-训练权重导出与评测.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/10-云端八卡训练.md",
+      "line": 633,
+      "target": "12-三语料B6官方复现配方核查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/10-云端八卡训练.md",
+      "line": 635,
+      "target": "14-三语料B6云端数据路径.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/10-云端八卡训练.md",
+      "line": 826,
+      "target": "13-训练权重导出与评测.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/12-三语料B6官方复现配方核查.md",
+      "line": 5,
+      "target": "15-三语料B6八卡短测与正式训练记录.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/15-三语料B6八卡短测与正式训练记录.md",
+      "line": 3,
+      "target": "16-实验维护与验收边界.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/16-实验维护与验收边界.md",
+      "line": 20,
+      "target": "../tools/ptn_reference/README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 3,
+      "target": "../README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 12,
+      "target": "16-实验维护与验收边界.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 14,
+      "target": "plans/2026-10-25-全仓检查与实验代码归仓.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 15,
+      "target": "reviews/文档与技能检查计划.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 16,
+      "target": "reviews/2026-10-25-独立复审与未验项目.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 17,
+      "target": "../.agents/skills/redimnet2-reproduction-ops/SKILL.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 18,
+      "target": "../tools/ptn_reference/README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 26,
+      "target": "01-background.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 27,
+      "target": "02-architecture.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 28,
+      "target": "03-code-walkthrough.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 29,
+      "target": "04-训练流程.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 30,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 31,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 31,
+      "target": "07-本机数据与开训检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 32,
+      "target": "06-glossary-faq.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 33,
+      "target": "08-变长训练与长度分桶.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 34,
+      "target": "09-VAD标注与RTTM.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 34,
+      "target": "16-实验维护与验收边界.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 35,
+      "target": "10-云端八卡训练.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 36,
+      "target": "12-三语料B6官方复现配方核查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 37,
+      "target": "13-训练权重导出与评测.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 38,
+      "target": "14-三语料B6云端数据路径.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 39,
+      "target": "15-三语料B6八卡短测与正式训练记录.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 40,
+      "target": "../checkpoints/reports/README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 112,
+      "target": "../README.md#results",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 126,
+      "target": "../assets/pareto.png",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 143,
+      "target": "01-background.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 144,
+      "target": "02-architecture.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 145,
+      "target": "03-code-walkthrough.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 146,
+      "target": "04-训练流程.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 147,
+      "target": "07-本机数据与开训检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 148,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 149,
+      "target": "05-recipes-and-repro.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 149,
+      "target": "06-glossary-faq.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 152,
+      "target": "07-本机数据与开训检查.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 164,
+      "target": "../assets/scheme.png",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/README.md",
+      "line": 164,
+      "target": "02-architecture.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-开源标注工具归仓清单.md",
+      "line": 25,
+      "target": "标注与模型输入有限独立复验.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 9,
+      "target": "训练与接续有限独立复验.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 10,
+      "target": "PTN只读参考_有限独立复验.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 11,
+      "target": "test_independent_training_guards.py",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 12,
+      "target": "训练与接续有限独立复验.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 13,
+      "target": "标注与模型输入有限独立复验.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 14,
+      "target": "标注与模型输入有限独立复验.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 15,
+      "target": "test_independent_annotation_paths.py",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 16,
+      "target": "文档与技能首轮审阅.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 16,
+      "target": "文档本地链接检查.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/2026-10-25-独立复审与未验项目.md",
+      "line": 16,
+      "target": "历史评测表格与CSV核对.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/文档与技能首轮审阅.md",
+      "line": 16,
+      "target": "../16-实验维护与验收边界.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/文档与技能首轮审阅.md",
+      "line": 28,
+      "target": "文档本地链接检查.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "docs/reviews/文档与技能首轮审阅.md",
+      "line": 30,
+      "target": "历史评测表格与CSV核对.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "duration_ft/README.md",
+      "line": 3,
+      "target": "../word_ft/README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "duration_ft/README.md",
+      "line": 3,
+      "target": "../word_ft_v3/README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "tests/README.md",
+      "line": 7,
+      "target": "../docs/16-实验维护与验收边界.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "tools/lm_continuation/README.md",
+      "line": 24,
+      "target": "../../docs/reviews/LM归仓_维护身份与历史差异.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "tools/ptn_reference/README.md",
+      "line": 5,
+      "target": "archive_index.json",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "word_ft/README.md",
+      "line": 9,
+      "target": "../word_ft_v3/README.md",
+      "exists": true,
+      "external_to_repository": false
+    },
+    {
+      "document": "word_ft_v3/README.md",
+      "line": 5,
+      "target": "../duration_ft/config_checks.py",
+      "exists": true,
+      "external_to_repository": false
+    }
+  ],
+  "missing_target_count": 0,
+  "missing_targets": []
+}
