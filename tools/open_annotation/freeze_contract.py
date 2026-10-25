@@ -16,7 +16,7 @@ def helpers(code):
     return module
 
 
-def freeze(base_path, base_sha, output, version_prefix):
+def freeze(base_path, base_sha, output, version_prefix, normalization_profile=None):
     h = helpers(HERE)
     h.need(h.sha_file(base_path) == base_sha, 'external base contract SHA differs')
     c = json.loads(Path(base_path).read_bytes())
@@ -39,6 +39,13 @@ def freeze(base_path, base_sha, output, version_prefix):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(path, target)
     c['parent_contract_sha256'] = base_sha
+    from source_clock import TIME_MAPPING
+    c['runtime']['boundary_mapping'] = TIME_MAPPING
+    from normalization import POLICY, SUPPORTED_POLICIES
+    profile = normalization_profile if normalization_profile is not None else c['runtime'].get('normalization_profile', POLICY)
+    h.need(profile in SUPPORTED_POLICIES, 'unknown explicit normalization profile')
+    c['runtime']['normalization_profile'] = profile
+    c['runtime']['normalization'] = 'Explicit normalization_profile; preserve raw and review flags; no invented spoken forms'
     # New source pins are intentional; historical contract bytes are never rewritten.
     c['engine_source_files'] = {name: h.sha_file(output/name) for name in h.ENGINE_MODULES}
     identity = h.digest({key: c[key] for key in ('decoder','models','source_files','runtime',
@@ -62,13 +69,15 @@ def freeze(base_path, base_sha, output, version_prefix):
 
 
 def main():
+    from normalization import SUPPORTED_POLICIES
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--base-contract', type=Path, required=True)
     p.add_argument('--base-contract-sha', required=True)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--version-prefix', required=True)
+    p.add_argument('--normalization-profile', choices=SUPPORTED_POLICIES)
     a = p.parse_args()
-    print(json.dumps(freeze(a.base_contract,a.base_contract_sha,a.output,a.version_prefix), ensure_ascii=False, indent=2))
+    print(json.dumps(freeze(a.base_contract,a.base_contract_sha,a.output,a.version_prefix,a.normalization_profile), ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__': main()

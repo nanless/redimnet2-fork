@@ -10,12 +10,12 @@ import math
 from pathlib import PurePosixPath
 import re
 import unicodedata
-from normalization import normalize_with_audit
+from normalization import normalize_with_audit, POLICY, SUPPORTED_POLICIES
 from quality_axes import quality_axes, native_observation_errors
+from source_clock import TIME_MAPPING, SUPPORTED_MAPPINGS, sample_bounds
 
 SCHEMA = "redimnet2-open-annotation/v2"
 SOURCE_SCHEMA = "redimnet2-source/v1"
-TIME_MAPPING = "source_offset_floor_start_ceil_end_v1"
 PCM_HASH_POLICY = "decoded_float32le_native_interleaved/v1"
 SUCCESS = {"completed", "succeeded", "succeeded_candidate", "completed_native_candidates"}
 SHA = re.compile(r"^[0-9a-f]{64}$")
@@ -55,6 +55,13 @@ def _surface(text):
     if not isinstance(text, str):return None
     return "".join(c for c in unicodedata.normalize("NFKC", text).casefold()
                    if not c.isspace() and not unicodedata.category(c).startswith("P"))
+
+
+def _expected_normalization(record, raw):
+    policy = record.get("provenance", {}).get("runtime", {}).get("normalization_profile", POLICY)
+    if not isinstance(raw, str) or policy not in SUPPORTED_POLICIES:
+        return None
+    return normalize_with_audit(raw, policy)
 
 
 def _finite_tree(value, path="record"):
@@ -147,6 +154,9 @@ def quality_reasons(record):
             reasons.append("window_not_object")
             continue
         prefix = "window_" + str(i) + ":"
+        runtime = record.get("provenance", {}).get("runtime", {})
+        if isinstance(runtime, dict) and "boundary_mapping" in runtime and window.get("time_mapping") != runtime["boundary_mapping"]:
+            reasons.append(prefix + "source_clock_not_bound_to_producer_runtime")
         if window.get("preprocessing_status", "completed") != "completed":
             reasons.append(prefix + "preprocessing_not_completed")
         asr, al = window.get("asr", {}), window.get("alignment", {})
@@ -157,7 +167,7 @@ def quality_reasons(record):
             reasons.append(prefix + "asr_not_succeeded")
         if asr.get("status") in SUCCESS:
             raw = asr.get("raw_text")
-            expected_audit = normalize_with_audit(raw) if isinstance(raw, str) else None
+            expected_audit = _expected_normalization(record, raw)
             if expected_audit is None or asr.get("normalization_audit") != expected_audit:
                 reasons.append(prefix + "normalization_audit_missing_or_not_reconstructible")
             if expected_audit is not None:
@@ -329,7 +339,10 @@ def validate_record(record):
         if all(_integer(x) for x in bounds):
             a, b, c, d = bounds
             need(0 <= a <= b < c <= d and (not _integer(frames) or d <= frames), "window:source_clock_outside_or_invalid")
-        need(w.get("model_sample_rate") == 16000 and w.get("time_mapping") == TIME_MAPPING, "window:model_or_time_mapping_not_frozen")
+        need(w.get("model_sample_rate") == 16000 and w.get("time_mapping") in SUPPORTED_MAPPINGS, "window:model_or_time_mapping_not_frozen")
+        runtime = record.get("provenance", {}).get("runtime", {})
+        if isinstance(runtime, dict) and "boundary_mapping" in runtime:
+            need(w.get("time_mapping") == runtime["boundary_mapping"], "window:source_clock_not_bound_to_producer_runtime")
         preprocessing_failed = (w.get("preprocessing_status") == "failed" and w.get("input_pcm_sha256") is None
                                 and isinstance(w.get("asr"), dict) and w["asr"].get("status") == "failed"
                                 and isinstance(w.get("alignment"), dict) and w["alignment"].get("status") == "not_applicable")
@@ -338,7 +351,7 @@ def validate_record(record):
         asr = w.get("asr", {})
         if isinstance(asr, dict) and asr.get("status") in SUCCESS:
             raw = asr.get("raw_text")
-            expected_audit = normalize_with_audit(raw) if isinstance(raw, str) else None
+            expected_audit = _expected_normalization(record, raw)
             need(expected_audit is not None and asr.get("normalization_audit") == expected_audit,
                  "window:normalization_audit_not_reconstructible")
             if expected_audit is not None:
@@ -371,7 +384,9 @@ def validate_record(record):
                 need(u.get("text") == item.get("text"), "unit:text_not_bound_to_native_occurrence")
                 if _number(item.get("start_time")) and _number(item.get("end_time")) and _integer(sr) and sr > 0:
                     ca = w.get("context_start_sample")
-                    if _integer(ca):need(a == ca + math.floor(item["start_time"] * sr) and b == ca + math.ceil(item["end_time"] * sr), "unit:source_clock_mapping_mismatch")
+                    if _integer(ca) and w.get("time_mapping") in SUPPORTED_MAPPINGS:
+                        local_a, local_b = sample_bounds(item["start_time"], item["end_time"], sr, w["time_mapping"])
+                        need(a == ca + local_a and b == ca + local_b, "unit:source_clock_mapping_mismatch")
             key = (u.get("window_id"), index)
             need(key not in seen, "unit:duplicate_native_occurrence");seen.add(key)
             if _integer(a) and _integer(b) and _integer(w.get("owned_start_sample")) and _integer(w.get("owned_end_sample")):

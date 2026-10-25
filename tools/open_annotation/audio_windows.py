@@ -9,7 +9,7 @@ import traceback
 from contracts import need, sha_file, stat_identity
 
 PCM_POLICY = "decoded_float32le_native_interleaved/v1"
-TIME_MAPPING = "source_offset_floor_start_ceil_end_v1"
+from source_clock import TIME_MAPPING, sample_bounds
 _DECODER = None
 
 
@@ -237,7 +237,8 @@ def units_from_windows(windows, identity):
             a, b = item.get("start_time"), item.get("end_time")
             if not (isinstance(a, (int, float)) and isinstance(b, (int, float)) and math.isfinite(a) and math.isfinite(b)):
                 flags.append({"window_id": w["window_id"], "native_index": i, "reason": "nonfinite_native_geometry"}); continue
-            start = w["context_start_sample"] + math.floor(a * sr); end = w["context_start_sample"] + math.ceil(b * sr)
+            local_start, local_end = sample_bounds(a, b, sr, w.get("time_mapping", TIME_MAPPING))
+            start = w["context_start_sample"] + local_start; end = w["context_start_sample"] + local_end
             if not (0 <= start < end <= frames and w["context_start_sample"] <= start < end <= w["context_end_sample"]):
                 flags.append({"window_id": w["window_id"], "native_index": i, "reason": "invalid_native_geometry"}); continue
             midpoint = (start + end) / 2

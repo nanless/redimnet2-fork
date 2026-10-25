@@ -17,6 +17,8 @@ import tableprint as tp
 import functools
 import json
 import math
+import secrets
+import traceback
 import time
 from pathlib import Path
 import os
@@ -25,6 +27,7 @@ import torch
 import pandas as pd
 from tqdm import tqdm
 from wespeaker_lite.utils import meters as tnt
+from wespeaker_lite.utils import numerical_failure as forensic
 import torch.nn.functional as F
 from torch.distributed.nn.functional import all_gather
 
@@ -73,16 +76,20 @@ def to_ohe(num_classes, targets):
     return target_mask
 
 def _check_training_numerics(wav, embeds, loss, *, epoch, batch_index, rank,
-                             optimizer, scaler, diagnostic_dir=None, utts=None):
-    """Stop every rank before backward when any rank has non-finite values.
+                             optimizer, scaler, diagnostic_dir=None, utts=None,
+                             model=None, targets=None, target_mask=None, lengths=None,
+                             capture_context=None, original_batch=None, enable_amp=None,
+                             absolute_iteration=None, epoch_iter=None):
+    """One finite-path reduction; all ranks export before any fatal log/exit.
 
-    Finite steps add one scalar MIN reduction and a scalar read, without
-    modifying tensors or their gradients. The failure-only barrier lets a bad
-    rank finish writing evidence before torchrun observes another rank exiting.
+    The outer launcher treats fatal text as an immediate stop request. Never
+    print that text while another rank is still writing its failure bundle.
     """
     local_checks = torch.stack([torch.isfinite(value.detach()).all()
                                 for value in (wav, embeds, loss)])
-    global_ok = local_checks.all().to(dtype=torch.int32)
+    capture_required = capture_context is not None and capture_context.enabled
+    capture_ok = not capture_required or capture_context.complete
+    global_ok = (local_checks.all() & local_checks.new_tensor(capture_ok)).to(dtype=torch.int32)
     distributed = torch.distributed.is_available() and torch.distributed.is_initialized()
     if distributed:
         torch.distributed.all_reduce(global_ok, op=torch.distributed.ReduceOp.MIN)
@@ -90,48 +97,89 @@ def _check_training_numerics(wav, embeds, loss, *, epoch, batch_index, rank,
         return
 
     flags = local_checks.cpu().tolist()
-    evidence_error = None
-    evidence_path = None
-    if not all(flags) and diagnostic_dir is not None:
+    world = torch.distributed.get_world_size() if distributed else 1
+    location = {'epoch': int(epoch), 'batch': int(batch_index), 'rank': int(rank),
+                'world_size': world, 'absolute_iteration': absolute_iteration,
+                'epoch_iter': epoch_iter}
+    artifact = None; evidence_error = None; attempted_directory = None
+    if diagnostic_dir is not None:
         try:
-            directory = Path(diagnostic_dir)
-            directory.mkdir(parents=True, exist_ok=True)
-            stem = f"numerical_failure_epoch_{epoch:03d}_batch_{batch_index:06d}_rank_{rank}_{time.time_ns()}"
-            evidence_path = directory / f"{stem}.json"
-            wav_path = directory / f"{stem}_wav.pt"
-
             def number(value):
                 value = float(value)
                 return value if math.isfinite(value) else str(value)
-
-            def describe(value, finite):
-                detached = value.detach()
-                return {"finite": bool(finite), "dtype": str(value.dtype),
-                        "shape": list(value.shape),
-                        "max_abs": number(detached.abs().max().item()) if value.numel() else None}
-
-            record = {"epoch": int(epoch), "batch": int(batch_index), "rank": int(rank),
-                      "wav": describe(wav, flags[0]), "embeds": describe(embeds, flags[1]),
-                      "loss": describe(loss, flags[2]),
-                      "loss_value": number(loss.detach().item()),
-                      "learning_rates": [number(group['lr']) for group in optimizer.param_groups],
-                      "scaler_scale": number(scaler.get_scale()),
-                      "utterance_keys": list(utts) if utts is not None else None,
-                      "wav_file": str(wav_path)}
-            torch.save({"wav": wav.detach().cpu(), "utterance_keys": record['utterance_keys']}, wav_path)
-            with evidence_path.open('w') as stream:
-                json.dump(record, stream, ensure_ascii=False, indent=2, allow_nan=False)
-            print(f"Non-finite training values on rank {rank}: {evidence_path}", file=sys.stderr, flush=True)
-        except Exception as error:
-            evidence_error = f"{type(error).__name__}: {error}"
-            print(f"Could not write numerical failure evidence on rank {rank}: {evidence_error}",
-                  file=sys.stderr, flush=True)
+            def describe(value):
+                value = value.detach()
+                return {'finite': bool(torch.isfinite(value).all().item()),
+                        'dtype': str(value.dtype), 'shape': list(value.shape),
+                        'max_abs': number(value.abs().max().item()) if value.numel() else None}
+            input_wave = (capture_context.state['inputs']['wav']
+                          if capture_context is not None and capture_context.state is not None else wav)
+            summary = dict(location, wav=describe(input_wave), wav_after_forward=describe(wav),
+                           embeds=describe(embeds), loss=describe(loss),
+                           loss_value=number(loss.detach().item()), local_finite=flags,
+                           pre_capture_ok=capture_ok,
+                           learning_rates=[number(group['lr']) for group in optimizer.param_groups],
+                           scaler_scale=number(scaler.get_scale()))
+            if model is None:
+                payload = {'schema': forensic.SCHEMA, 'location': location,
+                           'wav': wav.detach().cpu().clone(), 'training_resume_checkpoint': False,
+                           'replay_complete': False,
+                           'replay_incomplete_reasons': ['legacy caller omitted model and pre-forward state']}
+            else:
+                payload = forensic.make_payload(model=model, optimizer=optimizer, scaler=scaler,
+                    capture=capture_context, wav=wav, targets=targets, embeds=embeds, loss=loss,
+                    target_mask=target_mask, lengths=lengths, utts=utts, original_batch=original_batch,
+                    location=location, enable_amp=enable_amp)
+            stem = (f'numerical_failure_epoch_{epoch:03d}_batch_{batch_index:06d}_rank_{rank}_'
+                    f'{time.time_ns()}_{secrets.token_hex(8)}')
+            attempted_directory = str(Path(diagnostic_dir) / stem)
+            artifact = forensic.write_failure_bundle(diagnostic_dir, payload=payload,
+                                                     summary=summary, stem=stem)
+        except Exception:
+            evidence_error = traceback.format_exc()
+    else:
+        evidence_error = 'diagnostic directory was not supplied; full evidence unavailable'
+    status = dict(location, numerical_finite=all(flags), pre_capture_ok=capture_ok,
+                  artifact=artifact, attempted_directory=attempted_directory, write_error=evidence_error)
+    statuses = [status]; coordination_error = None
     if distributed:
-        torch.distributed.barrier()
+        try:
+            statuses = [None] * world
+            torch.distributed.all_gather_object(statuses, status)
+        except Exception:
+            coordination_error = traceback.format_exc()
+    coherent = (coordination_error is None and len(statuses) == world and all(
+        isinstance(item, dict) and type(item.get('rank')) is int and item['rank'] == r
+        and item.get('epoch') == epoch and item.get('batch') == batch_index
+        and item.get('world_size') == world for r, item in enumerate(statuses)))
+    coordination = {'schema': 'ptn-forward-failure-coordination/v1', 'location': location,
+                    'participants': statuses, 'coherent': coherent,
+                    'all_local_payloads_published': coherent and all(x['artifact'] is not None for x in statuses),
+                    'all_rank_replay_complete': coherent and all(
+                        x['artifact'] is not None and x['artifact']['replay_complete'] for x in statuses),
+                    'coordination_error': coordination_error,
+                    'before_current_batch_backward_or_optimizer': True}
+    if artifact is not None:
+        try:
+            forensic.atomic_json_new(Path(artifact['directory']) / 'coordination.json', coordination)
+        except Exception:
+            evidence_error = (evidence_error or '') + traceback.format_exc()
+    if distributed:
+        try:
+            torch.distributed.barrier()
+        except Exception:
+            coordination_error = (coordination_error or '') + traceback.format_exc()
+    # Only now may torchrun's parent act on a fatal line: all export attempts are finished.
+    failure_label = ('Non-finite training values' if any(
+        isinstance(x, dict) and x.get('numerical_finite') is False for x in statuses)
+        else 'Training evidence capture failure')
+    print(f'{failure_label} stopped before backward: rank={rank}, evidence={artifact}, '
+          f'evidence_write_error={evidence_error}, coordination_error={coordination_error}',
+          file=sys.stderr, flush=True)
     raise FloatingPointError(
-        f"Non-finite training values detected before backward: epoch={epoch}, "
-        f"batch={batch_index}, rank={rank}, local_finite={flags}, "
-        f"evidence={evidence_path}, evidence_write_error={evidence_error}")
+        f'Training numerical/evidence gate failed before backward: epoch={epoch}, '
+        f'batch={batch_index}, rank={rank}, local_finite={flags}, pre_capture_ok={capture_ok}, '
+        f'evidence={artifact}, evidence_write_error={evidence_error}, coordination_error={coordination_error}')
 
 
 def run_epoch(dataloader,
@@ -199,10 +247,13 @@ def run_epoch(dataloader,
                     lengths = torch.maximum(lengths, perm_len)
                 # targets = None
 
-            if lengths is None:
-                outputs = model(wav)  # (embed_a,embed_b) in most cases
-            else:
-                outputs = model(wav, lengths=lengths)
+            # The bare-module pre-hook runs after DDP's buffer broadcast.
+            with forensic.ForwardCapture(model, targets=targets, target_mask=target_mask,
+                                         lengths=lengths, enabled=diagnostic_dir is not None) as capture_context:
+                if lengths is None:
+                    outputs = model(wav)  # (embed_a,embed_b) in most cases
+                else:
+                    outputs = model(wav, lengths=lengths)
             embeds = outputs[-1] if isinstance(outputs, tuple) else outputs
             # outputs = model.module.projection.float()(embeds.float(), targets)
 
@@ -213,10 +264,15 @@ def run_epoch(dataloader,
             else:
                 loss = criterion(outputs, targets)
 
-        _check_training_numerics(wav, embeds, loss, epoch=epoch,
-                                 batch_index=i + 1, rank=rank, optimizer=optimizer,
-                                 scaler=scaler, diagnostic_dir=diagnostic_dir,
-                                 utts=utts)
+        try:
+            _check_training_numerics(wav, embeds, loss, epoch=epoch,
+                batch_index=i + 1, rank=rank, optimizer=optimizer, scaler=scaler,
+                diagnostic_dir=diagnostic_dir, utts=utts, model=model, targets=targets,
+                target_mask=target_mask, lengths=lengths, capture_context=capture_context,
+                original_batch=batch, enable_amp=enable_amp,
+                absolute_iteration=cur_iter, epoch_iter=epoch_iter)
+        finally:
+            capture_context.release()
 
         # loss, acc
         if (i + 1) % 16 == 0:

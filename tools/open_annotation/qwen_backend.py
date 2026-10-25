@@ -8,7 +8,7 @@ import unicodedata
 from pathlib import Path
 import sys
 from contracts import native_json, need, sha_file, verify_model_stats, verify_models, validate_execution_policy
-from normalization import normalize_with_audit
+from normalization import normalize_with_audit, POLICY
 from alignment_observer import AlignmentObserver, successful_alignment, positive_integer_attribute
 
 
@@ -120,15 +120,16 @@ class QwenBackend:
                 torch.cuda.synchronize(0)
                 need(len(result) == len(batch) == len(self._captures), "ASR native row coverage differs")
                 for row_id, answer, native in zip(ids, result, self._captures):
+                    audit = normalize_with_audit(str(answer.text), runtime.get("normalization_profile", POLICY))
                     outputs[row_id] = {"status": "completed" if native["eos_observed"] else "truncated", "raw_text": str(answer.text),
-                                       "normalized_text": normalize(str(answer.text)), "normalization_audit": normalize_with_audit(str(answer.text)), "language": answer.language,
+                                       "normalized_text": audit["normalized_text"], "normalization_audit": audit, "language": answer.language,
                                        "native": native, "batch_rows": ids, "batch_size": len(batch), "inference_call": call}
             except Exception as exc:
                 if isinstance(exc, torch.cuda.OutOfMemoryError) or "CUDA" in str(exc) or "device-side assert" in str(exc):
                     raise RuntimeError("fatal GPU error; preserve attempt, no silent batch reduction") from exc
                 trace = traceback.format_exc()
                 for row_id in ids: outputs[row_id] = {"status": "failed", "raw_text": "", "normalized_text": "", "language": None,
-                                                       "native": {"eos_observed": False}, "normalization_audit": normalize_with_audit(""), "error": trace,
+                                                       "native": {"eos_observed": False}, "normalization_audit": normalize_with_audit("",runtime.get("normalization_profile", POLICY)), "error": trace,
                                                        "native_generate_captures": list(self._captures), "batch_rows": ids, "inference_call": call}
             finally:
                 self.stats["asr_seconds"] += time.monotonic() - started; self.stats["asr_rows"] += len(batch); self.stats["asr_batches"] += 1

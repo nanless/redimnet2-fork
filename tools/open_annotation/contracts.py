@@ -16,7 +16,7 @@ class Refused(RuntimeError):
 ENGINE_MODULES = ("contracts.py", "audio_windows.py", "qwen_backend.py", "worker.py",
                   "schema.py", "sidecar.py", "work_queue.py", "report.py",
                   "source_registry.py", "manifest_builder.py", "normalization.py",
-                  "alignment_observer.py", "quality_axes.py")
+                  "alignment_observer.py", "quality_axes.py", "source_clock.py")
 
 
 def need(condition, message):
@@ -142,6 +142,10 @@ def read_contract(path, expected_sha=None):
     need(type(runtime.get("max_batch")) is int and 1 <= runtime["max_batch"] <= 4, "batch must be measured range 1..4")
     validate_execution_policy(value)
     if value["purpose"] != "cpu_fixture":
+        from source_clock import TIME_MAPPING
+        from normalization import POLICY, SUPPORTED_POLICIES
+        need(runtime.get("boundary_mapping") == TIME_MAPPING, "new engine requires explicit decimal-rational source clock; freeze a new contract")
+        need(runtime.get("normalization_profile", POLICY) in SUPPORTED_POLICIES, "unknown explicit normalization profile")
         alignment = value.get("alignment", {})
         need(alignment.get("mode") == "ultra_no_head" and alignment.get("head_used") is False, "only measured Ultra no-head is admitted")
         need(alignment.get("repo_id") == "17slever17/Qwen3-ForcedAligner-Ultra" and alignment.get("revision") == "765dc1d714e4c80196782a5df5bfbcb3e1416736", "Ultra author identity differs")

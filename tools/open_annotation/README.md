@@ -23,12 +23,16 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/open_annotation/
 | `source_registry.py`、`manifest_builder.py` | 保留来源、原始划分、提供方说话人标签和旧语音活动检测（VAD）引用；把大清单分成小片 |
 | `source_filter.py`、`audit_source_filter.py` | 读取原清单，筛出三个实际训练域；保留原行字节并核对输出，不读音频 |
 | `audio_windows.py` | 完整源身份、原声采样点时钟、连续上下文窗口、严格旧 VAD 复用与异常留证 |
+| `source_clock.py` | 根据已保存的十进制秒做精确有理数采样点覆盖；保留旧版本验证，不能用容差隐藏真实重叠 |
 | `qwen_backend.py`、`alignment_observer.py` | 每次实际模型调用只有一个窗口；保存原始时间分类、库的 FIX 处理和官方返回，不额外裁剪或拉伸 |
 | `normalization.py`、`quality_axes.py`、`schema.py` | 保存文字规范化中间步骤，分别记录文字、边界、语言、来源和身份的待审状态 |
 | `work_queue.py`、`sidecar.py` | 单父进程锁、分片领取、并发代次、不可覆盖发布、缓存身份和中断恢复 |
 | `report.py`、`audit_outputs.py` | 核对计账、侧车与提交记录；退出 GPU 后持同一父锁检查孤儿文件和软链接，不删证据 |
 | `gpu_launch.py`、`gpu_bootstrap.py`、`gpu_challenge.py`、`gpu_common.py`、`gpu_vendor/` | 资源双快照、物理设备锁、七阶段显存挑战、精确子进程身份、归还与退出 |
 | `freeze_contract.py` | 把维护源码复制到新目录，生成新的成对试验/全量合同和源码摘要清单 |
+| `prepare_normalization_ab.py` | 最多16条已封存侧车的诊断对照准备：按新合同生成两组只含ASR的可追溯缓存种子，不读原声、不执行模型 |
+| `audit_normalization_ab.py` | 只读核对两轨实际结果、原ASR固定、强制对齐重算及资源记录；按同一原文范围比较，输出含原文的私有详细报告 |
+| `plot_normalization_ab.py` | 从已完成报告的固定计数生成新PNG；图只表达机器观察，不读原声/模型，不覆写已有图 |
 | `word_adapter.py` | 保守完整字候选检查和工程接口转换，不释放训练资格 |
 | `quality_figures.py` | 明确选单的 CPU 原声波形、频谱和原始/FIX/拥有区时间图；不把图当人工听审 |
 | `validate_two_gpu.py` | 新冻结副本内的 30 条小批、3000 条冷运行及 512 条部分缓存恢复验收；只能显式执行 |
@@ -98,3 +102,15 @@ python3 -B tools/open_annotation/readonly_progress.py \
 输出必须是队列树之外的新文件，父目录需已存在；已有文件或悬空输出软链均拒绝。所有输入以只读方式打开，完成槽不足、损坏、身份或分母矛盾时直接报错，不发布成功报告。该文件中的原始快照含运行标识，只应保存在任务证据目录，不要复制进公开仓库。
 
 `committed_source_lower_bound` 是这一次快照已封账来源数的下界。活动租约即使稍后完成，也排除在本次统计之外。`candidate` 仍是机器候选，`unknown` 仍待复核；`failed=0` 不代表没有运行异常或边界错误。该检查不是逐侧车完整性核验，也不证明文字和完整字边界正确。单个快照不提供预计剩余时间；比较多个快照还必须保证索引和合同一致、说明观察窗口与分布。
+
+## 源时钟和词内撇号的独立诊断版本
+
+完整研究结论、可复用准备与执行命令维护在[源时钟与撇号对照说明](../../docs/reviews/2026-10-26-标注时钟及撇号对照.md)。真实转写和部署快照保留在仓库私有审计目录，不能复制进公开文档。
+
+新生成的窗口声明 `source_offset_decimal_floor_start_ceil_end_v2`。它把作者最终返回、已经保存的十进制秒按有理数乘原采样率，再对起点向下取整、终点向上取整。例如16.24秒在16kHz中恰是259840采样点；不能让二进制浮点略小于整数而凭空制造相邻词重叠。没有增加容差，没有裁剪、平移或改写raw/FIX时间。原采样网格上真正存在的重叠，包括44.1kHz下非整数覆盖造成的重叠，仍待复核。旧VAD的v1时钟不变；历史侧车继续按自己声明的v1公式验证。新合同显式绑定各窗的v2声明，不能逐窗自选另一版本。
+
+默认文字规范化仍为 `nfkc_punctuation_to_space_whitespace_collapse/v1`。诊断时可给冻结器显式传入 `--normalization-profile nfkc_preserve_ascii_word_apostrophe_punctuation_space/v2`，只保留两边都是字母的ASCII词内撇号。官方分词器明确保留这一字符，所以 `I'm` 和旧规则生成的 `I m` 是两个可测输入条件。弯撇号不自动改写，数字读法不扩展，原始文字及中间变换保留。新条件仍保留 `word_internal_apostrophe_requires_review`，不因为输入形式合法就自动判定转写或完整字正确。
+
+`prepare_normalization_ab.py --help` 给出有界CPU准备入口。它要求明确的小选单及SHA、侧车目录、完成分片及SHA、原生产合同及SHA、两份新试验合同及SHA和全新的输出目录。小选单为 `{sample_count, rows}`，每项含 `source_id`、`sidecar_sha256`，可附 `sidecar_relative_path`；未附路径时依次读取 `00.json` 等。所有来源必须是三个实际训练域的原 `provider_train` 记录，保持来源字段原样，但本次用途只有诊断，不授训练资格。输入不完整、原任务/版本/来源或ASR观察矛盾、截断、重复、合同除显式profile外另有语义差异、输出已存在或为悬空软链，都拒绝。
+
+准备器按每片最多8源生成同一索引，建立两组新版本的标签树身份及ASR-only缓存。缓存键来自新合同；ASR的原始生成token、EOS和观察字段原样保留，另外记录旧侧车和旧ASR摘要及“没有新执行ASR”。只有规范化结果按显式条件重新推导，不复制旧缓存目录、不预写强制对齐结果、不创建队列。真实GPU执行前必须重新取得空闲资源和公共设备锁。之后逐窗核ASR缓存确实命中、完整PCM和原生字段相同、强制对齐确实新执行，再比较raw非正长、FIX修改、最终零长和源时钟；种子已准备不能写成已消费或已通过边界测试。两个条件都使用相同v2时钟，因此该对照不能把时钟修复的收益混算到文字策略中。

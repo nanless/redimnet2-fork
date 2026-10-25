@@ -27,6 +27,8 @@ GROUPS = [
     ('LM_preparation', ['tests/test_lm_continuation.py']),
     ('PTN_reference', ['-m', 'unittest', 'discover', '-s', 'tools/ptn_reference/tests', '-p', 'test_*.py']),
     ('PTN_numeric_diagnostics', ['-m', 'unittest', 'discover', '-s', 'tools/ptn_diagnostics/tests', '-p', 'test_*.py']),
+    ('PTN_failure_capture', ['tests/test_training_failure_capture.py']),
+    ('PTN_resume_package', ['-m', 'unittest', 'discover', '-s', 'tools/ptn_resume/tests', '-p', 'test_*.py']),
     ('cold_state', ['tests/test_cold_start_state.py']),
     ('embedding_export', ['scripts/test_checkpoint_export.py']),
     ('VAD_geometry', ['tests/test_vad_segment_boundary.py']),

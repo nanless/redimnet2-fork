@@ -3,6 +3,8 @@ import re
 import unicodedata
 
 POLICY = "nfkc_punctuation_to_space_whitespace_collapse/v1"
+APOSTROPHE_PROFILE = "nfkc_preserve_ascii_word_apostrophe_punctuation_space/v2"
+SUPPORTED_POLICIES = (POLICY, APOSTROPHE_PROFILE)
 # An uppercase English word is not evidence of an initialism. Keep this small,
 # explicit vocabulary auditable rather than guessing from typography alone.
 EXPLICIT_INITIALISMS = frozenset((
@@ -23,10 +25,16 @@ def _spelled_letter_runs(normalized):
     return runs
 
 
-def normalize_with_audit(raw):
+def normalize_with_audit(raw, policy=POLICY):
     if not isinstance(raw, str): raise TypeError("ASR text must be a string")
+    if policy not in SUPPORTED_POLICIES: raise ValueError("unknown explicit normalization profile")
     nfkc = unicodedata.normalize("NFKC", raw)
-    punct = "".join(" " if unicodedata.category(c).startswith("P") else c for c in nfkc)
+    def preserved_apostrophe(i, c):
+        return (policy == APOSTROPHE_PROFILE and c == "'" and 0 < i < len(nfkc)-1
+                and unicodedata.category(nfkc[i-1]).startswith("L")
+                and unicodedata.category(nfkc[i+1]).startswith("L"))
+    punct = "".join(" " if unicodedata.category(c).startswith("P") and not preserved_apostrophe(i,c) else c
+                    for i,c in enumerate(nfkc))
     normalized = " ".join(punct.split())
     reasons = []
     if any(unicodedata.category(c) == "Nd" for c in nfkc): reasons.append("numeric_spoken_form_unresolved")
@@ -43,7 +51,8 @@ def normalize_with_audit(raw):
     if explicit_initialisms:
         reasons.append("abbreviation_spoken_form_unresolved")
     if letter_runs:reasons.append("separated_uppercase_letters_spoken_form_unresolved")
-    if re.search(r"[^\W\d_]['’][^\W\d_]", raw, re.UNICODE): reasons.append("word_internal_apostrophe_requires_review")
+    apostrophe_text = nfkc if policy == APOSTROPHE_PROFILE else raw
+    if re.search(r"[^\W\d_]['’][^\W\d_]", apostrophe_text, re.UNICODE): reasons.append("word_internal_apostrophe_requires_review")
     if re.search(r"\d[.,]\d", nfkc): reasons.append("decimal_or_group_separator_requires_review")
     # This linear map is exact only when NFKC does not combine across raw
     # codepoint boundaries. Ambiguous cross-codepoint normalization is explicit.
@@ -64,7 +73,7 @@ def normalize_with_audit(raw):
         mapping_status = "exact_codepoint_half_open"
     else:
         reasons.append("normalization_sequence_mapping_unresolved")
-    return {"policy": POLICY, "raw_text": raw, "nfkc_text": nfkc, "punctuation_space_text": punct,
+    return {"policy": policy, "raw_text": raw, "nfkc_text": nfkc, "punctuation_space_text": punct,
             "normalized_text": normalized, "spoken_form_review_required": bool(reasons), "reasons": sorted(set(reasons)),
             "normalized_character_map": mapping, "mapping_status": mapping_status,
             "raw_offset_unit": "unicode_codepoint_half_open", "observed_letter_scripts": sorted(scripts),

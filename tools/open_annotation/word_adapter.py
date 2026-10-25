@@ -159,7 +159,7 @@ def word_template(record, selected, language, speaker_id, family_id, context):
                   'producer_bundle_sha256': context['bundle_sha'],
                   'producer_sidecar_sha256': context['sidecar_sha'], 'producer_commit_sha256': context['commit_sha'], 'speaker_evidence': copy.deepcopy(source['speaker_evidence']),
                   'source_identity_original': copy.deepcopy(identity), 'source_session_evidence': 'not_available_never_inferred_from_parent_path',
-                  'no_automatic_eligibility_release': True, 'original_clock_mapping': 'source_offset_floor_start_ceil_end_v1'},
+                  'no_automatic_eligibility_release': True, 'original_clock_mapping': source_window.get('time_mapping', 'not_recorded_in_input')},
               'alignment': {'method': 'ultra_no_head_pending_candidate', 'native_unit_refs': copy.deepcopy(selected),
                   'source_window_id': source_window['window_id'], 'source_window_input_PCM_sha256': source_window['input_pcm_sha256'],
                   'window_ASR_raw_text': source_window['asr']['raw_text'], 'window_ASR_normalized_text': source_window['asr']['normalized_text'],

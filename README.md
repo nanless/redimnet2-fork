@@ -10,7 +10,9 @@ This is an official implementation of a neural network architecture presented in
 
 This fork also maintains reproduction, continuation, offline annotation and complete-word variable-length experiment tools. See the [Chinese documentation](docs/README.md) and [maintenance and acceptance boundaries](docs/16-实验维护与验收边界.md). Repository CPU tests do not transfer historical GPU acceptance or grant training eligibility to machine-generated labels; the upstream model results below retain their original scope.
 
-The dated [repository audit and task-failure report](docs/reviews/2026-10-26-全仓二次审查与任务故障核验.md) records the maintenance fixes and their tests separately from the PTN numerical failure and ongoing annotation quality review.
+The dated [repository audit and task-failure report](docs/reviews/2026-10-26-全仓二次审查与任务故障核验.md) records the maintenance fixes and their tests separately from the PTN numerical failure and ongoing annotation quality review. The [controlled model47 continuation tools](tools/ptn_resume/README.md) keep the original source manifest intact and require separate state, resource and rank evidence; a two-GPU engineering check does not establish that the original numerical fault has been resolved.
+
+The subsequent [real two-GPU continuation and forensic tests](docs/reviews/2026-10-26-PTN双卡恢复与完整故障取证实测.md) and [fixed-source annotation A/B comparison](docs/reviews/2026-10-26-标注时钟及撇号对照.md) preserve their separate scopes; neither establishes human word-boundary correctness or resolves the historical numerical root cause.
 
 ## Overview
 

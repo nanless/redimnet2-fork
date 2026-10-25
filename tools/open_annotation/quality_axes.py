@@ -1,6 +1,10 @@
 """Reconstructible independent quality axes, never a human-truth certificate."""
 from collections import Counter
 import math
+if __package__:
+    from .source_clock import LEGACY_MAPPING
+else:
+    from source_clock import LEGACY_MAPPING
 
 
 def _finite(x):
@@ -109,6 +113,8 @@ def heldout_source(source):
 def quality_axes(record):
     source = record.get('source', {}); identity = record.get('source_identity', {})
     windows = record.get('windows', []); windows = windows if isinstance(windows, list) else []
+    mappings = [w.get('time_mapping') for w in windows if isinstance(w, dict)]
+    source_mapping = (mappings[0] if all(x == mappings[0] for x in mappings) else 'mixed_explicit_window_mappings') if mappings else LEGACY_MAPPING
     policy = record.get('provenance', {}).get('alignment_method')
     lang_rows, geometry_rows, repetition_rows, faithfulness_rows = [], [], [], []
     for w in windows:
@@ -154,6 +160,6 @@ def quality_axes(record):
                                  'heldout_split_present': heldout_source(source),
                                  'automatic_training_release': False, 'automatic_evaluation_release': False},
             'source_clock': {'decode_status': identity.get('decode_status'), 'sample_rate': identity.get('sample_rate'),
-                             'mapping': 'source_offset_floor_start_ceil_end_v1',
+                             'mapping': source_mapping,
                              'source_time_repair_or_clipping_applied': False},
             'model_API_calls': 0, 'human_review': None}

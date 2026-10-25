@@ -415,7 +415,7 @@
           "const": 16000
         },
         "time_mapping": {
-          "const": "source_offset_floor_start_ceil_end_v1"
+          "enum": ["source_offset_floor_start_ceil_end_v1", "source_offset_decimal_floor_start_ceil_end_v2"]
         },
         "asr": {
           "type": "object",
