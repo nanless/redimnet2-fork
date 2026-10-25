@@ -7,6 +7,8 @@ description: Inspect and maintain this ReDimNet2 repository, B6 PTN/LM continuit
 
 本技能的维护源在本仓库。已安装副本由维护者从仓库同步；不在安装目录单独发展唯一实现。先读仓库根 `AGENTS.md` 和 `docs/16-实验维护与验收边界.md`，按入门研究生能理解的中文汇报。
 
+仓库身份为 `nanless/redimnet2-fork`，地址为 `https://github.com/nanless/redimnet2-fork`。先核 `git rev-parse --show-toplevel` 与远端身份；若当前位于“声纹降噪”资料目录，应检查其中的 `redimnet2-fork/` 副本。资料根目录未提交、没有远端的空Git不是本项目维护仓库，禁止让Git命令向父目录查找后误写另一暂存区。
+
 ## 先确定工作范围
 
 - 询问实时状态时读取新鲜任务、进程、日志和检查点；带日期的旧报告只证明当时情况。平台排队且尚无实例时，没有运行目录不等于程序失败。
