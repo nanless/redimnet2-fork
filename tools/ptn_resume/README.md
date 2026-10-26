@@ -81,3 +81,18 @@ PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover -s tools/ptn_resume/tes
 测试使用合成189树、合成控制面记录和真实小型CPU模型/SGD/scaler。为了使用小文件，测试中显式替换固定生产身份和状态数量；这些替换没有CLI入口。测试不能宣称实际B6、原189运行环境、八卡恢复或本次故障已修复。实际CPU完整构造、两卡工程验收、锁内八rank恢复及新轮48完整检查点仍由现场新证据证明。
 
 后续大间隔微调的三段约定见[三段准备协议](三段LM准备协议.md)。原两段`tools/lm_continuation/readiness.py`保持原判据并应继续拒绝失败vggvm，不能就地放宽。
+
+## 在真实云容器补核当前进程
+
+`live_process_probe.py`只使用标准库，按本次RUN中已固定的8份rank ready/restore、8份同轮加载门和192份加载进程证明，读取这些已知PID的`/proc`。它核PID世代、非僵尸、PPID/进程组/会话、rank必要环境字段、GPU锁FD/inode，以及实际小合同、包索引和状态门摘要。不枚举`/proc`目录或无关环境，不读原声、模型和全日志，不拿锁或发信号。NVML查询只记录UUID、显存、利用率和计算行，不把宿主机PID强认成容器PID。
+
+必须在已核实hostname的真实云WebShell执行，开发机只能部署脚本或回读结果。所有参数和已有外部输出目录由维护者明确提供：
+
+```bash
+python3 -B tools/ptn_resume/live_process_probe.py \
+  --run-root "$RUN" --contract-sha "$CONTRACT_SHA" --package-sha "$PACKAGE_SHA" \
+  --expected-hostname "$ACTUAL_CLOUD_HOSTNAME" --epoch 48 \
+  --output "$EXISTING_EXTERNAL_AUDIT_DIRECTORY/new-live-proof.json"
+```
+
+输出拒绝RUN、包和脚本目录内部，以及已有文件或软链。只有8+192个不同进程的身份和二次实时读取全部通过才给`passed=true`。正常R/S调度变化不算进程身份变化；换轮退出、PID世代不符或证据缺失时记录`indeterminate`并返回2，不自动推断训练已失败，也不干预任何进程。CPU用例只能替换函数内部的合成`/proc`与GPU查询，没有生产CLI旁路；当前轮次变化时须明确重选轮次，不能拿历史192份初始化文件代替实时进程证明。

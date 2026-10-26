@@ -14,6 +14,8 @@ The dated [repository audit and task-failure report](docs/reviews/2026-10-26-全
 
 The subsequent [real two-GPU continuation and forensic tests](docs/reviews/2026-10-26-PTN双卡恢复与完整故障取证实测.md) and [fixed-source annotation A/B comparison](docs/reviews/2026-10-26-标注时钟及撇号对照.md) preserve their separate scopes; neither establishes human word-boundary correctness or resolves the historical numerical root cause.
 
+The [subsequent live eight-GPU inspection](docs/reviews/2026-10-26-PTN启动时效修复与八卡接续巡检.md) records the startup-evidence timeout repair, eight restored ranks, 192 loader processes and the first actual optimizer update. Full-epoch checkpoints and final model-quality validation remain separate checks.
+
 ## Overview
 
 ReDimNet2 extends the [ReDimNet](https://github.com/IDRnD/redimnet) dimension-reshaping framework by introducing pooling over the time dimension in the 1D processing pathway. This allows significantly more aggressive channel scaling without proportional compute increase, yielding a strictly better accuracy–efficiency Pareto front at every scale point.
