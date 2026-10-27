@@ -151,3 +151,15 @@ class PortableMountTests(unittest.TestCase):
         freeze={'code_root':str(self.f.newcode)}
         with self.assertRaisesRegex(ValueError,'persistent user /root'):
             M.validate_output_namespaces(old,freeze,self.f.union,self.f.newrun,self.f.root/'ephemeral',controller_root=HERE)
+
+    def test_v2_mounts_completed_preparation_refs_without_a_consumer_database(self):
+        old_plan=self.f.save('finished-old-plan.json',{});old_index=self.f.save('finished-old-index.json',{})
+        self.f.spec['schema']=M.SCHEMA_V2;self.f.spec.pop('union_attestation')
+        self.f.spec['preparation_attestation']=self.f.save('prepared-receipt.json',{
+            'schema':'annotation-remaining-role-finalize/v1','new_plan':self.f.union['continuation_plan'],
+            'new_remaining_index':self.f.union['new_producer']['index'],'old_plan':old_plan,'old_remaining_index':old_index})
+        self.f.refresh();result=self.f.verify();self.assertTrue(result['passed'])
+        self.assertIn(old_plan['path'],{command[3]for command in self.f.calls});self.assertFalse(result['GPU_or_model_execution'])
+    def test_v1_mount_cannot_be_silently_switched_to_preparation_attestation(self):
+        self.f.spec['preparation_attestation']=self.f.spec.pop('union_attestation');self.f.refresh()
+        with self.assertRaisesRegex(ValueError,'versioned attestation'):self.f.verify()

@@ -2,11 +2,13 @@
 import copy
 import datetime
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import sqlite3
+import struct
 import sys
 import unittest
 from unittest.mock import patch
@@ -110,6 +112,59 @@ class PortableSuccessorFixture:
         return 0
 
 
+class PreparedSuccessorFixture(PortableSuccessorFixture):
+    """显式v2准备收据夹具；不用union数据库证明，不调用真正模型。"""
+    def __init__(self):
+        setup_class=sys.modules[ResumeFixture.__module__].F.SpeedContinuationTests
+        original_setup=setup_class.setUp
+        def with_roles(test):
+            original_setup(test)
+            value=json.loads(test.index.read_bytes());value['role_union_counts']={'train_ptn':6,'train_lm':6}
+            test.index.write_bytes(R.canonical(value));test.isha=R.file_sha(test.index)
+            qid=test.queue/'identity.json';identity=json.loads(qid.read_bytes());identity['index_sha256']=test.isha;qid.write_bytes(R.canonical(identity))
+            completion=test.queue/'completion_map.bin';raw=completion.read_bytes();size=struct.unpack('>I',raw[8:12])[0]
+            slot=json.loads(raw[44:44+size]);slot['index_sha256']=test.isha;payload=R.canonical(slot)
+            completion.write_bytes(b'RDMAP001'+struct.pack('>I',len(payload))+hashlib.sha256(payload).digest()+payload+bytes(980-len(payload))+raw[1024:])
+        with patch.object(setup_class,'setUp',with_roles):super().__init__()
+        old=self.f.spec;tree=str(self.f.base.tree);roles={'train_ptn':3,'train_lm':3};fullroles={'train_ptn':6,'train_lm':6}
+        self.oldremaining=self.index;index=json.loads(self.oldremaining.read_bytes());index['role_union_counts']=fullroles
+        self.oldremaining.write_bytes(R.canonical(index))
+        self.unclaimed=self.root/'unclaimed.jsonl';self.unclaimed.write_bytes(b'')
+        self.oldplan=self.root/'original-preparation.json'
+        original=copy.deepcopy(self.plan_value);original.update(old_index=old['full_index'],old_contract=old['contract'],
+            old_queue=old['queue_root'],old_sidecar_tree=tree,remaining_index=pin(self.oldremaining),
+            formal_runtime_admitted=False,models_executed=False,new_inference_count=0,unclaimed_sidecars_scanned=True,
+            retained_partial_sources=[{'source_id':self.f.base.sources[2]['source_id']}],retained_unclaimed_source_count=0,
+            retained_unclaimed_sources_ref={**pin(self.unclaimed),'count':0},
+            portable_source_ledger_ref={**pin(self.ledger),'count':1},
+            portable_sidecar_inventory_summary={'schema':'annotation-portable-sidecar-inventory/v1',
+                'portable_spec_sha256':pin(self.portable_spec)['sha256'],'old_contract':old['contract'],'full_index':old['full_index'],
+                'old_sidecar_tree':tree,'all_inventory_paths_matched_original_sources':True,'original_sources_checked':6,
+                'sidecar_files':3,'commit_files':3,'matched_completed_sources':2,'matched_partial_sources':1,'matched_unclaimed_sources':0,
+                'missing_source_lookups_without_PFS_stat':3})
+        self.oldplan.write_bytes(R.canonical(original))
+        self.index=self.root/'remaining-roles-v2.json';corrected=copy.deepcopy(index)
+        corrected.update(role_union_counts=roles,role_union_counts_scope='remaining_index_sources',parent_role_union_counts=fullroles,
+            role_union_counts_parent_index=old['full_index'],coverage_plan_file=self.plan.name,metadata_derived_from_index=pin(self.oldremaining))
+        self.index.write_bytes(R.canonical(corrected))
+        correction={'schema':'annotation-remaining-role-correction/v1','source_plan':pin(self.oldplan),'source_index':pin(self.oldremaining),
+            'tool_sha256':P.ROLE_FINALIZER_SHA256,'remaining_role_union_counts':roles,'retained_role_union_counts':roles,
+            'source_shard_bytes_changed':False,'models_executed':False}
+        self.plan_value={**original,'remaining_index':pin(self.index),'metadata_correction':correction};self.plan.write_bytes(R.canonical(self.plan_value))
+        self.union_value.update(continuation_plan=pin(self.plan),portable_source_ledger_ref=original['portable_source_ledger_ref'])
+        self.union_value['new_producer']['index']=pin(self.index);self.union.write_bytes(R.canonical(self.union_value))
+        self.preparation=self.root/'completed-role-finalize.json';self.prepared_value={
+            'schema':'annotation-remaining-role-finalize/v1','old_plan':pin(self.oldplan),'old_remaining_index':pin(self.oldremaining),
+            'new_plan':pin(self.plan),'new_remaining_index':pin(self.index),'parent_full_index':old['full_index'],
+            'parent_role_union_counts':fullroles,'remaining_role_union_counts':roles,'retained_role_union_counts':roles,
+            'remaining_sources_checked':3,'portable_proofs_reopened':1,'inventory_ref':pin(self.inventory),
+            'source_shard_bytes_changed':False,'v1_bytes_rewritten':False,'source_media_read':False,'models_executed':False,
+            'formal_runtime_admitted':False,'GPU_executed':False}
+        self.spec['schema']=P.SCHEMA_V2;self.spec['union_spec']=pin(self.union);self.spec.pop('union_attestation');self.refresh_prepared()
+    def refresh_prepared(self):
+        self.preparation.write_bytes(R.canonical(self.prepared_value));self.spec['preparation_attestation']=pin(self.preparation);self.refresh()
+
+
 class PortableSuccessorTests(unittest.TestCase):
     def setUp(self):self.f=PortableSuccessorFixture()
     def tearDown(self):self.f.close()
@@ -118,6 +173,14 @@ class PortableSuccessorTests(unittest.TestCase):
         self.assertTrue(r['passed']);self.assertFalse(r['GPU_started']);self.assertFalse(r['runtime_admitted'])
         self.assertNotEqual(r['current_old_parent_lock']['device'],r['historical_preparation_lock']['device'])
         self.assertFalse(self.f.evidence.exists());self.assertFalse(Path(self.f.spec['lineage_claim']).exists())
+        self.assertTrue(r['union_database_used']);self.assertEqual(P.inputs(self.f.spec)['attestation_field'],'union_attestation')
+    def test_union_attestation_mutation_after_checks_is_refused_before_claim(self):
+        def mutate(argv,log,fds):
+            result=self.f.fake(argv,log,fds)
+            if len(self.f.calls)==2:self.f.att.write_bytes(b'changed union proof before GPU')
+            return result
+        with self.assertRaisesRegex(ValueError,'pinned file'):self.f.run(True,mutate)
+        self.assertFalse(Path(self.f.spec['lineage_claim']).exists());self.assertFalse(any('--execute'in a for a in self.f.calls))
     def test_fixture_execution_holds_both_locks_and_preserves_old_producer(self):
         before=self.f.snapshot();r=self.f.run(True,self.f.fake);self.assertEqual(before,self.f.snapshot())
         self.assertTrue(r['completed']);self.assertEqual(len(self.f.calls),3)
@@ -430,3 +493,85 @@ class PortableSuccessorTests(unittest.TestCase):
         self.f.spec['evidence_root']=str(Path(self.f.f.spec['legacy_source_alias']['target_path'])/'forbidden-evidence');self.f.refresh()
         with self.assertRaisesRegex(ValueError,'namespace'):self.f.run()
         self.assertFalse(Path(self.f.spec['evidence_root']).exists())
+
+
+class PreparedSuccessorTests(unittest.TestCase):
+    def setUp(self):self.f=PreparedSuccessorFixture()
+    def tearDown(self):self.f.close()
+    def test_v2_reuses_completed_preparation_without_opening_partial_union_database(self):
+        self.f.db.write_bytes(b'aborted union database preserved, never a completed proof')
+        before=self.f.snapshot()
+        with (patch.object(P,'check_database',side_effect=AssertionError('no full union audit in v2')),
+              patch.object(P.sqlite3,'connect',side_effect=AssertionError('no union SQLite read in v2'))):
+            result=self.f.run()
+        self.assertEqual(before,self.f.snapshot());self.assertTrue(result['passed']);self.assertFalse(result['union_database_used'])
+        self.assertEqual(result['data_scope'],'fixed completed remaining preparation, not complete labels')
+        self.assertFalse(result['runtime_admitted']);self.assertFalse(self.f.newrun.exists())
+        self.assertEqual(self.f.db.read_bytes(),b'aborted union database preserved, never a completed proof')
+        self.assertEqual(P.inputs(self.f.spec)['attestation_field'],'preparation_attestation')
+    def test_v2_retains_original_checks_both_locks_and_exact_remaining_GPU_argv(self):
+        before=self.f.snapshot();result=self.f.run(True,self.f.fake)
+        self.assertTrue(result['completed']);self.assertEqual(before,self.f.snapshot());self.assertEqual(len(self.f.calls),3)
+        self.assertEqual(Path(self.f.calls[0][2]).name,'ultra_w8_gate_v2.py')
+        self.assertEqual(Path(self.f.calls[1][2]).name,'verify_portable_successor_mounts.py')
+        self.assertEqual(self.f.calls[2][self.f.calls[2].index('--shard-index')+1],str(self.f.index))
+        self.assertEqual(self.f.calls[2][self.f.calls[2].index('--target-uuids')+1],'auto8')
+        self.assertTrue(Path(self.f.spec['lineage_claim']).exists())
+    def test_v1_cannot_consume_a_role_receipt_in_place_of_a_complete_union_attestation(self):
+        self.f.spec['schema']=P.SCHEMA;self.f.spec['union_attestation']=self.f.spec.pop('preparation_attestation');self.f.refresh()
+        with self.assertRaisesRegex(ValueError,'union plan attestation'):self.f.run()
+    def test_v2_mixed_old_and_new_attestation_fields_are_refused(self):
+        self.f.spec['union_attestation']=pin(self.f.att);self.f.refresh()
+        with self.assertRaisesRegex(ValueError,'versioned attestation'):self.f.run()
+    def test_receipt_ref_count_role_or_false_GPU_claim_cannot_be_rebound(self):
+        original=copy.deepcopy(self.f.prepared_value)
+        mutations=[lambda r:r.update(new_remaining_index=pin(self.f.oldremaining)),
+            lambda r:r.update(remaining_sources_checked=True),lambda r:r.update(remaining_sources_checked=2),
+            lambda r:r.update(portable_proofs_reopened=0),lambda r:r.update(source_shard_bytes_changed=True),
+            lambda r:r.update(formal_runtime_admitted=True),lambda r:r['retained_role_union_counts'].update(train_lm=2),
+            lambda r:r.update(inventory_ref=pin(self.f.ledger))]
+        for change in mutations:
+            with self.subTest(change=change):
+                self.f.prepared_value=copy.deepcopy(original);change(self.f.prepared_value);self.f.refresh_prepared()
+                with self.assertRaises(ValueError):self.f.run()
+        self.assertFalse(self.f.evidence.exists());self.assertEqual(self.f.calls,[])
+    def test_corrected_plan_tool_or_source_changes_are_not_metadata_only(self):
+        original=copy.deepcopy(self.f.plan_value)
+        for mode in ('tool','queue','count'):
+            with self.subTest(mode=mode):
+                value=copy.deepcopy(original)
+                if mode=='tool':value['metadata_correction']['tool_sha256']='0'*64
+                if mode=='queue':value['old_queue']=str(self.f.root/'wrong-old-queue')
+                if mode=='count':value['retained_source_count']=2
+                self.f.plan.write_bytes(R.canonical(value));self.f.union_value['continuation_plan']=pin(self.f.plan)
+                self.f.union.write_bytes(R.canonical(self.f.union_value));self.f.spec['union_spec']=pin(self.f.union)
+                self.f.prepared_value['new_plan']=pin(self.f.plan);self.f.refresh_prepared()
+                with self.assertRaises(ValueError):self.f.run()
+    def test_rebound_remaining_source_shard_cannot_change_under_same_preparation(self):
+        value=json.loads(self.f.index.read_bytes());value['shards'][0]['sha256']='d'*64
+        self.f.index.write_bytes(R.canonical(value));self.f.plan_value['remaining_index']=pin(self.f.index)
+        self.f.plan.write_bytes(R.canonical(self.f.plan_value));self.f.union_value['continuation_plan']=pin(self.f.plan)
+        self.f.union_value['new_producer']['index']=pin(self.f.index);self.f.union.write_bytes(R.canonical(self.f.union_value))
+        self.f.spec['union_spec']=pin(self.f.union);self.f.prepared_value.update(new_plan=pin(self.f.plan),new_remaining_index=pin(self.f.index));self.f.refresh_prepared()
+        with self.assertRaisesRegex(ValueError,'source shards must stay fixed'):self.f.run()
+    def test_original_preparation_must_have_scanned_unclaimed_and_preserved_old_results(self):
+        for key in ('unclaimed_sidecars_scanned','old_results_rewritten'):
+            original=json.loads(self.f.oldplan.read_bytes());value=copy.deepcopy(original)
+            value[key]=False if key=='unclaimed_sidecars_scanned'else True
+            self.f.oldplan.write_bytes(R.canonical(value));self.f.prepared_value['old_plan']=pin(self.f.oldplan);self.f.refresh_prepared()
+            with self.subTest(key=key),self.assertRaises(ValueError):self.f.run()
+            self.f.oldplan.write_bytes(R.canonical(original))
+    def test_preparation_receipt_or_original_index_mutated_during_checks_prevents_GPU(self):
+        def change(argv,log,fds):
+            result=self.f.fake(argv,log,fds)
+            if len(self.f.calls)==2:self.f.oldremaining.write_bytes(b'changed before GPU')
+            return result
+        with self.assertRaisesRegex(ValueError,'pinned file'):self.f.run(True,change)
+        self.assertFalse(any('--execute'in argv for argv in self.f.calls));self.assertFalse(Path(self.f.spec['lineage_claim']).exists())
+    def test_preparation_attestation_mutated_during_checks_prevents_GPU(self):
+        def change(argv,log,fds):
+            result=self.f.fake(argv,log,fds)
+            if len(self.f.calls)==2:self.f.preparation.write_bytes(b'changed completed preparation proof before GPU')
+            return result
+        with self.assertRaisesRegex(ValueError,'pinned file'):self.f.run(True,change)
+        self.assertFalse(any('--execute'in argv for argv in self.f.calls));self.assertFalse(Path(self.f.spec['lineage_claim']).exists())

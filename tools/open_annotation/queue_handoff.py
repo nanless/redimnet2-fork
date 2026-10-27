@@ -28,6 +28,7 @@ PYTHON_SHA='cdb9592ef64842d7528ac97c2e03c81f226e5d875d5cc9304b59131e7bbcd505'
 RUNTIME_KEYS={'schema','purpose','task_name','model_API_calls_allowed','release_training_labels',
     'old_control','freeze_receipt','union_spec','union_attestation','old_broker','old_completion_map',
     'old_queue_identity','new_run_root','evidence_root','lineage_claim'}
+PREPARED_RUNTIME_KEYS=(RUNTIME_KEYS-{'union_attestation'})|{'preparation_attestation'}
 BLUEPRINT_KEYS={'schema','purpose','task_name','runtime_base','handoff_root','outer_controller',
     'runtime_controller','python_binary','wait_seconds','required_prior_attempt_ids'}
 IDENTITY_KEYS={'hostname','task_id','pid','start_ticks','boot_id'}
@@ -174,8 +175,12 @@ def check(path,pin):
     blueprint=ref({'path':str(path),'sha256':pin})
     need(set(blueprint)==BLUEPRINT_KEYS and blueprint['schema']==BLUEPRINT_SCHEMA and
          blueprint['purpose']in {'production','cpu_fixture'},'exact handoff blueprint schema required')
-    base=blueprint['runtime_base'];need(isinstance(base,dict)and set(base)==RUNTIME_KEYS and
-        base['schema']=='annotation-portable-successor-run/v1'and base['purpose']==blueprint['purpose'],
+    base=blueprint['runtime_base']
+    prepared=isinstance(base,dict)and base.get('schema')=='annotation-portable-successor-run/v2'
+    expected_keys=PREPARED_RUNTIME_KEYS if prepared else RUNTIME_KEYS
+    expected_schema='annotation-portable-successor-run/v2'if prepared else'annotation-portable-successor-run/v1'
+    need(isinstance(base,dict)and set(base)==expected_keys and
+        base['schema']==expected_schema and base['purpose']==blueprint['purpose'],
         'complete fixed runtime_base without current_platform_observation required')
     _task_name(blueprint['task_name']);need(base['task_name']==blueprint['task_name'],'runtime task name differs')
     need(type(base['model_API_calls_allowed'])is int and base['model_API_calls_allowed']==0 and
@@ -196,13 +201,34 @@ def check(path,pin):
     if blueprint['purpose']=='production':
         need(outer==Path(__file__).resolve().parent,'production outer source root differs from executing script')
         need(python=={'path':PYTHON,'sha256':PYTHON_SHA},'fixed production Python binary required')
-    old=ref(base['old_control']);freeze=ref(base['freeze_receipt']);union=ref(base['union_spec']);data=ref(base['union_attestation'])
-    need(data.get('schema')=='annotation-union-validation/v1'and data.get('mode')=='plan'and
-        data.get('spec_sha256')==base['union_spec']['sha256']and data.get('purpose')==base['purpose']and
-        data.get('exact_union_and_disjoint')is True and data.get('formal_runtime_admitted')is False and
-        data.get('GPU_executed')is False,'actual finished union plan required, never a partial database')
-    consumer=_pin_shape(data['consumer_index']);cp=physical(consumer['path'])
-    need(cp.is_file()and not cp.name.startswith('.consumer-building-'),'final union plan database required')
+    proof_key='preparation_attestation'if prepared else'union_attestation'
+    old=ref(base['old_control']);freeze=ref(base['freeze_receipt']);union=ref(base['union_spec']);data=ref(base[proof_key])
+    consumer=None
+    if prepared:
+        # v2复用已完成的逐源剩余清单检查；不把中断的联合库冒充成功。
+        plan=ref(union['continuation_plan'])
+        need(data.get('schema')=='annotation-remaining-role-finalize/v1'and
+            data.get('new_plan')==union['continuation_plan']and
+            data.get('new_remaining_index')==union['new_producer']['index']and
+            data.get('parent_full_index')==old['full_index']and
+            data.get('inventory_ref')==union['portable_sidecar_inventory_ref']and
+            type(data.get('remaining_sources_checked'))is int and
+            type(plan.get('remaining_source_count'))is int and
+            data['remaining_sources_checked']==plan.get('remaining_source_count',0)>0 and
+            type(data.get('portable_proofs_reopened'))is int and
+            type(plan['portable_source_ledger_ref'].get('count'))is int and
+            plan['portable_source_ledger_ref']['count']>=0 and
+            data.get('portable_proofs_reopened')==plan['portable_source_ledger_ref']['count']and
+            all(data.get(k)is False for k in ('formal_runtime_admitted','GPU_executed',
+                'source_shard_bytes_changed','v1_bytes_rewritten','source_media_read','models_executed')),
+            'actual completed remaining preparation required; no partial union substitute')
+    else:
+        need(data.get('schema')=='annotation-union-validation/v1'and data.get('mode')=='plan'and
+            data.get('spec_sha256')==base['union_spec']['sha256']and data.get('purpose')==base['purpose']and
+            data.get('exact_union_and_disjoint')is True and data.get('formal_runtime_admitted')is False and
+            data.get('GPU_executed')is False,'actual finished union plan required, never a partial database')
+        consumer=_pin_shape(data['consumer_index']);cp=physical(consumer['path'])
+        need(cp.is_file()and not cp.name.startswith('.consumer-building-'),'final union plan database required')
     oldroot=physical(old['task_root']);handoff=physical(blueprint['handoff_root'])
     need(handoff.parent.is_dir()and oldroot in handoff.parents,'handoff must be an independent child of original task ROOT')
     if blueprint['purpose']=='production':need(Path('/root')in handoff.parents,'production handoff must use persistent user /root mount')
@@ -210,10 +236,12 @@ def check(path,pin):
         physical(base['new_run_root']),physical(base['evidence_root']),physical(old['semantic_lock']).parent,
         physical(old['device_lock_root']),physical(old['legacy_source_alias']['target_path'])]
     # 通用task ROOT不是专用输入目录；其它固定控制/数据证明目录均双向保护。
-    refs=[base[k]for k in ('old_control','freeze_receipt','union_spec','union_attestation','old_broker','old_completion_map','old_queue_identity')]
+    refs=[base[k]for k in ('old_control','freeze_receipt','union_spec',proof_key,'old_broker','old_completion_map','old_queue_identity')]
     refs.extend(old[k]for k in ('full_index','contract','admission','original_launcher','original_claim'))
     refs.extend(union[k]for k in ('continuation_plan','portable_source_spec_ref','portable_source_ledger_ref','portable_sidecar_inventory_ref'))
-    refs.append(union['new_producer']['index']);refs.append(consumer)
+    refs.append(union['new_producer']['index'])
+    if consumer is not None:refs.append(consumer)
+    if prepared:refs.extend(data[k]for k in ('old_plan','old_remaining_index'))
     for item in refs:
         p=physical(item['path']).parent
         if p!=oldroot and p not in oldroot.parents:protected.append(p)

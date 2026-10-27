@@ -16,11 +16,21 @@ else:
     from resume_existing_annotation import physical,ref,pinned_file,legacy_media_path
 
 SCHEMA='annotation-portable-successor-run/v1'
+SCHEMA_V2='annotation-portable-successor-run/v2'
 ROOT='/root/experiments/redimnet2/open-annotation-ultra-20261025'
 
 
 def need(value,message):
     if not value:raise ValueError(message)
+
+
+def attestation_field(spec):
+    """v1仍要求完整union证明；v2只接受已完成的准备/角色定稿证明。"""
+    need(spec.get('schema')in {SCHEMA,SCHEMA_V2},'wrong successor schema')
+    field='union_attestation'if spec['schema']==SCHEMA else 'preparation_attestation'
+    other='preparation_attestation'if field=='union_attestation'else 'union_attestation'
+    need(field in spec and other not in spec,'exact versioned attestation field required')
+    return field
 
 
 def validate_row(expected,value):
@@ -56,7 +66,8 @@ def validate_output_namespaces(old,freeze,union,newrun,evidence,*,controller_roo
 
 def verify(spec_path,spec_sha,*,runner=subprocess.run):
     spec_pin={'path':str(spec_path),'sha256':spec_sha};spec=ref(spec_pin)
-    need(spec.get('schema')==SCHEMA and spec.get('purpose')in {'production','cpu_fixture'} and
+    field=attestation_field(spec)
+    need(spec.get('purpose')in {'production','cpu_fixture'} and
          type(spec.get('model_API_calls_allowed'))is int and spec['model_API_calls_allowed']==0 and
          spec.get('release_training_labels')is False,'fixed offline successor spec required')
     old=ref(spec['old_control']);admission=ref(old['admission']);cloud=admission['cloud']
@@ -106,12 +117,18 @@ def verify(spec_path,spec_sha,*,runner=subprocess.run):
     oldc=ref(old['contract']);newc=ref(freeze['new_contract'])
     need(newc.get('models')==oldc.get('models') and set(oldc.get('models',{}))=={'asr','aligner'},'original two-model source paths required')
     actual_refs=[spec_pin,spec['old_control'],old['admission'],old['contract'],old['full_index'],spec['freeze_receipt'],
-                freeze['new_contract'],freeze['bundle'],spec['union_spec'],union['continuation_plan'],union['new_producer']['index'],spec['union_attestation'],
+                freeze['new_contract'],freeze['bundle'],spec['union_spec'],union['continuation_plan'],union['new_producer']['index'],spec[field],
                 spec['current_platform_observation'],old['original_claim'],old['terminal_observation'],old['writer_absence']]
     for key in ('portable_source_spec_ref','portable_source_ledger_ref','portable_sidecar_inventory_ref'):
         actual_refs.append({k:union[key][k]for k in ('path','sha256')})
     for item in actual_refs:user_path(pinned_file(item))
-    data=ref(spec['union_attestation']);user_path(pinned_file(data['consumer_index']))
+    data=ref(spec[field])
+    if field=='union_attestation':user_path(pinned_file(data['consumer_index']))
+    else:
+        need(data.get('schema')=='annotation-remaining-role-finalize/v1'and
+             data.get('new_plan')==union['continuation_plan']and data.get('new_remaining_index')==union['new_producer']['index'],
+             'completed preparation mount refs differ')
+        for key in ('old_plan','old_remaining_index'):user_path(pinned_file(data[key]))
     checks=old['checks'];need(len(checks)==2 and Path(checks[1]['script']['path']).name=='verify_ultra_cloud_mounts_v2.py',
          'original fresh mount checker lineage missing')
     historical_mount=pinned_file(checks[1]['script']);user_path(historical_mount)

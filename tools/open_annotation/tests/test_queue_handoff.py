@@ -107,6 +107,75 @@ class HandoffFixture:
     def close(self):self.tmp.cleanup()
 
 
+def use_prepared_remaining(f):
+    """构造已完成准备收据；不伪造联合审计成功，也不需要联合数据库。"""
+    runtime=f.value['runtime_base'];layout=H.ref(runtime['union_spec'])
+    plan={'remaining_source_count':3,'portable_source_ledger_ref':{'count':0}}
+    planref=f.save(f.inputs/'prepared-plan.json',plan)
+    layout['continuation_plan']=planref
+    runtime['union_spec']=f.save(f.inputs/'prepared-layout.json',layout)
+    receipt={'schema':'annotation-remaining-role-finalize/v1','new_plan':planref,
+        'new_remaining_index':layout['new_producer']['index'],
+        'parent_full_index':H.ref(runtime['old_control'])['full_index'],
+        'inventory_ref':layout['portable_sidecar_inventory_ref'],
+        'remaining_sources_checked':3,'portable_proofs_reopened':0,
+        'old_plan':planref,'old_remaining_index':layout['new_producer']['index'],
+        **{key:False for key in ('formal_runtime_admitted','GPU_executed',
+            'source_shard_bytes_changed','v1_bytes_rewritten','source_media_read','models_executed')}}
+    runtime['schema']='annotation-portable-successor-run/v2'
+    runtime.pop('union_attestation')
+    runtime['preparation_attestation']=f.save(f.inputs/'prepared-receipt.json',receipt)
+    f.refresh();return receipt
+
+
+class PreparedQueueHandoffTests(unittest.TestCase):
+    def setUp(self):
+        self.f=HandoffFixture();self.receipt=use_prepared_remaining(self.f)
+    def tearDown(self):self.f.close()
+    def update_receipt(self,change):
+        change(self.receipt)
+        self.f.value['runtime_base']['preparation_attestation']=self.f.save(self.f.inputs/'prepared-receipt.json',self.receipt)
+        self.f.refresh()
+    def test_completed_preparation_does_not_require_union_database(self):
+        (self.f.uniondir/'plan.sqlite').unlink()
+        result=self.f.checked()
+        self.assertFalse(result['controller_inputs_check_executed'])
+        self.assertFalse(Path(self.f.value['handoff_root']).exists())
+    def test_prepared_handoff_preserves_v2_and_only_adds_fresh_observation(self):
+        (self.f.uniondir/'plan.sqlite').unlink()
+        result=self.f.wait();self.assertTrue(result['synthetic_exec'])
+        argv=self.f.calls[0][0];runtime=H.ref({'path':argv[2],'sha256':argv[3]},private=True)
+        runtime.pop('current_platform_observation')
+        self.assertEqual(runtime,self.f.value['runtime_base'])
+        self.assertNotIn('union_attestation',runtime)
+    def test_prepared_receipt_required_and_mismatches_rejected(self):
+        for field,value in (('schema','annotation-union-validation/v1'),('remaining_sources_checked',2),
+                            ('remaining_sources_checked',True),('portable_proofs_reopened',1),
+                            ('portable_proofs_reopened',False),
+                            ('source_shard_bytes_changed',True),('formal_runtime_admitted',True)):
+            with self.subTest(field=field,value=value):
+                old=self.receipt[field];self.update_receipt(lambda v:v.update({field:value}))
+                with self.assertRaises(ValueError):self.f.checked()
+                self.update_receipt(lambda v:v.update({field:old}))
+    def test_prepared_receipt_cannot_be_used_as_v1_union_completion(self):
+        base=self.f.value['runtime_base'];base['schema']='annotation-portable-successor-run/v1'
+        base['union_attestation']=base.pop('preparation_attestation');self.f.refresh()
+        with self.assertRaisesRegex(ValueError,'finished union'):self.f.checked()
+    def test_prepared_plan_proof_count_refuses_boolean_and_negative(self):
+        for count,receipt_count in ((False,0),(-1,-1)):
+            with self.subTest(count=count):
+                base=self.f.value['runtime_base'];layout=H.ref(base['union_spec'])
+                plan=H.ref(layout['continuation_plan']);plan['portable_source_ledger_ref']['count']=count
+                planref=self.f.save(self.f.inputs/'prepared-plan.json',plan)
+                layout['continuation_plan']=planref
+                base['union_spec']=self.f.save(self.f.inputs/'prepared-layout.json',layout)
+                self.update_receipt(lambda v:v.update(new_plan=planref,portable_proofs_reopened=receipt_count))
+                with self.assertRaisesRegex(ValueError,'completed remaining preparation'):self.f.checked()
+    def test_v2_rejects_extra_union_attestation_field(self):
+        base=self.f.value['runtime_base'];base['union_attestation']=base['preparation_attestation'];self.f.refresh()
+        with self.assertRaisesRegex(ValueError,'runtime_base'):self.f.checked()
+
+
 class QueueHandoffTests(unittest.TestCase):
     def setUp(self):self.f=HandoffFixture()
     def tearDown(self):self.f.close()

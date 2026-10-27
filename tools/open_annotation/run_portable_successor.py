@@ -25,19 +25,21 @@ if __package__:
         existing_lock, frozen_bundle, frozen_roots, ref_unpinned, legacy_media_path)
     from .readonly_progress import inspect_progress
     from .freeze_legacy_successor import BUNDLE_SHA256, ENGINE_MODULES, LEGACY_RUNTIME
-    from .verify_portable_successor_mounts import validate_output_namespaces
+    from .verify_portable_successor_mounts import validate_output_namespaces,attestation_field
     from ..task_names import validate_task_name
 else:
     from resume_existing_annotation import (physical, ref, pinned_file, file_sha, write_new,
         existing_lock, frozen_bundle, frozen_roots, ref_unpinned, legacy_media_path)
     from readonly_progress import inspect_progress
     from freeze_legacy_successor import BUNDLE_SHA256, ENGINE_MODULES, LEGACY_RUNTIME
-    from verify_portable_successor_mounts import validate_output_namespaces
+    from verify_portable_successor_mounts import validate_output_namespaces,attestation_field
     if not (Path(__file__).resolve().parent/'task_names.py').is_file():
         sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
     from task_names import validate_task_name
 
 SCHEMA='annotation-portable-successor-run/v1'
+SCHEMA_V2='annotation-portable-successor-run/v2'
+ROLE_FINALIZER_SHA256='1af4f2f93590b6594785a2cb493ec8a2ddfa057e6269661cd7406a13ecba5fd2'
 COUNT=11521178
 DOMAINS={'voxceleb2':1092009,'voxblink2':9904382,'cnceleb2':524787}
 
@@ -142,9 +144,92 @@ def verify_python(old):
     return target
 
 
+def check_preparation(spec,old,oldindex,union,plan,remaining):
+    """复用已完整完成的准备证明，不重建union库或重读百万旧侧车。"""
+    receipt=ref(spec['preparation_attestation'])
+    need(receipt.get('schema')=='annotation-remaining-role-finalize/v1'and
+         receipt.get('new_plan')==union['continuation_plan']and
+         receipt.get('new_remaining_index')==union['new_producer']['index']and
+         receipt.get('parent_full_index')==old['full_index']and
+         receipt.get('inventory_ref')==union['portable_sidecar_inventory_ref'],
+         'completed preparation receipt refs differ')
+    for key in ('source_shard_bytes_changed','v1_bytes_rewritten','source_media_read','models_executed','formal_runtime_admitted','GPU_executed'):
+        need(receipt.get(key)is False,'preparation receipt may not rewrite/reinfer/admit GPU: '+key)
+    oldplan=ref(receipt['old_plan']);oldremaining=ref(receipt['old_remaining_index'])
+    need(oldplan.get('schema')=='annotation-speed-continuation-plan/v1'and
+         oldplan.get('status')=='final_prepared_not_started'and
+         oldplan.get('old_index')==old['full_index']and
+         {k:oldplan.get('old_contract',{}).get(k)for k in ('path','sha256')}==old['contract']and
+         oldplan.get('old_queue')==old['queue_root']and oldplan.get('remaining_index')==receipt['old_remaining_index'],
+         'original completed preparation lineage differs')
+    for key in ('formal_runtime_admitted','models_executed','old_queue_mutated','old_results_rewritten','stage_cache_relabelled'):
+        need(oldplan.get(key)is False,'original preparation was not immutable/offline: '+key)
+    need(type(oldplan.get('new_inference_count'))is int and oldplan['new_inference_count']==0 and
+         oldplan.get('unclaimed_sidecars_scanned')is True,'final original preparation must have covered unclaimed sources')
+    total=oldindex['source_count'];left=plan['remaining_source_count'];kept=plan['retained_source_count']
+    need(all(type(v)is int and v>=0 for v in (total,left,kept))and left>0 and kept+left==total and
+         type(receipt.get('remaining_sources_checked'))is int and receipt['remaining_sources_checked']==left==remaining['source_count'],
+         'completed preparation source counts differ')
+    roles=('train_ptn','train_lm');groups={}
+    for key,bound in (('parent_role_union_counts',total),('remaining_role_union_counts',left),('retained_role_union_counts',kept)):
+        group=receipt.get(key)
+        need(isinstance(group,dict)and set(group)==set(roles)and
+             all(type(v)is int and 0<=v<=bound for v in group.values())and group['train_ptn']==bound,
+             'completed preparation role counts differ: '+key);groups[key]=group
+    parent_roles=groups['parent_role_union_counts'];left_roles=groups['remaining_role_union_counts'];kept_roles=groups['retained_role_union_counts']
+    need(parent_roles==oldindex.get('role_union_counts')and
+         all(left_roles[k]+kept_roles[k]==parent_roles[k]for k in roles), 'prepared role counts do not conserve original scope')
+    correction={'schema':'annotation-remaining-role-correction/v1','source_plan':receipt['old_plan'],
+        'source_index':receipt['old_remaining_index'],'tool_sha256':ROLE_FINALIZER_SHA256,
+        'remaining_role_union_counts':left_roles,'retained_role_union_counts':kept_roles,
+        'source_shard_bytes_changed':False,'models_executed':False}
+    expected_plan={**oldplan,'remaining_index':union['new_producer']['index'],'metadata_correction':correction}
+    need(json.dumps(plan,sort_keys=True,allow_nan=False)==json.dumps(expected_plan,sort_keys=True,allow_nan=False),
+         'prepared v2 plan differs beyond fixed role metadata correction')
+    expected_remaining={**oldremaining,'role_union_counts':left_roles,'role_union_counts_scope':'remaining_index_sources',
+        'parent_role_union_counts':parent_roles,'role_union_counts_parent_index':old['full_index'],
+        'coverage_plan_file':Path(union['continuation_plan']['path']).name,'metadata_derived_from_index':receipt['old_remaining_index']}
+    need(json.dumps(remaining,sort_keys=True,allow_nan=False)==json.dumps(expected_remaining,sort_keys=True,allow_nan=False),
+         'prepared remaining index changed beyond role metadata; source shards must stay fixed')
+    inventory=oldplan.get('portable_sidecar_inventory_summary',{})
+    need(oldplan.get('portable_sidecar_inventory_ref')==receipt['inventory_ref']and
+         inventory.get('schema')=='annotation-portable-sidecar-inventory/v1'and
+         inventory.get('portable_spec_sha256')==union['portable_source_spec_ref']['sha256']and
+         inventory.get('old_contract')==old['contract']and inventory.get('full_index')==old['full_index']and
+         inventory.get('old_sidecar_tree')==oldplan.get('old_sidecar_tree')==union['old_producer']['sidecar_tree']and
+         inventory.get('all_inventory_paths_matched_original_sources')is True and
+         inventory.get('original_sources_checked')==total and
+         inventory.get('sidecar_files')==inventory.get('commit_files')==kept and
+         inventory.get('matched_completed_sources',0)+inventory.get('matched_partial_sources',0)+inventory.get('matched_unclaimed_sources',0)==kept,
+         'completed preparation inventory did not exactly cover retained sources')
+    ledger=oldplan['portable_source_ledger_ref'];partials=oldplan.get('retained_partial_sources');unclaimed=oldplan.get('retained_unclaimed_source_count')
+    need(isinstance(partials,list)and type(unclaimed)is int and unclaimed>=0 and type(ledger.get('count'))is int and
+         type(receipt.get('portable_proofs_reopened'))is int and
+         receipt['portable_proofs_reopened']==ledger['count']==len(partials)+unclaimed,
+         'prepared partial/unclaimed content proof count differs')
+    completed=oldplan['old_progress_snapshot']['committed_source_lower_bound']
+    need(type(completed)is int and completed+len(partials)+unclaimed==kept and
+         inventory.get('matched_completed_sources')==completed and
+         inventory.get('matched_partial_sources')==len(partials)and inventory.get('matched_unclaimed_sources')==unclaimed and
+         inventory.get('missing_source_lookups_without_PFS_stat')==left,
+         'prepared completed/partial/unclaimed partition differs')
+    need(oldplan.get('portable_source_spec_ref')==union['portable_source_spec_ref']and
+         ledger==union['portable_source_ledger_ref'],'prepared portable proof refs differ')
+    unclaimed_ref=oldplan['retained_unclaimed_sources_ref']
+    need(type(unclaimed_ref.get('count'))is int and unclaimed_ref['count']==unclaimed,'prepared unclaimed ledger count differs')
+    evidence_file(unclaimed_ref)
+    dependencies=[receipt['old_plan'],receipt['old_remaining_index'],{k:unclaimed_ref[k]for k in ('path','sha256')}]
+    if spec['purpose']=='production':
+        tool={'path':str(Path(__file__).resolve().with_name('finalize_remaining_roles.py')),'sha256':ROLE_FINALIZER_SHA256}
+        pinned_file(tool);dependencies.append(tool)
+    return {'source_count':total,'domains':oldindex['domains'],'retained_source_count':kept,'remaining_source_count':left,
+        'prepared_receipt':receipt,'full_old_sidecar_reaudit_performed':False,'union_database_used':False},dependencies
+
+
 def inputs(spec):
     """纯读全部控制输入；固定摘要也是运行中再次复核的输入集合。"""
-    need(spec.get('schema')==SCHEMA and spec.get('purpose')in {'production','cpu_fixture'},'wrong successor schema/purpose')
+    need(spec.get('schema')in {SCHEMA,SCHEMA_V2}and spec.get('purpose')in {'production','cpu_fixture'},'wrong successor schema/purpose')
+    proof_field=attestation_field(spec)
     validate_task_name(spec['task_name'])
     need(type(spec.get('model_API_calls_allowed'))is int and spec['model_API_calls_allowed']==0 and
          spec.get('release_training_labels')is False,'offline API0/no automatic release required')
@@ -197,7 +282,7 @@ def inputs(spec):
     frozen_roots(code/'gpu_launch.py',base,physical(old['device_lock_root']))
     need(freeze['new_version']==newc['version'] and freeze['bundle']['path']==str(code/'bundle_files.json'),
          'copied code/new version binding differs')
-    union=ref(spec['union_spec']);plan=ref(union['continuation_plan']);data=ref(spec['union_attestation'])
+    union=ref(spec['union_spec']);plan=ref(union['continuation_plan']);remaining=ref(union['new_producer']['index'])
     historical=plan['terminal_observation']
     need(historical.get('task_id')==old['old_task_id'],'historical preparation terminal task differs')
     terminal(ref({k:historical[k]for k in ('path','sha256')}),old)
@@ -217,11 +302,16 @@ def inputs(spec):
     need(union.get('portable_sidecar_inventory_ref')==plan.get('portable_sidecar_inventory_ref') and
          union.get('portable_sidecar_inventory_ref')is not None,'fixed portable directory inventory required')
     evidence_file(union['portable_sidecar_inventory_ref'])
-    need(data.get('schema')=='annotation-union-validation/v1' and data.get('spec_sha256')==spec['union_spec']['sha256'] and
+    dependencies=[]
+    if proof_field=='preparation_attestation':data,dependencies=check_preparation(spec,old,oldindex,union,plan,remaining)
+    else:
+        data=ref(spec['union_attestation'])
+        need(data.get('schema')=='annotation-union-validation/v1' and data.get('spec_sha256')==spec['union_spec']['sha256'] and
          data.get('purpose')==spec['purpose'] and data.get('mode')=='plan' and data.get('exact_union_and_disjoint')is True and
          data.get('formal_runtime_admitted')is False and data.get('GPU_executed')is False and
          data.get('portable_source_ledger_verified')is True and data.get('old_retained_sidecars_reopened')is True and
-         data.get('source_identity_mode')==union['source_identity_mode'], 'actual production union plan attestation incomplete')
+             data.get('source_identity_mode')==union['source_identity_mode'], 'actual production union plan attestation incomplete')
+        check_database(data['consumer_index'],union,data);dependencies.append(data['consumer_index'])
     need(data.get('source_count')==oldindex['source_count']==union['expected_full_source_count'] and
          data.get('domains')==oldindex['domains'] and
          data.get('retained_source_count')==plan['retained_source_count'] and
@@ -231,8 +321,6 @@ def inputs(spec):
         need(data['source_count']==COUNT and data['domains']==DOMAINS and oldc.get('purpose')=='silver_annotation' and
              old['bundle']['sha256']==BUNDLE_SHA256 and oldc.get('runtime')==LEGACY_RUNTIME and
              set(oldc.get('engine_source_files',{}))==set(ENGINE_MODULES),'original production scope/engine profile differs')
-    check_database(data['consumer_index'],union,data)
-    remaining=ref(union['new_producer']['index'])
     need(plan['remaining_index']==union['new_producer']['index'] and remaining['source_count']==data['remaining_source_count']>0 and
          remaining.get('parent_full_index')==old['full_index'],'remaining index parent/count differs')
     run=physical(spec['new_run_root']);queue=run/'queue';labels=run/'labels';resources=run/'resources-attempt1'
@@ -245,8 +333,8 @@ def inputs(spec):
     validate_output_namespaces(old,freeze,union,run,evidence,controller_root=Path(__file__).resolve().parent)
     need(not evidence.exists() and evidence.parent.is_dir() and all(evidence!=p and p not in evidence.parents and
          evidence not in p.parents for p in (run,oldrun,code,physical(old['code_root']))), 'fresh disjoint execution evidence required')
-    for field,name in (('old_broker','broker.json'),('old_completion_map','completion_map.bin'),('old_queue_identity','identity.json')):
-        need(pinned_file(spec[field])==oldq/name,'old queue snapshot pin/path differs: '+name)
+    for queue_field,name in (('old_broker','broker.json'),('old_completion_map','completion_map.bin'),('old_queue_identity','identity.json')):
+        need(pinned_file(spec[queue_field])==oldq/name,'old queue snapshot pin/path differs: '+name)
     need(spec['old_broker']['sha256']==plan['old_progress_snapshot']['broker_snapshot_sha256'],'old broker differs from data plan')
     progress=inspect_progress(old['full_index']['path'],old['full_index']['sha256'],oldq,old['contract']['sha256'])
     need(progress['broker_snapshot_sha256']==spec['old_broker']['sha256'] and
@@ -264,6 +352,7 @@ def inputs(spec):
     mount_checker=Path(__file__).resolve().with_name('verify_portable_successor_mounts.py')
     mount_pin={'path':str(mount_checker),'sha256':file_sha(mount_checker)}
     return {'old':old,'freeze':freeze,'union':union,'plan':plan,'data':data,'checks':[checks[0]],
+        'attestation_field':proof_field,'data_dependency_refs':dependencies,
         'check_sources':[old['checks'][0]['script'],mount_pin],'historical_mount_check':checks[1],
         'portable_mount_checker':mount_pin,'gpu_command':argv,
         'current_old_parent_lock':{'path':str(oldq/'.parent.lock'),'device':current.st_dev,'inode':current.st_ino},
@@ -281,10 +370,10 @@ def recheck(spec,checked,semantic_fd,queue_fd,*,owned_claim=None,run_identity=No
     frozen_bundle({'code_root':checked['freeze']['code_root'],'bundle':checked['freeze']['bundle']})
     pinned_file(old['original_launcher']);verify_python(old)
     for check in old['checks']:pinned_file(check['script'])
-    for key in ('old_control','freeze_receipt','union_spec','union_attestation','old_broker','old_completion_map','old_queue_identity',
+    for key in ('old_control','freeze_receipt','union_spec',checked['attestation_field'],'old_broker','old_completion_map','old_queue_identity',
                 'current_platform_observation'):pinned_file(spec[key])
     for pin in (old['contract'],old['full_index'],old['original_claim'],old['admission'],checked['freeze']['new_contract'],
-                checked['union']['continuation_plan'],checked['union']['new_producer']['index'],checked['data']['consumer_index']):pinned_file(pin)
+                checked['union']['continuation_plan'],checked['union']['new_producer']['index'],*checked['data_dependency_refs']):pinned_file(pin)
     for key in ('portable_source_spec_ref','portable_source_ledger_ref','portable_sidecar_inventory_ref'):evidence_file(checked['union'][key])
     for name,fd in ((old['semantic_lock'],semantic_fd),(str(Path(old['queue_root'])/'.parent.lock'),queue_fd)):
         pathstat=physical(name).stat();held=os.fstat(fd)
@@ -332,7 +421,10 @@ def run(path,pin,*,execute=False,runner=None):
     checked['checks'].append([checked['old']['python'],'-B',checked['portable_mount_checker']['path'],
                               '--spec',str(path),'--spec-sha',pin])
     if not execute:return {'schema':'annotation-portable-successor-check/v1','passed':True,
-        'data_scope':'fixed production union plan, not complete labels','current_old_parent_lock':checked['current_old_parent_lock'],
+        'data_scope':('fixed production union plan, not complete labels'if checked['attestation_field']=='union_attestation'else
+            'fixed completed remaining preparation, not complete labels'),
+        'union_database_used':checked['attestation_field']=='union_attestation',
+        'current_old_parent_lock':checked['current_old_parent_lock'],
         'historical_preparation_lock':checked['historical_preparation_lock'],'GPU_started':False,'runtime_admitted':False}
     evidence=physical(spec['evidence_root']);evidence.mkdir(mode=0o700)
     write_new(evidence/'prepared.json',{'spec_sha256':pin,'spec':spec,'check':checked})
