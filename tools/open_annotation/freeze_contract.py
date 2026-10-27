@@ -17,8 +17,21 @@ def helpers(code):
     return module
 
 
+def task_names_source(code):
+    """冻结副本优先用自身已固定helper；仓库仅允许已知tools布局。"""
+    local=code/'task_names.py'
+    if local.exists()or local.is_symlink():
+        if not local.is_file()or local.is_symlink():raise ValueError('frozen task naming helper must be a regular file')
+        return local
+    parent=code.parent/'task_names.py'
+    if (code.name!='open_annotation'or code.parent.name!='tools'or not parent.is_file()or parent.is_symlink()):
+        raise ValueError('explicit maintained task naming helper missing; do not search arbitrary parents')
+    return parent
+
+
 def freeze(base_path, base_sha, output, version_prefix, normalization_profile=None, asr_compute=None):
     h = helpers(HERE)
+    naming_source=task_names_source(HERE)
     base_raw = Path(base_path).read_bytes()
     h.need(hashlib.sha256(base_raw).hexdigest() == base_sha, 'external base contract SHA differs')
     c = json.loads(base_raw)
@@ -43,6 +56,10 @@ def freeze(base_path, base_sha, output, version_prefix, normalization_profile=No
                 target = output/rel
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(path, target)
+    # 共享表单helper也是新软件包成员；它不属于模型语义ENGINE_MODULES。
+    naming_target=output/'task_names.py'
+    if naming_target.exists():h.need(h.sha_file(naming_target)==h.sha_file(naming_source),'copied task naming helper differs')
+    else:shutil.copyfile(naming_source,naming_target)
     c['parent_contract_sha256'] = base_sha
     from source_clock import TIME_MAPPING
     c['runtime']['boundary_mapping'] = TIME_MAPPING

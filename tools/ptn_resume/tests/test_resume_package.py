@@ -85,11 +85,21 @@ class ResumeTests(unittest.TestCase):
         with self.fixture()as(r,spec,*_):
             before={p:pin(p)for p in Path(spec['source_root']).rglob('*')if p.is_file()}
             result=B.build(spec,r/'package');c=G.verify_package(r/'package/resume-contract.json',result['contract_sha256'])
+            self.assertTrue(result['platform_task_name'].startswith('zhounan_'));self.assertNotIn('platform_task_name',c)
             self.assertFalse(result['runtime_admission']);self.assertFalse(Path(spec['new_run_root']).exists())
             self.assertEqual(before,{p:pin(p)for p in before})
             self.assertEqual(len(json.loads((r/'package/source_manifest.json').read_bytes())),190)
             self.assertEqual(c['clock']['absolute_iteration'],705047)
             self.assertEqual(set(c['runtime_files']),{'entry.py','worker.py','state_gate.py','ptn_contracts.py'})
+
+    def test_future_platform_name_is_receipt_only_and_invalid_name_reads_nothing(self):
+        with patch.object(B,'validate_materials')as read:
+            with self.assertRaisesRegex(ValueError,'zhounan_'):B.build({},Path('/unused/new-package'),task_name='old-prefix')
+            read.assert_not_called()
+        with self.fixture()as(r,spec,*_):
+            result=B.build(spec,r/'package',task_name='zhounan_ptn_custom')
+            self.assertEqual(result['platform_task_name'],'zhounan_ptn_custom')
+            self.assertNotIn('platform_task_name',json.loads((r/'package/resume-contract.json').read_bytes()))
 
     def test_deployed_gate_imports_only_its_frozen_helper_without_repository(self):
         with self.fixture()as(r,spec,*_):

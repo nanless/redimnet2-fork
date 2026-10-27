@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import stat
 from . import contracts as C
+from ..task_names import suggested_task_name,task_name_argument
 
 SPEC_KEYS={'schema','legacy_bundle_root','source_root','source95','checkpoint','speaker_map',
            'original_terminal','predecessor_terminal','new_run_root','patches','runtime_files'}
@@ -112,7 +113,8 @@ def write_new(path,raw):
     with path.open('xb')as stream:stream.write(raw);stream.flush();os.fsync(stream.fileno())
 
 
-def build(spec,output,now=None):
+def build(spec,output,now=None,*,task_name=None):
+    platform_task_name=suggested_task_name('ptn_resume',task_name)
     checked=validate_materials(spec,now)
     out=C.physical(output);C.need(not out.exists(),'package destination must be new')
     protected=[C.physical(spec[k])for k in ('source_root','legacy_bundle_root','new_run_root')]+[C.physical(C.ORIGINAL),C.physical(C.PREDECESSOR)]
@@ -159,12 +161,13 @@ def build(spec,output,now=None):
     C.need(not checked['run'].exists(),'builder unexpectedly created training output')
     return {'package':str(out),'contract_sha256':C.hash_file(out/'resume-contract.json')[0],
             'bundle_manifest_sha256':C.hash_file(out/'bundle_files.json')[0], 'runtime_admission':False,
-            'actual_state_restore_performed':False,'source_members':190}
+            'actual_state_restore_performed':False,'source_members':190,'platform_task_name':platform_task_name}
 
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--spec',required=True,type=Path);p.add_argument('--output-dir',required=True,type=Path);a=p.parse_args(argv)
-    spec=C.json_bytes(C.physical(a.spec).read_bytes());result=build(spec,a.output_dir);print(json.dumps(result,ensure_ascii=False,indent=2));return 0
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--spec',required=True,type=Path);p.add_argument('--output-dir',required=True,type=Path);p.add_argument('--task-name',type=task_name_argument,help='未来平台任务名，默认zhounan_redimnet2_ptn_resume_8a800_p6');a=p.parse_args(argv)
+    suggested_task_name('ptn_resume',a.task_name)
+    spec=C.json_bytes(C.physical(a.spec).read_bytes());result=build(spec,a.output_dir,task_name=a.task_name);print(json.dumps(result,ensure_ascii=False,indent=2));return 0
 
 
 if __name__=='__main__':raise SystemExit(main())

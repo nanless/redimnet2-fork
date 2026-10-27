@@ -9,6 +9,8 @@ python -B -m tools.ptn_resume.build \
   --spec /absolute/private/build-spec.json --output-dir /absolute/new-package
 ```
 
+未来平台任务名称统一以 `zhounan_` 开头。构建命令可传 `--task-name zhounan_redimnet2_ptn_resume_8a800_p6_日期_版本`，缺省建议为 `zhounan_redimnet2_ptn_resume_8a800_p6`。建议只写在构建收据中，不进入冻结的运行合同；平台提交时仍须回读实际名称、优先级6和唯一ID。名称修改不构成重新启动或迁移授权，历史任务ID和提交时名称保持记录。
+
 `--output-dir`的父目录必须已经存在，目标目录必须全新，并与旧源码、旧任务、新训练输出均不重叠。失败后的部分目录保留，不覆盖重试。原件引用一律要求绝对路径和完整SHA；不接受软链或缺省猜测。输入中会出现私有位置和控制面原件，实际spec、包、日志和结果只放私有审计目录，不能提交公开仓库。
 
 ## 源码身份不能混淆

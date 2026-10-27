@@ -2,11 +2,32 @@
 An unexecuted launcher is not W2 admission. Runtime gate re-reads all pinned proofs.
 """
 from pathlib import Path
-import argparse,ast,json,shlex
-from cloud_gate import Reader,contracts_and_bundle,issha,need,sha,EXPECTED_SOURCE_COUNT,SOURCE_SCOPE,verify
+import argparse,ast,json,shlex,sys
+if __package__:
+    from ..task_names import suggested_task_name,task_name_argument
+    from .cloud_gate import Reader,contracts_and_bundle,issha,need,sha,EXPECTED_SOURCE_COUNT,SOURCE_SCOPE,verify
+else:
+    local=Path(__file__).resolve().parent/'task_names.py'
+    if local.exists()or local.is_symlink():
+        if not local.is_file()or local.is_symlink():raise ValueError('frozen task naming helper must be a regular file')
+    else:
+        code=Path(__file__).resolve().parent;parent=code.parent/'task_names.py'
+        if code.name!='open_annotation'or code.parent.name!='tools'or not parent.is_file()or parent.is_symlink():
+            raise ValueError('maintained task naming helper missing; arbitrary parent imports refused')
+        sys.path.insert(0,str(code.parent))
+    from task_names import suggested_task_name,task_name_argument
+    from cloud_gate import Reader,contracts_and_bundle,issha,need,sha,EXPECTED_SOURCE_COUNT,SOURCE_SCOPE,verify
 def child(path,parent):
     p=Path(path);return p.is_absolute() and '..' not in p.parts and Path(parent) in p.parents
+def platform_task_name(spec,requested=None):
+    """旧描述无名字时只为未来表单补建议；不改写旧描述或历史任务。"""
+    configured=spec['cloud'].get('platform_task_name')
+    if configured is not None:
+        suggested_task_name('annotation',configured)
+        need(requested is None or requested==configured,'CLI task name differs from pinned new admission')
+    return suggested_task_name('annotation',configured if configured is not None else requested)
 def validate_spec(spec):
+    platform_task_name(spec)
     need(spec['schema']=='ultra-eight-three-train-spec/v3','wrong spec schema')
     BASE=spec['cloud']['task_root']
     need(Path(BASE).is_absolute() and BASE not in {'/','/root'},'independent absolute task root required')
@@ -55,7 +76,7 @@ def render(spec,spec_sha,inspection_map=None):
        'exec '+' '.join(q(x) for x in command)]
     return '\n'.join(lines)+'\n',pins
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--spec',type=Path,required=True);p.add_argument('--spec-sha',required=True);p.add_argument('--output-dir',type=Path,required=True);p.add_argument('--inspection-map',type=Path,help='Local inspection only; never included in deployed spec');p.add_argument('--verify-now',action='store_true');a=p.parse_args();raw=a.spec.read_bytes();need(sha(raw)==a.spec_sha,'spec SHA differs');spec=json.loads(raw);need(not spec.get('evidence_path_map'),'deployed spec must read actual server evidence paths');inspection_map=json.loads(a.inspection_map.read_text()) if a.inspection_map else None;script,pins=render(spec,a.spec_sha,inspection_map)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--spec',type=Path,required=True);p.add_argument('--spec-sha',required=True);p.add_argument('--output-dir',type=Path,required=True);p.add_argument('--task-name',type=task_name_argument,help='未来表单任务名，必须zhounan_开头；有固定名字时须与新描述一致');p.add_argument('--inspection-map',type=Path,help='Local inspection only; never included in deployed spec');p.add_argument('--verify-now',action='store_true');a=p.parse_args();raw=a.spec.read_bytes();need(sha(raw)==a.spec_sha,'spec SHA differs');spec=json.loads(raw);task_name=platform_task_name(spec,a.task_name);need(not spec.get('evidence_path_map'),'deployed spec must read actual server evidence paths');inspection_map=json.loads(a.inspection_map.read_text()) if a.inspection_map else None;script,pins=render(spec,a.spec_sha,inspection_map)
     inspection=dict(spec)
     if inspection_map:inspection['evidence_path_map']=inspection_map
     if a.verify_now:
@@ -64,5 +85,6 @@ def main():
     for name in pins:(a.output_dir/name).write_bytes((here/name).read_bytes())
     (a.output_dir/'admission-spec.json').write_bytes(raw);(a.output_dir/'launch-ultra-w8.sh').write_text(script)
     plan={'schema':'ultra-eight-three-train-platform-preparation/v2','status':'prepared_only_not_submitted','W2_gate_executed_here':a.verify_now,'runtime_W2_gate_mandatory':True,'spec_sha256':a.spec_sha,'priority':6,'platform_workers':1,'gpus_per_worker':8,'independent_inference_replicas':8,'training_DDP_used':False,'protective_max_runtime_seconds':2592000,'protective_max_runtime_is_ETA':False,'task_root':spec['cloud']['task_root'],'run_root':spec['cloud']['run_root'],'mounts':spec['cloud']['mounts'],'full_source_count':EXPECTED_SOURCE_COUNT,'full_shard_count':len(Reader(inspection).ref(spec['full_index'])['shards']),'full_index_sha256':spec['full_index']['sha256'],'source_scope':SOURCE_SCOPE,'outside_scope':['Child','evaluation','MUSAN','RIR','business','diagnostics datasets'],'diagnostic_original_train_sources':'kept for silver annotation only with separate protection reference; no training release','formal_API_calls':0,'human_gold_claimed':False,'platform_submission_required_readback':['actual priority6','one platform worker eight A800','image/queue/zone exact values','user-root RW and group-root RO mounts','single parent command','unique task/run lookup before retry after unknown submit outcome'],'resume_policy':'No implicit rerun: inspect actual task/parent/queue identity; derive explicit audited resume command if interrupted','files_sha256':{name:sha(pth.read_bytes()) for name,pth in ((p.name,p) for p in a.output_dir.iterdir())}}
+    plan['platform_task_name']=task_name
     (a.output_dir/'platform-plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2)+'\n');print(json.dumps(plan,ensure_ascii=False,indent=2))
 if __name__=='__main__':main()
