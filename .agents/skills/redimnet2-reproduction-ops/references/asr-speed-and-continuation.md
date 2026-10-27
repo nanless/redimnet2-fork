@@ -92,3 +92,7 @@ plan要求新鲜终态、旧父锁与broker稳定，核分工和旧保留结果�
 后续复审发现，c4a时的剩余索引继承原全库角色数，实际PTN/LM用途逐源未变，但聚合统计错误。未来准备器直接数真实remaining roles；已有v1用`finalize_remaining_roles.py`另发`index-roles-v2.json`、`coverage-plan-roles-v2.json`及收据。只读原分片、账本和目录库，不读取媒体；所有旧SHA保留。PTN/LM角色可重叠，不按比例估计LM数量。原version、过滤器SHA和raw-line政策等继承项只是父级历史声明，元数据定稿不把它们改称新测结果；分片不变仅指相对v1。正式portable union还按实际remaining逐行重计角色一致。
 
 原`verify_ultra_cloud_mounts_v2.py`是首次启动检查，旧run已存在时必然拒绝。恢复入口保留其SHA和原admission，不改原件；仍执行原W2历史质量门，实际挂载改用`verify_portable_successor_mounts.py`绑定新spec核精确GPFS source/target、用户RW、共享RO、明确别名、实际控制/输入/模型资产位置和全新独立run。默认CPU检查或模拟findmnt不证明云端挂载已通过。部署源码修改后必须新建控制源目录，不热改已部署版本；新run及证据应与旧源码、原输入、新输入、控制目录和旧声明目录互不包含。GPU前仍由原父进程核模型完整SHA、设备双快照和持续独占；全库complete终验仍在满足计划锁身份的准备节点执行。
+
+旧侧车全量重开可显式`retained_read_backend=process`、`retained_read_workers=2..4`。默认thread/1不变；只并行旧完成片JSON校验，不读媒体、模型或重跑转写。spawn初始化固定producer/contract及11份校验源SHA；部署控制源须额外含`alignment_observer.py`。父进程不许已导入torch/qwen_asr/vLLM，spawn之前隐藏GPU环境并在所有退出路径还原；生产process仅Linux，PR_SET/GET不可忽略SIGKILL并在arm前后及每job核父PID/start。每批最多256个有序小tuple，SQLite仍main；正常、worker错误和父侧异常都先在旧父锁内排空，不能只为map异常处理。
+
+`benchmark_retained_reads.py`需要实际.py入口、固定plan/SHA、显式少量positions/modes，最多8片/2048来源；按mode顺序只保留一池，完整有序证明相同且broker不变才出报告，不取旧执行锁、不授准入。`probe_retained_process_parent_death.py`仅测试自有合成CPU父子进程；实际LinuxTERM父、核精确子PID/start消失或Z，失败清理只走nonce/start和pidfd，不用裸PID信号。Conda缺标准pidfd API时必须核本机头文件434/424及实际fdinfo身份，不悄悄降级。所有旧审计半成品和原失败保留，只有实机更快且证明相同才替换精确自有CPU审计，不能操作PTN。该CPU机制不代表vLLM/EngineCore清理已实现；真实GPU构造仍关闭。

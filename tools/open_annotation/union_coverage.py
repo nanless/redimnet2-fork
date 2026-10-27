@@ -7,11 +7,15 @@ from __future__ import annotations
 import argparse
 import collections
 import contextlib
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import datetime
+import builtins
+import ctypes
 import hashlib
 import json
 import os
+import multiprocessing
+import signal
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -44,6 +48,139 @@ def retained_read_workers(spec):
     need(type(workers)is int and 1<=workers<=MAX_RETAINED_READ_WORKERS,
          'retained_read_workers must be an explicit integer in 1..4')
     return workers
+
+
+def retained_read_backend(spec):
+    backend=spec.get('retained_read_backend','thread')
+    need(type(backend)is str and backend in {'thread','process'},'retained_read_backend must be thread or process')
+    if backend=='process' and retained_read_workers(spec)>1 and sys.platform!='linux':
+        need(spec.get('purpose')=='cpu_fixture','production process readers require Linux parent-death guarding')
+    return backend
+
+
+_CPU_FORBIDDEN_MODULES={'torch','qwen_asr','vllm'}
+_CPU_PROCESS_STATE=None
+_CPU_SOURCE_NAMES=('union_coverage.py','contracts.py','readonly_progress.py','prepare_speed_continuation.py',
+                   'schema.py','normalization.py','quality_axes.py','source_clock.py','source_registry.py',
+                   'work_queue.py','alignment_observer.py')
+_CPU_ENV={'CUDA_VISIBLE_DEVICES':'','NVIDIA_VISIBLE_DEVICES':'none','HIP_VISIBLE_DEVICES':'','ROCR_VISIBLE_DEVICES':''}
+
+
+def _linux_start_ticks(pid):
+    raw=Path('/proc')/str(pid)/'stat';text=raw.read_text()
+    fields=text[text.rfind(')')+2:].split()
+    need(len(fields)>19 and fields[19].isdigit(),'CPU process start identity unavailable')
+    return fields[19]
+
+
+def _same_cpu_parent(pid,start,*,getppid=None,start_reader=None):
+    getppid=getppid or os.getppid;start_reader=start_reader or _linux_start_ticks
+    need(type(pid)is int and pid>1 and getppid()==pid,'CPU worker parent PID changed')
+    if start is not None:need(start_reader(pid)==start,'CPU worker parent start identity changed')
+
+
+def _linux_arm_parent_death(pid,start,*,getppid=None,start_reader=None,prctl=None):
+    """SET/GET不可忽略SIGKILL；设置前后均核父PID/start，关闭先死再arm的竞态。"""
+    need(isinstance(start,str)and start.isdigit(),'exact Linux parent start required')
+    _same_cpu_parent(pid,start,getppid=getppid,start_reader=start_reader)
+    if prctl is None:
+        prctl=ctypes.CDLL(None,use_errno=True).prctl;prctl.restype=ctypes.c_int
+    zero=ctypes.c_ulong(0)
+    need(prctl(ctypes.c_int(1),ctypes.c_ulong(signal.SIGKILL),zero,zero,zero)==0,
+         'PR_SET_PDEATHSIG failed: '+str(ctypes.get_errno()))
+    actual=ctypes.c_int(0)
+    need(prctl(ctypes.c_int(2),ctypes.byref(actual),zero,zero,zero)==0 and actual.value==signal.SIGKILL,
+         'PR_GET_PDEATHSIG did not confirm SIGKILL')
+    _same_cpu_parent(pid,start,getppid=getppid,start_reader=start_reader)
+
+
+def _cpu_source_pins():
+    here=physical(Path(__file__).resolve().parent)
+    return {name:sha_file(here/name)for name in _CPU_SOURCE_NAMES}
+
+
+def _no_heavy_imports():
+    need(not any(name.split('.')[0]in _CPU_FORBIDDEN_MODULES for name in sys.modules),
+         'CPU retained readers refuse a parent/worker with heavy inference modules imported')
+
+
+def _init_retained_cpu_process(producer_value,contract,parent_pid,parent_start,source_root,source_pins,purpose):
+    global _CPU_PROCESS_STATE
+    _no_heavy_imports()
+    for key,value in _CPU_ENV.items():
+        need(os.environ.get(key)==value,'CPU spawn environment not hidden before initializer: '+key)
+    _same_cpu_parent(parent_pid,parent_start)
+    linux=sys.platform=='linux'
+    if linux:_linux_arm_parent_death(parent_pid,parent_start)
+    else:need(purpose=='cpu_fixture','non-Linux process reader is synthetic CPU only')
+    here=physical(Path(__file__).resolve().parent)
+    need(str(here)==source_root and _cpu_source_pins()==source_pins,'CPU worker validator source identity changed')
+    original_import=builtins.__import__
+    def cpu_import(name,*args,**kwargs):
+        need(name.split('.')[0]not in _CPU_FORBIDDEN_MODULES,'heavy inference import forbidden in CPU reader: '+name)
+        return original_import(name,*args,**kwargs)
+    builtins.__import__=cpu_import
+    _CPU_PROCESS_STATE={'producer':producer_value,'contract':contract,'parent_pid':parent_pid,'parent_start':parent_start}
+    receipt={'schema':'annotation-retained-cpu-worker/v1','backend':'process','start_method':'spawn',
+        'pid':os.getpid(),'start_ticks':_linux_start_ticks(os.getpid())if linux else None,
+        'parent_pid':parent_pid,'parent_start_ticks':parent_start,'actual_parent_pid':os.getppid(),
+        'linux_parent_death_signal_verified':linux,'parent_death_signal':'SIGKILL'if linux else None,
+        'lifecycle_platform':'linux_prctl'if linux else'unsupported_nonlinux_cpu_fixture',
+        'source_root':source_root,'validator_source_files':source_pins,'producer_metadata_sha256':digest(producer_value),
+        'contract_metadata_sha256':digest(contract),'GPU_visible':False,'heavy_inference_modules_imported':False}
+    raw=(json.dumps(receipt,ensure_ascii=False,sort_keys=True)+'\n').encode()
+    need(len(raw)<=4096 and os.write(2,raw)==len(raw),'CPU worker receipt was not saved atomically to stderr')
+
+
+def _read_retained_cpu_process(job):
+    state=_CPU_PROCESS_STATE;need(state is not None,'CPU reader initializer has not run')
+    _same_cpu_parent(state['parent_pid'],state['parent_start'])
+    source,record_sha,commit_sha=job
+    record,rs,cs=read_result(source,state['producer'],record_sha,commit_sha,contract=state['contract'])
+    return rs,cs,record['decision']['state']
+
+
+def _shutdown_retained_pool(pool):
+    """幂等排空；必须由持旧锁的_validate先调用，外层finally不重复释放后shutdown。"""
+    if pool is not None and not getattr(pool,'_annotation_retained_drained',False):
+        pool.shutdown(wait=True,cancel_futures=True)
+        pool._annotation_retained_drained=True
+
+
+@contextlib.contextmanager
+def _drain_retained_pool_on_exit(pool):
+    try:yield
+    finally:_shutdown_retained_pool(pool)
+
+
+@contextlib.contextmanager
+def retained_read_pool(workers,backend='thread',*,producer_value=None,contract=None,purpose='production'):
+    """共享的安全构造入口；union和有界实测CLI复用，绝不用fork。"""
+    spec={'retained_read_workers':workers,'retained_read_backend':backend,'purpose':purpose}
+    retained_read_workers(spec);retained_read_backend(spec)
+    if workers==1:
+        yield None;return
+    if backend=='thread':
+        pool=ThreadPoolExecutor(max_workers=workers,thread_name_prefix='retained-sidecar-read')
+        try:yield pool
+        finally:_shutdown_retained_pool(pool)
+        return
+    need(purpose in {'production','cpu_fixture'} and isinstance(producer_value,dict)and isinstance(contract,dict),
+         'process reader requires explicit immutable producer/contract metadata')
+    _no_heavy_imports();parent=os.getpid();start=_linux_start_ticks(parent)if sys.platform=='linux'else None
+    source_root=str(physical(Path(__file__).resolve().parent));pins=_cpu_source_pins()
+    previous={key:os.environ.get(key)for key in _CPU_ENV}
+    try:
+        # spawn导入__main__之前即隐藏显卡；仅影响本次独立CPU审计进程，不改其他PID环境。
+        for key,value in _CPU_ENV.items():os.environ[key]=value
+        pool=ProcessPoolExecutor(max_workers=workers,mp_context=multiprocessing.get_context('spawn'),
+                initializer=_init_retained_cpu_process,initargs=(producer_value,contract,parent,start,source_root,pins,purpose))
+        try:yield pool
+        finally:_shutdown_retained_pool(pool)
+    finally:
+        for key,value in previous.items():
+            if value is None:os.environ.pop(key,None)
+            else:os.environ[key]=value
 
 
 def sha_file(path):
@@ -137,7 +274,8 @@ def read_result(source, value, expected_record_sha=None, expected_commit_sha=Non
 
 
 def _complete_chunk(index_pin, descriptor, ordinal, queue, producer_value, rows, expected_chunk_sha=None,
-                    expected_slot_sha=None, *, contract, read_executor=None, read_stats=None):
+                    expected_slot_sha=None, *, contract, read_executor=None, read_stats=None, read_backend='thread'):
+    need(read_backend in {'thread','process'},'unknown completed read backend')
     fd=open_readonly(physical(queue/'completion_map.bin'))
     try:raw=os.pread(fd,SLOT_BYTES,ordinal*SLOT_BYTES)
     finally:os.close(fd)
@@ -173,10 +311,13 @@ def _complete_chunk(index_pin, descriptor, ordinal, queue, producer_value, rows,
             if read_stats is not None:read_stats['max_submitted_batch']=max(read_stats['max_submitted_batch'],len(batch))
             try:
                 # map按source原序返回。每批最多256个小结果，整片结束才提交下一片。
-                results=list(read_executor.map(read_one,batch))
+                if read_backend=='process':
+                    jobs=[(source,receipts[source['source_id']]['sidecar_sha256'],receipts[source['source_id']]['commit_sha256'])for source in batch]
+                    results=list(read_executor.map(_read_retained_cpu_process,jobs,chunksize=1))
+                else:results=list(read_executor.map(read_one,batch))
             except BaseException:
                 # 失败必须在调用者仍持旧父锁时排空/取消此pool，不能先放锁再留后台读取。
-                read_executor.shutdown(wait=True,cancel_futures=True)
+                _shutdown_retained_pool(read_executor)
                 raise
         for source,(record_sha,commit_sha,decision)in zip(batch,results):
             receipt=receipts[source['source_id']]
@@ -407,7 +548,7 @@ def _select_old_source(db,source,expected,old,tree,contract,portable=None):
 
 
 def _validate(spec, spec_sha, mode, db, progress=None, retained_executor=None):
-    workers=retained_read_workers(spec)
+    workers=retained_read_workers(spec);backend=retained_read_backend(spec)
     read_stats={'max_submitted_batch':0,'old_completed_source_reads':0}
     last_progress=[0.]
     def emit(stage,force=False,**counts):
@@ -461,7 +602,7 @@ def _validate(spec, spec_sha, mode, db, progress=None, retained_executor=None):
     partial={s['source_id']:s for s in plan['retained_partial_sources']}
     need(len(partial)==len(plan['retained_partial_sources']), 'duplicate retained partial source')
     remaining_index=ref(new['index']);need(remaining_index.get('parent_full_index')==spec['full_index'], 'remaining index parent differs')
-    with old_parent_lock(oq) as current_lock:
+    with old_parent_lock(oq) as current_lock, _drain_retained_pool_on_exit(retained_executor):
         need(all(current_lock[k]==lock_proof[k] for k in ('path','device','inode')), 'old lock inode changed')
         _,broker_before=read_json(oq/'broker.json')
         need(broker_before==plan['old_progress_snapshot']['broker_snapshot_sha256'], 'old writer broker changed since final preparation')
@@ -484,7 +625,7 @@ def _validate(spec, spec_sha, mode, db, progress=None, retained_executor=None):
                 need(all(expected.get(k)==descriptor.get(k) for k in ('id','path','count','sha256')), 'retained shard descriptor differs')
                 for source,rs,cs,decision in _complete_chunk(spec['full_index']['sha256'],descriptor,ordinal,oq,old,rows,
                         expected['chunk_receipt_sha256'],expected['completion_slot_sha256'],contract=oldc,
-                        read_executor=retained_executor,read_stats=read_stats):
+                        read_executor=retained_executor,read_stats=read_stats,read_backend=backend):
                     db.execute('UPDATE sources SET selected=?,record_sha=?,commit_sha=?,decision=? WHERE sid=?',(old['id'],rs,cs,decision,source['source_id']))
                     retained+=1;decisions[decision]+=1
                     emit('original_full_and_retained',full_rows_checked=total,retained_sources_checked=retained,remaining_rows_checked=0)
@@ -560,7 +701,10 @@ def _validate(spec, spec_sha, mode, db, progress=None, retained_executor=None):
         if mode=='complete':need(read_json(nq/'broker.json')[1]==new_broker,'new producer changed during complete validation')
     report={'schema':'annotation-union-validation/v1','spec_sha256':spec_sha,'mode':mode,'purpose':spec['purpose'],
             'source_count':total,'retained_source_count':retained,'remaining_source_count':remaining,
-            'retained_read_workers':workers,'retained_read_executor':'thread_pool'if workers>1 else'serial',
+            'retained_read_workers':workers,'retained_read_backend':backend,
+            'retained_read_executor':(('process_pool'if backend=='process'else'thread_pool')if workers>1 else'serial'),
+            'retained_read_process_start_method':'spawn'if workers>1 and backend=='process'else None,
+            'retained_read_process_lifecycle_platform':(('linux_prctl_in_initializer'if sys.platform=='linux'else'unsupported_nonlinux_cpu_fixture')if workers>1 and backend=='process'else'not_used'),
             'retained_read_scope':'old_completed_chunks_only',
             'retained_read_submission_limit':MAX_RETAINED_READ_BATCH if workers>1 else 1,
             'retained_read_max_submitted_batch':read_stats['max_submitted_batch'],
@@ -590,16 +734,17 @@ def _validate(spec, spec_sha, mode, db, progress=None, retained_executor=None):
 
 def validate_union(spec_path, spec_sha, mode='plan', *, output_index=None, progress=None):
     spec=ref({'path':str(spec_path),'sha256':spec_sha})
-    workers=retained_read_workers(spec)
+    workers=retained_read_workers(spec);backend=retained_read_backend(spec)
     if progress is None and spec.get('purpose')=='production':
         progress=lambda event:print(json.dumps(event,ensure_ascii=False),file=sys.stderr,flush=True)
     def build(path):
         db=sqlite3.connect(str(path),uri=True);db.execute('PRAGMA journal_mode=DELETE');db.execute('PRAGMA synchronous=FULL')
         db.execute('PRAGMA temp_store=FILE');db.execute('PRAGMA cache_size=-8192')
         try:
-            pool=(ThreadPoolExecutor(max_workers=workers,thread_name_prefix='retained-sidecar-read')
-                  if workers>1 else contextlib.nullcontext(None))
-            with pool as executor:return _validate(spec,spec_sha,mode,db,progress,executor)
+            producer_value=spec['old_producer']
+            contract=ref(producer_value['contract'])if backend=='process'and workers>1 else None
+            with retained_read_pool(workers,backend,producer_value=producer_value,contract=contract,purpose=spec['purpose'])as executor:
+                return _validate(spec,spec_sha,mode,db,progress,executor)
         finally:db.close()
     if output_index is None:
         with tempfile.TemporaryDirectory(prefix='annotation-union-readonly-audit-') as tmp:

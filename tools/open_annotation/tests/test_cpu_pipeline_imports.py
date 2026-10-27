@@ -9,7 +9,8 @@ HERE=Path(__file__).resolve().parents[1]
 MODULES=('union_coverage','union_consumer','engine_protocol','audit_engine_comparison',
          'asr_stage_store','vllm_backend','cloud_gate','vllm_live_probe','prepare_vllm_live_inputs',
          'portable_source_identity','freeze_legacy_successor','run_portable_successor',
-         'finalize_remaining_roles','verify_portable_successor_mounts')
+         'finalize_remaining_roles','verify_portable_successor_mounts','benchmark_retained_reads',
+         'probe_retained_process_parent_death')
 
 
 class CPUImportBoundary(unittest.TestCase):
@@ -36,7 +37,8 @@ builtins.__import__=checked
         # 每个help在独立子进程退出，不携带上一入口的sys.argv或模块状态。
         for name in ('union_coverage','union_consumer','audit_engine_comparison','vllm_backend','cloud_gate',
                      'vllm_live_probe','prepare_vllm_live_inputs','freeze_legacy_successor','run_portable_successor',
-                     'finalize_remaining_roles','verify_portable_successor_mounts'):
+                     'finalize_remaining_roles','verify_portable_successor_mounts','benchmark_retained_reads',
+                     'probe_retained_process_parent_death'):
             with self.subTest(entry=name):
                 self.child('sys.argv=['+repr(name+'.py')+',"--help"]\nrunpy.run_path('+repr(str(HERE/(name+'.py')))+',run_name="__main__")\n')
 
