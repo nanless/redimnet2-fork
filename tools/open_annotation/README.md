@@ -27,6 +27,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/open_annotation/
 | `qwen_backend.py`、`alignment_observer.py` | 每次实际模型调用只有一个窗口；保存原始时间分类、库的 FIX 处理和官方返回，不额外裁剪或拉伸 |
 | `normalization.py`、`quality_axes.py`、`schema.py` | 保存文字规范化中间步骤，分别记录文字、边界、语言、来源和身份的待审状态 |
 | `work_queue.py`、`sidecar.py` | 单父进程锁、分片领取、并发代次、不可覆盖发布、缓存身份和中断恢复 |
+| `readonly_progress.py` | 运行中无写锁读取完成分片下界；不扫描全库侧车，不代替文字与边界审核 |
 | `report.py`、`audit_outputs.py` | 核对计账、侧车与提交记录；退出 GPU 后持同一父锁检查孤儿文件和软链接，不删证据 |
 | `gpu_launch.py`、`gpu_bootstrap.py`、`gpu_challenge.py`、`gpu_common.py`、`gpu_vendor/` | 资源双快照、物理设备锁、七阶段显存挑战、精确子进程身份、归还与退出 |
 | `freeze_contract.py` | 把维护源码复制到新目录，生成新的成对试验/全量合同和源码摘要清单 |
@@ -35,7 +36,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/open_annotation/
 | `plot_normalization_ab.py` | 从已完成报告的固定计数生成新PNG；图只表达机器观察，不读原声/模型，不覆写已有图 |
 | `word_adapter.py` | 保守完整字候选检查和工程接口转换，不释放训练资格 |
 | `quality_figures.py` | 明确选单的 CPU 原声波形、频谱和原始/FIX/拥有区时间图；不把图当人工听审 |
-| `validate_two_gpu.py` | 新冻结副本内的 30 条小批、3000 条冷运行及 512 条部分缓存恢复验收；只能显式执行 |
+| `validate_two_gpu.py` | 新冻结副本内的 30 条小批、3000 条基线（分别记录实际新推理与旧侧车复用）及 512 条部分缓存恢复验收；只能显式执行 |
 | `cloud_gate.py`、`make_admission_spec.py`、`make_cloud_launcher.py`、`verify_cloud_mounts.py` | 重读两卡证据、准备单机八卡独立推理启动文件和核对共享盘挂载；不会提交平台任务 |
 
 ## 冻结新的实现
@@ -114,3 +115,12 @@ python3 -B tools/open_annotation/readonly_progress.py \
 `prepare_normalization_ab.py --help` 给出有界CPU准备入口。它要求明确的小选单及SHA、侧车目录、完成分片及SHA、原生产合同及SHA、两份新试验合同及SHA和全新的输出目录。小选单为 `{sample_count, rows}`，每项含 `source_id`、`sidecar_sha256`，可附 `sidecar_relative_path`；未附路径时依次读取 `00.json` 等。所有来源必须是三个实际训练域的原 `provider_train` 记录，保持来源字段原样，但本次用途只有诊断，不授训练资格。输入不完整、原任务/版本/来源或ASR观察矛盾、截断、重复、合同除显式profile外另有语义差异、输出已存在或为悬空软链，都拒绝。
 
 准备器按每片最多8源生成同一索引，建立两组新版本的标签树身份及ASR-only缓存。缓存键来自新合同；ASR的原始生成token、EOS和观察字段原样保留，另外记录旧侧车和旧ASR摘要及“没有新执行ASR”。只有规范化结果按显式条件重新推导，不复制旧缓存目录、不预写强制对齐结果、不创建队列。真实GPU执行前必须重新取得空闲资源和公共设备锁。之后逐窗核ASR缓存确实命中、完整PCM和原生字段相同、强制对齐确实新执行，再比较raw非正长、FIX修改、最终零长和源时钟；种子已准备不能写成已消费或已通过边界测试。两个条件都使用相同v2时钟，因此该对照不能把时钟修复的收益混算到文字策略中。
+
+
+## 吞吐调查与尚未执行的提速验证
+
+见[标注吞吐瓶颈与提速验证安排](../../docs/reviews/2026-10-26-标注吞吐瓶颈与提速验证安排.md)。10月26日复核的三域3000条历史摘要中，转写阶段占两个进程累计运行时间87.81%，Ultra字词定位占4.20%。这批2635份新侧车、365份完整旧侧车复用，两阶段缓存命中为0，不是全冷启动测速，也不是今天的实时阶段计时。
+
+`source_batch_rows=8`是CPU来源组织上限；正式单窗策略中，转写和定位实际调用均为1条。现有`backend_metrics`在worker终态才保存，完成片日志没有周期阶段计时。补周期记录、CPU预取、转写批量或精度试验都属于下一版待执行工作，本次没有增加这些能力。先短小测速定位原因，再有目的地扩大三域样本检查吞吐、文字、字界和恢复；不以十小时长跑替代阶段测量。
+
+正式任务的单窗、FP32/eager配置不能热改。新批量或数值方式须绑定新合同、缓存和输出，保留完整身份及质量规则；先独立验证再准备运行切换，不能让新旧任务共写队列。当前CPU检查或历史GPU成功均不自动覆盖新方案。
