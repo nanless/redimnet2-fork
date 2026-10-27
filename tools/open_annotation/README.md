@@ -121,6 +121,26 @@ python3 -B tools/open_annotation/readonly_progress.py \
 
 见[标注吞吐瓶颈与提速验证安排](../../docs/reviews/2026-10-26-标注吞吐瓶颈与提速验证安排.md)。10月26日复核的三域3000条历史摘要中，转写阶段占两个进程累计运行时间87.81%，Ultra字词定位占4.20%。这批2635份新侧车、365份完整旧侧车复用，两阶段缓存命中为0，不是全冷启动测速，也不是今天的实时阶段计时。
 
-`source_batch_rows=8`是CPU来源组织上限；正式单窗策略中，转写和定位实际调用均为1条。现有`backend_metrics`在worker终态才保存，完成片日志没有周期阶段计时。补周期记录、CPU预取、转写批量或精度试验都属于下一版待执行工作，本次没有增加这些能力。先短小测速定位原因，再有目的地扩大三域样本检查吞吐、文字、字界和恢复；不以十小时长跑替代阶段测量。
+`source_batch_rows=8`是CPU来源组织上限；正式单窗策略中，转写和定位实际调用均为1条。旧冻结生产包的`backend_metrics`在worker终态才保存；新维护版本每片另有轻量`performance`计数。10月27日维护版本已增加周期阶段记录和显式转写计算配置；CPU预取、批量及每卡多副本启动器尚未实现，实际模型速度尚未验证。先短小测速定位原因，再有目的地扩大三域样本检查吞吐、文字、字界和恢复；不以十小时长跑替代阶段测量。
 
 正式任务的单窗、FP32/eager配置不能热改。新批量或数值方式须绑定新合同、缓存和输出，保留完整身份及质量规则；先独立验证再准备运行切换，不能让新旧任务共写队列。当前CPU检查或历史GPU成功均不自动覆盖新方案。
+
+
+## 10月27日转写候选、容量测算和去重接续
+
+实际范围、713项CPU验证及八卡机器测算见[实现与容量报告](../../docs/reviews/2026-10-27-转写提速实现与八卡容量测算.md)。用户最新要求先不做GPU测试，因此下面的准备命令没有执行模型或新八卡提交；默认正式入口仍是每UUID一个worker。
+
+| 新入口 | 功能和边界 |
+|---|---|
+| `prepare_speed_validation.py` | 从显式base合同、三域30/3000/512输入及两个UUID准备三组独立源码/配置/命令；不自动选择或启动 |
+| `audit_speed_comparison.py` | 按完整侧车和终态核文字/字界/真实调用及同profile恢复，详见[对照说明](转写提速对照验收.md) |
+| `prepare_speed_continuation.py` | 保留旧producer结果，默认只写provisional报告；最终剩余输入须旧writer终态、旧父锁及稳定快照，不授启动资格 |
+| `estimate_speed_capacity.py` | 固定SHA的八卡既有监控到显存预算及明确假设的ETA，不运行GPU或推导必然提速 |
+
+`freeze_contract.py`新增成对参数`--asr-dtype float32|bfloat16 --asr-attention eager|sdpa`，只改变转写；Ultra保持既有FP32和单窗配置。缺省不强改旧模型的子配置。实际加载与首窗会记录子模块attention forward、SDPA和Q/K/V精度；请求未兑现就拒绝，不能只看顶层配置。此观察不是CUDA内核分析。
+
+准备器的输入描述schema为`annotation-speed-matrix-preparation/v1`，包含`base_contract:{path,sha256}`、`indices:{screen,main,recovery}`（各为path/SHA）、`target_uuids`两项、`device_lock_root`和目标`python`绝对路径。代码/输出放新外部任务目录，旧合同、旧索引树与锁目录软链均拒绝。运行`--help`查看参数，准备成功不表示机器空闲。
+
+接续准备器通过`--help`说明旧index/contract/queue/sidecar-tree、输出及可选终态材料的显式参数。默认只读预估，不复制千万行文本；`--execute-final`才会复制剩余分片，须保留真实旧终态与父锁证明。旧完整片依固定索引和完成槽保留，不把它说成全侧车重新审计；未封账片已发布者逐条核commit，孤儿不偷偷修复或重算。新全量准入仍需联合旧覆盖与新剩余证明，不能直接改原固定总分母放行。
+
+容量工具的输入是`annotation-existing-monitor-capacity/v1`已保存八卡监控摘要及SHA，并显式给观察吞吐与剩余来源；`--reserve-mib`默认8192、`--peak-factor`默认1.15都是可见假设。输出为`annotation-eight-GPU-capacity-estimate/v1`，`speedup_measured=false`。每卡静态可放几份与现有程序支持几份分别报告，不能把表格当多副本启动许可。

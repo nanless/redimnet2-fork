@@ -1,6 +1,7 @@
 """把当前维护源码复制为独立冻结副本，并从显式外部合同生成新身份。"""
 import argparse
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -16,13 +17,17 @@ def helpers(code):
     return module
 
 
-def freeze(base_path, base_sha, output, version_prefix, normalization_profile=None):
+def freeze(base_path, base_sha, output, version_prefix, normalization_profile=None, asr_compute=None):
     h = helpers(HERE)
-    h.need(h.sha_file(base_path) == base_sha, 'external base contract SHA differs')
-    c = json.loads(Path(base_path).read_bytes())
+    base_raw = Path(base_path).read_bytes()
+    h.need(hashlib.sha256(base_raw).hexdigest() == base_sha, 'external base contract SHA differs')
+    c = json.loads(base_raw)
     h.need(c['purpose'] in {'pilot_validation', 'silver_annotation'}, 'real offline contract required')
     h.need(c.get('model_API_calls_allowed') == 0 and c.get('release_training_labels') is False,
            'automatic API or label release is forbidden')
+    if asr_compute is not None:
+        c['runtime']['asr_compute'] = copy.deepcopy(asr_compute)
+    h.asr_compute_profile(c)
     h.relative_path(version_prefix)
     h.need('/' not in version_prefix, 'version prefix must be one directory name')
     output = Path(output).resolve()
@@ -76,8 +81,13 @@ def main():
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--version-prefix', required=True)
     p.add_argument('--normalization-profile', choices=SUPPORTED_POLICIES)
+    p.add_argument('--asr-dtype', choices=('float32', 'bfloat16'))
+    p.add_argument('--asr-attention', choices=('eager', 'sdpa'))
     a = p.parse_args()
-    print(json.dumps(freeze(a.base_contract,a.base_contract_sha,a.output,a.version_prefix,a.normalization_profile), ensure_ascii=False, indent=2))
+    if (a.asr_dtype is None) != (a.asr_attention is None):
+        p.error('--asr-dtype and --asr-attention must be supplied together')
+    compute = None if a.asr_dtype is None else {'dtype': a.asr_dtype, 'attention': a.asr_attention}
+    print(json.dumps(freeze(a.base_contract,a.base_contract_sha,a.output,a.version_prefix,a.normalization_profile,compute), ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__': main()

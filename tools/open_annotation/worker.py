@@ -20,6 +20,47 @@ from work_queue import WorkQueue
 
 _ACTIVE_BACKEND = None
 
+PIPELINE_TIMERS = ('source_lookup', 'source_audit', 'VAD_and_plan', 'window_read',
+                   'stage_cache', 'sidecar_publish', 'journal', 'chunk_finish')
+
+
+def timed_call(counters, stage, function, *args, **kwargs):
+    """记录互不包含模型阶段的CPU/存储调用墙钟；异常仍完整向外传播。"""
+    started = time.monotonic()
+    try: return function(*args, **kwargs)
+    finally:
+        values = counters.setdefault('pipeline_seconds', {})
+        values[stage] = values.get(stage, 0.0) + time.monotonic() - started
+
+
+def progress_performance(backend, counters, process_started_utc, process_started_monotonic, previous=None):
+    """只描述此worker进程的累计值和片间增量，不拼接旧attempt计时。"""
+    now = time.monotonic()
+    backend_values = backend.snapshot_stats()
+    selected = ('assigned_source_rows', 'sidecars_committed', 'sidecar_cache_hits',
+                'stage_cache_hits', 'model_windows', 'decoded_audio_seconds', 'pipeline_seconds')
+    current = {'worker_elapsed_seconds': now - process_started_monotonic,
+               'backend': backend_values,
+               'counters': {key: copy.deepcopy(counters[key]) for key in selected}}
+    def increments(value, old):
+        if isinstance(value, dict):
+            return {k: v for k, raw in value.items()
+                    if (v := increments(raw, old.get(k) if isinstance(old, dict) else None)) is not None}
+        if type(value) in (int, float):
+            difference = value - (old if type(old) in (int, float) else 0)
+            need(difference >= 0, 'worker cumulative timing/count moved backwards')
+            return difference
+        return None
+    # 参数/配置读回属于身份信息，不能对模型形状、dtype或名字计算“增量”。
+    increment_source = copy.deepcopy(current)
+    for key in ('loaded_compute', 'first_call_compute_observation'):
+        increment_source['backend'].pop(key, None)
+    return {'schema': 'annotation-worker-performance/v1', 'scope': 'this_worker_process_only',
+            'worker_pid': os.getpid(), 'worker_started_utc': process_started_utc,
+            'observed_utc': utcnow(), 'cumulative': current,
+            'since_previous_chunk': increments(increment_source, previous),
+            'prior_attempt_elapsed_included': False}, current
+
 
 def _start_ticks(pid):
     raw = Path("/proc/%d/stat" % pid).read_text()
@@ -73,16 +114,16 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
     contexts = []; receipts = []
     for source in sources:
         claim.assert_member(source); counters["assigned_source_rows"] += 1
-        old = store.lookup(source)
+        old = timed_call(counters, 'source_lookup', store.lookup, source)
         if old is not None:
             receipts.append(old); counters["sidecar_cache_hits"] += 1; counters["decision_counts"][old["decision"]] += 1
-            claim.journal({"source_id": source["source_id"], "status": "verified_sidecar_cache_hit", "receipt": old})
+            timed_call(counters, 'journal', claim.journal, {"source_id": source["source_id"], "status": "verified_sidecar_cache_hit", "receipt": old})
             continue
-        started = utcnow(); identity, errors = inspect_source(source); windows = []; vad = {"status": "missing", "reused": False, "segments": [], "errors": []}
+        started = utcnow(); identity, errors = timed_call(counters, 'source_audit', inspect_source, source); windows = []; vad = {"status": "missing", "reused": False, "segments": [], "errors": []}
         if identity["decode_status"] == "decoded_complete":
-            vad = reuse_vad(source, identity); errors.extend(vad.get("errors", []))
+            vad = timed_call(counters, 'VAD_and_plan', reuse_vad, source, identity); errors.extend(vad.get("errors", []))
             if identity["frames"] > 0:
-                try: windows = plan_windows(identity, source, contract["runtime"], vad)
+                try: windows = timed_call(counters, 'VAD_and_plan', plan_windows, identity, source, contract["runtime"], vad)
                 except Exception: errors.append({"stage": "window_plan", "traceback": traceback.format_exc()})
         contexts.append({"source": source, "identity": identity, "vad": vad, "windows": windows,
                          "errors": errors, "started_utc": started})
@@ -93,27 +134,27 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
         for row in rows:
             context, window = row["context"], row["window"]
             inputs = _stage_inputs("asr", window, context, contract, args.contract_sha, descriptor["provenance"]["models"])
-            row["asr_inputs"] = inputs; cached = cache.get("asr", inputs)
+            row["asr_inputs"] = inputs; cached = timed_call(counters, 'stage_cache', cache.get, "asr", inputs)
             if cached is None: asr_misses.append(row)
             else: window["asr"] = cached; window["asr_cache_hit"] = True; counters["stage_cache_hits"]["asr"] += 1
         answers = backend.transcribe(asr_misses)
         need(set(answers) == {r["row_id"] for r in asr_misses}, "ASR result mapping differs")
         for row in asr_misses:
             result = answers[row["row_id"]]
-            if result["status"] != "failed": result = cache.put("asr", row["asr_inputs"], result)
+            if result["status"] != "failed": result = timed_call(counters, 'stage_cache', cache.put, "asr", row["asr_inputs"], result)
             row["window"]["asr"] = result; row["window"]["asr_cache_hit"] = False
         fa_misses = []
         for row in rows:
             context, window = row["context"], row["window"]; row["asr"] = window["asr"]
             inputs = _stage_inputs("aligner", window, context, contract, args.contract_sha, descriptor["provenance"]["models"])
-            row["aligner_inputs"] = inputs; cached = cache.get("aligner", inputs)
+            row["aligner_inputs"] = inputs; cached = timed_call(counters, 'stage_cache', cache.get, "aligner", inputs)
             if cached is None: fa_misses.append(row)
             else: window["alignment"] = cached; window["aligner_cache_hit"] = True; counters["stage_cache_hits"]["aligner"] += 1
         answers = backend.align(fa_misses)
         need(set(answers) == {r["row_id"] for r in fa_misses}, "FA result mapping differs")
         for row in fa_misses:
             result = answers[row["row_id"]]
-            if result["status"] == "completed_native_candidates": result = cache.put("aligner", row["aligner_inputs"], result)
+            if result["status"] == "completed_native_candidates": result = timed_call(counters, 'stage_cache', cache.put, "aligner", row["aligner_inputs"], result)
             row["window"]["alignment"] = result; row["window"]["aligner_cache_hit"] = False
         for row in rows:
             window = row["window"]; context = row["context"]
@@ -125,7 +166,7 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
     for context in contexts:
         for window in context["windows"]:
             try:
-                wave = read_window(context["source"], context["identity"], window)
+                wave = timed_call(counters, 'window_read', read_window, context["source"], context["identity"], window)
                 window["preprocessing_status"] = "completed"
                 rows.append({"row_id": context["source"]["source_id"] + ":" + window["window_id"],
                              "audio": wave, "context": context, "window": window})
@@ -152,13 +193,13 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
                      "backend": backend.name, "started_utc": context["started_utc"], "finished_utc": utcnow(), "api_calls": 0}
         record = build_record(source, identity, descriptor, context["vad"], context["windows"], units, execution, context["errors"])
         record = native_json(record)
-        receipt = store.publish(source, record, claim)
+        receipt = timed_call(counters, 'sidecar_publish', store.publish, source, record, claim)
         receipts.append(receipt); counters["sidecars_committed"] += 1; counters["decision_counts"][receipt["decision"]] += 1
         if record["errors"]:
             counters["error_source_count"] += 1
             if len(counters["errors"]) < 100: counters["errors"].append({"source_id": source["source_id"], "sidecar_relpath": receipt["sidecar_relpath"], "error_count": len(record["errors"])})
         if identity["decode_status"] == "decoded_complete": counters["decoded_audio_seconds"] += identity["duration_seconds"]
-        claim.journal({"source_id": source["source_id"], "status": "sidecar_committed", "receipt": receipt})
+        timed_call(counters, 'journal', claim.journal, {"source_id": source["source_id"], "status": "sidecar_committed", "receipt": receipt})
     return receipts
 
 
@@ -191,8 +232,10 @@ def main(argv=None):
         descriptor["provenance"]["runtime_qwen_modules"] = _ACTIVE_BACKEND.module_provenance
     counters = {"assigned_source_rows": 0, "sidecars_committed": 0, "sidecar_cache_hits": 0,
                 "decision_counts": {"candidate": 0, "unknown": 0, "failed": 0}, "stage_cache_hits": {"asr": 0, "aligner": 0},
-                "model_windows": 0, "decoded_audio_seconds": 0.0, "error_source_count": 0, "errors": []}
+                "model_windows": 0, "decoded_audio_seconds": 0.0, "error_source_count": 0, "errors": [],
+                "pipeline_seconds": {key: 0.0 for key in PIPELINE_TIMERS}}
     refs = []; assigned = 0; group_size = int(contract["runtime"].get("source_batch_rows", 8))
+    previous_performance = None
     need(1 <= group_size <= 32, "source decode batch must remain bounded 1..32")
     while True:
         claim = queue.claim_next(args.worker_id)
@@ -203,11 +246,13 @@ def main(argv=None):
             assigned += 1; sources = claim.sources(); receipts = []
             for offset in range(0, len(sources), group_size):
                 receipts.extend(process_group(sources[offset:offset + group_size], claim, store, cache, _ACTIVE_BACKEND, contract, args, descriptor, counters))
-            claim.finish(receipts)
+            timed_call(counters, 'chunk_finish', claim.finish, receipts)
             refs.append({"id": claim.shard["id"], "path": str(queue.chunk_receipt_path(claim.shard["id"])),
                          "sha256": sha_file(queue.chunk_receipt_path(claim.shard["id"])), "source_count": len(receipts)})
+            performance, previous_performance = progress_performance(_ACTIVE_BACKEND, counters, started, start_time, previous_performance)
             print(json.dumps({"event": "chunk_committed", "worker_id": args.worker_id, "shard_id": claim.shard["id"],
-                              "sources": len(receipts), "decision_counts": counters["decision_counts"]}, ensure_ascii=False), flush=True)
+                              "sources": len(receipts), "decision_counts": counters["decision_counts"],
+                              "performance": performance}, ensure_ascii=False), flush=True)
     metrics = _ACTIVE_BACKEND.metrics()
     summary = {"schema": "redimnet2-open-annotation-worker-summary/v1", "worker_id": str(args.worker_id),
                "contract_sha256": args.contract_sha, "index_sha256": args.index_sha, "backend": _ACTIVE_BACKEND.name,

@@ -121,6 +121,21 @@ def validate_execution_policy(contract):
     return policy
 
 
+def asr_compute_profile(contract):
+    """转写数值方式独立声明；缺省严格保留历史FP32/eager行为。
+
+    此字段不修改Ultra定位的FP32/eager设置，也不证明新数值方式
+    已通过质量验收。实际模型及资源证明仍由独立试验核实。
+    """
+    runtime = contract["runtime"]
+    profile = runtime.get("asr_compute", {"dtype": "float32", "attention": "eager"})
+    need(isinstance(profile, dict) and set(profile) == {"dtype", "attention"},
+         "ASR compute profile requires exactly dtype and attention")
+    need(isinstance(profile["dtype"], str) and profile["dtype"] in {"float32", "bfloat16"}, "unsupported ASR dtype")
+    need(isinstance(profile["attention"], str) and profile["attention"] in {"eager", "sdpa"}, "unsupported ASR attention")
+    return dict(profile)
+
+
 def read_contract(path, expected_sha=None):
     path = Path(path)
     if expected_sha:
@@ -139,6 +154,7 @@ def read_contract(path, expected_sha=None):
     need(value.get("release_training_labels", False) is False, "automatic training release is not supported")
     runtime = value["runtime"]
     need(runtime.get("dtype") == "float32" and runtime.get("attention") == "eager" and runtime.get("TF32") is False, "unvalidated precision/backend")
+    asr_compute_profile(value)
     need(type(runtime.get("max_batch")) is int and 1 <= runtime["max_batch"] <= 4, "batch must be measured range 1..4")
     validate_execution_policy(value)
     if value["purpose"] != "cpu_fixture":
