@@ -144,3 +144,10 @@ python3 -B tools/open_annotation/readonly_progress.py \
 接续准备器通过`--help`说明旧index/contract/queue/sidecar-tree、输出及可选终态材料的显式参数。默认只读预估，不复制千万行文本；`--execute-final`才会复制剩余分片，须保留真实旧终态与父锁证明。旧完整片依固定索引和完成槽保留，不把它说成全侧车重新审计；未封账片已发布者逐条核commit，孤儿不偷偷修复或重算。新全量准入仍需联合旧覆盖与新剩余证明，不能直接改原固定总分母放行。
 
 容量工具的输入是`annotation-existing-monitor-capacity/v1`已保存八卡监控摘要及SHA，并显式给观察吞吐与剩余来源；`--reserve-mib`默认8192、`--peak-factor`默认1.15都是可见假设。输出为`annotation-eight-GPU-capacity-estimate/v1`，`speedup_measured=false`。每卡静态可放几份与现有程序支持几份分别报告，不能把表格当多副本启动许可。
+
+
+## 后续架构研究优先级
+
+[方案反思与执行优先级](../../docs/plans/2026-10-27-转写提速方案反思与执行优先级.md)将官方vLLM共享请求引擎列为长期优先研究候选，已有单窗BF16实验为最少新增代码的验证路径、同参数双副本为另一过渡候选。本仓库尚未实现vLLM adapter、多副本资源组或联合全库消费者，不能把这份规划写成运行能力。现有`audit_speed_comparison.py`继续只覆盖同工程源码、单窗的算子对照；新引擎、同卡多worker和分阶段架构须独立声明对照协议，不删除旧限制来凑通过。
+
+后续先补固定总来源的联合准入/消费者/终验，以及unknown原因分层和两类质量对照。阶段语义缓存独立、vLLM原生token/终止原因、子进程资源归属和批次不变性仍是拟议设计。用户“GPU先不测”的最新要求继续有效，本次没有新模型运行或提交。
