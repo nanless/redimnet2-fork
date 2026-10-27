@@ -28,6 +28,7 @@ description: Inspect and maintain this ReDimNet2 repository, B6 PTN/LM continuit
 - 八卡 WebShell 实测失败与同合同恢复：先读仓库 `docs/reviews/2026-10-27-WebShell真实试验故障与标注恢复.md` 和转写提速参考。指定机器、已知进程和空余显存不覆盖旧父进程的持续独占监控；不得同卡另建 CUDA context。当前 `vllm_live_probe`真实构造已关闭，只保留检查及完整缓存恢复；生命周期清理未实现，不写成 GPU 验收通过。严格恢复保留旧 stat 的 device 字段，实际新节点不符即拒绝，不改旧冻结包或标签。
 - 跨节点的新生产者接续：读仓库 `tools/open_annotation/跨节点原音内容证明与剩余输入.md`、`联合覆盖与唯一读取.md`和`跨节点标注接续运行.md`。显式新内容协议保留完整新旧stat，只允许device不同并实际核编码SHA；新旧生产者独立、旧已发布侧车全部排除。`freeze_legacy_successor.py`保留实际旧23文件/13计算模块，仅换合同version，不能用当前14模块冻结器悄悄升级旧计算方式。数据准备证明与当前云FD租约分别核，旧语义锁和旧队列父锁贯穿新GPU。最新真实准备、提交和运行结论以 `docs/reviews/2026-10-27-跨节点标注恢复实测.md` 为准；CPU通过不是八卡恢复成功。
 - 剩余索引的角色计数与恢复挂载：另读仓库`tools/open_annotation/剩余角色元数据定稿.md`。`role_union_counts`须是当前剩余来源的真实统计，PTN与LM有重叠；父级总数单独保存。已完成的v1不能原位更正，使用`finalize_remaining_roles.py`发布同目录新索引、新计划和收据，分片原字节不改。原fresh-launch挂载脚本要求旧run不存在，不能直接拿来恢复；新入口保留旧W2命令与原挂载脚本身份，改由`verify_portable_successor_mounts.py`核新run和实际原RW/RO挂载。新queue、labels和执行证据不得写入旧冻结源码、输入、控制或锁声明目录。
+- 长时间排队后的新鲜证明交接：读仓库`tools/open_annotation/排队后新鲜证明交接.md`。可选外层固定蓝图，只在实际新实例内建立自身PID/start/boot/nonce请求，由操作者据真实平台新观察发布唯一回复；仅补`current_platform_observation`，1800秒单次等待，原一小时时效与内层全部门不变。外层两源与原内层21源分别封存，不能改旧包。实例此时已分配并可能计费，CPU等待不等于免费或未占配额；请求、发布或intent不证明八卡推理成功。不自动查询平台、重启任务或恢复暂停的后台跟进。
 - 官方模型完整字自然变长训练、候选消费与长度交叉评测：读 [完整字实验](references/complete-word-experiments.md)。
 - 修改、部署、历史证据与仓库同步：读 [版本与证据](references/repository-and-evidence.md)。
 

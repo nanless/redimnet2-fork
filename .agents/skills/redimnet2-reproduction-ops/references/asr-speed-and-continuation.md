@@ -59,6 +59,10 @@ plan要求新鲜终态、旧父锁与broker稳定，核分工和旧保留结果�
 
 启动控制器对最终千万行计划库使用一次全表精确条件计数，避免`GROUP BY`的临时排序开销。须保留两个非空生产者、各自精确数量、总数守恒和`COLLATE BINARY`，拒绝未知/NULL/第三组及大小写或尾空格别名；不能只把两项SUM与报告比较后忽略额外来源。实际SQL计划和反例另验，不能据CPU检查写成八卡已启动。
 
+若可能长时间排队，可使用独立`queue_handoff.py`与`launch_queue_handoff.sh`，格式和接口见仓库`tools/open_annotation/排队后新鲜证明交接.md`。正式蓝图只能在最终联合报告与数据库发布后生成，不能接受隐藏半成品。默认check不写请求、不运行内层inputs或GPU；外层也不全读计划库SHA，结果须如实标为false，不能替代原门。真实实例生成唯一请求后，操作者才根据实际平台提供新鲜观察；开发机publisher只核共享文件，不冒充查询云PID或认证平台。
+
+内层21成员清单与外层2程序清单分别固定，拒额外导入、软硬链、FIFO和置换；读取先lstat拒非普通文件，再NONBLOCK防打开前置换造成永久阻塞。发布使用私有目录与无覆盖文件；既有请求、回复、声明和失败不删除。最终exec-intent保存后再完整复核源、蓝图、请求、回复、只补观察的运行描述、实际自身身份与截止时间。生产禁止假执行器/时钟/进程钩子，CPU双进程fixture成功不能写成真实云或GPU成功。
+
 ## 跨引擎审计与新阶段恢复
 
 仓库`tools/open_annotation/跨引擎对照协议.md`对应`engine_protocol.py`与`audit_engine_comparison.py`。实际固定原声/PCM、模型、窗口、prompt/语言、generation、质量和定位，变化只限显式backend/code/precision/batching。vLLM轨须引用实际适配spec，核所有控制与源码/版本/模型文件；不能只写一个散列。每源完整侧车/commit和新vLLM native引用都核，request identity、原生ID、cohort SHA形状、EOS、终止、规范化、状态及冻结包绑定，失败不从分母移除。
