@@ -199,8 +199,45 @@ def verify(spec,r):
     if 'baseline_receipt' in main:need(review_refs.get(str(r.path(main['baseline_receipt']['path'])))==main['baseline_receipt']['sha256'],'C review does not bind actual baseline reuse receipt')
     need(review_refs.get(str(home/'resume-final-sidecar-snapshot.json'))==r.seen[str(home/'resume-final-sidecar-snapshot.json')],'C review does not bind actual final recovery snapshot')
     return {'schema':'ultra-eight-three-train-result/v2','passed':True,'bundle_sha256':spec['bundle']['sha256'],'pilot_contract_sha256':spec['pilot_contract']['sha256'],'silver_contract_sha256':spec['silver_contract']['sha256'],'full_index_sha256':spec['full_index']['sha256'],'review_sha256':spec['independent_review']['sha256'],'evidence_file_sha256':r.seen,'human_gold_claimed':False,'model_API_calls':0,'GPU_execution_or_submission':False}
+def check_union_data(spec_path, spec_sha, mode='plan', *, output_index=None):
+    """联合全库的数据检查入口；不取代原W2、资源和质量运行准入。
+
+    保留原总分母，读取旧producer和新剩余输入的真实逐源关系。
+    plan核输入分配，complete还核全部已发布结果；两者都不启动推理。
+    """
+    if __package__:
+        from .union_coverage import validate_union
+    else:
+        from union_coverage import validate_union
+    report=validate_union(spec_path,spec_sha,mode,output_index=output_index)
+    need(report['exact_union_and_disjoint'] is True,'union membership not verified')
+    if report['purpose']=='production':
+        need(report['source_count']==EXPECTED_SOURCE_COUNT and report['domains']==EXPECTED_DOMAINS,
+             'original full three-domain denominator must remain unchanged')
+    return {'schema':'annotation-union-data-readiness/v1',
+            'data_checks_passed':True,'synthetic_fixture':report['purpose']=='cpu_fixture',
+            'stage':'remaining_inputs_verified' if mode=='plan' else 'all_selected_results_verified',
+            'original_full_source_count':report['source_count'],
+            'retained_sources_not_scheduled_again':report['retained_source_count'],
+            'remaining_source_count':report['remaining_source_count'],
+            'formal_dataset_scope_verified':report['purpose']=='production',
+            'full_result_readback_verified':report['complete_sidecars_reopened'],
+            'GPU_execution_admitted':False,'cloud_submission_admitted':False,
+            'training_or_evaluation_eligibility_released':False,
+            'runtime_and_quality_evidence_still_required':True,'union_validation':report}
+
+
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--spec',type=Path,required=True);p.add_argument('--spec-sha',required=True);p.add_argument('--live',action='store_true',help='Production: read actual server paths; refuse inspection remapping');a=p.parse_args();raw=a.spec.read_bytes();need(sha(raw)==a.spec_sha,'admission spec changed');spec=json.loads(raw)
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--spec',type=Path,required=True);p.add_argument('--spec-sha',required=True)
+    p.add_argument('--live',action='store_true',help='Production: read actual server paths; refuse inspection remapping')
+    p.add_argument('--union-mode',choices=('plan','complete'),help='只做联合全库数据核对，不授GPU或云任务准入')
+    p.add_argument('--consumer-index',type=Path,help='联合核对时生成新的外部只读消费索引')
+    a=p.parse_args()
+    if a.consumer_index is not None and not a.union_mode:p.error('--consumer-index requires --union-mode')
+    raw=a.spec.read_bytes();need(sha(raw)==a.spec_sha,'admission spec changed');spec=json.loads(raw)
     if a.live:need(not spec.get('evidence_path_map'),'live admission cannot use a local inspection path map')
-    result=verify(spec,Reader(spec));print(json.dumps(result,ensure_ascii=False,indent=2))
+    result=(check_union_data(a.spec,a.spec_sha,a.union_mode,output_index=a.consumer_index)
+            if a.union_mode else verify(spec,Reader(spec)))
+    print(json.dumps(result,ensure_ascii=False,indent=2))
 if __name__=='__main__':main()

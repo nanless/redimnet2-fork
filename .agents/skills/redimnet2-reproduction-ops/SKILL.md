@@ -23,6 +23,7 @@ description: Inspect and maintain this ReDimNet2 repository, B6 PTN/LM continuit
 - 主训练、model47受控接续、完整故障取证、大间隔微调及三段准备：读 [训练与接续](references/training-and-continuation.md)；具体接口读取已定位仓库内的 `tools/ptn_resume/README.md`。
 - 三训练域自动转写、字词时间、队列、发布/恢复、吞吐定位与独立提速验证、十进制时钟和撇号诊断：读 [自动标注](references/open-annotation.md)。
 - 转写计算提速、阶段计时、有限对照、八卡显存预算与跨合同去重接续：读 [转写提速与接续](references/asr-speed-and-continuation.md)。
+- 联合覆盖/唯一消费者、跨引擎审计、vLLM最小适配与整批恢复也由上述参考路由；实现见仓库`docs/reviews/2026-10-27-联合接续与跨引擎CPU实现验收.md`。本轮798项CPU单元测试实际无跳过通过，真实GPU、速度和人工字界未测。新数据门不授运行资格，不能修改原W2或固定总分母来接后继。
 - 官方模型完整字自然变长训练、候选消费与长度交叉评测：读 [完整字实验](references/complete-word-experiments.md)。
 - 修改、部署、历史证据与仓库同步：读 [版本与证据](references/repository-and-evidence.md)。
 

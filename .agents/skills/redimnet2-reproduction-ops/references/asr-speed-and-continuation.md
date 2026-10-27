@@ -28,19 +28,41 @@
 
 `prepare_speed_continuation.py`不构造旧WorkQueue/SidecarStore。默认provisional只读固定索引、一个完成槽快照及最多8个未封账片；已封账片保留旧producer引用，部分片已有完整侧车/commit也核身份后排除。孤儿保留并拒绝，不偷偷修复或重新推理。旧cache含合同身份，不能改合同SHA、重贴标签或拿旧ASR声称新profile已测。
 
-`--execute-final`需显式真实旧writer终态观察及SHA/任务绑定、时间有效，取得既有`.parent.lock`的只读FD独占锁，并在持锁中核索引和broker稳定，才复制尚缺文本分片到新目录并生成remaining index。终态JSON来自外部观察，不是工具认证平台；准备锁释放后也不是未来启动租约。旧结果+新剩余数量严格等于原11521178，保留完整片的固定索引/完成槽证据不等于重开百万侧车全审。
+`--execute-final`需显式真实旧writer终态观察及SHA/任务绑定、时间有效，取得既有`.parent.lock`的只读FD独占锁，并在持锁中核索引和broker稳定，才复制尚缺文本分片到新目录并生成remaining index。最终准备还会流式扫描未领取片中已有的旧侧车/commit，核身份后排除，并写新的`retained-unclaimed.jsonl`及SHA/count引用。孤儿或损坏保留并拒绝；provisional明确未扫描，不能当最终证据。终态JSON来自外部观察，不是工具认证平台；准备锁释放后也不是未来启动租约。旧结果+新剩余数量严格等于原11521178，保留完整片的固定索引/完成槽证据不等于重开百万侧车全审。
 
-新八卡准入还须独立验证联合覆盖、原任务终态与资源互斥，不能直接放宽原固定全量分母。当前cloud_gate尚未接入分阶段联合发布，不因剩余准备成功便执行新任务。不允许新旧writer共写队列，不复制旧结果为新producer，不操作PTN。
+新八卡准入还须验证原任务真实终态、资源互斥和实际质量，不能直接放宽原固定全量分母。新`cloud_gate --union-mode`只做联合数据检查，和原运行门分别返回；不因剩余准备或数据检查成功便执行新任务。不允许新旧writer共写队列，不复制旧结果为新producer，不操作PTN。
 
 本轮713项CPU实际通过、0skip，不是GPU速度或人工完整字证据。具体新鲜快照、代码、已修反例及尚缺条件见仓库`docs/reviews/2026-10-27-转写提速实现与八卡容量测算.md`；命令接口见模块README和`转写提速对照验收.md`。每次后续执行重新核用户指示、源码和现场资源，不把本参考数字写成实时状态。
 
 
-## 后续方案选择的review结论（仅设计）
+## 方案选择与已经实现的范围
 
-新规划在仓库`docs/plans/2026-10-27-转写提速方案反思与执行优先级.md`。长期优先研究Qwen1.7B BF16+官方vLLM的单卡共享请求引擎，八卡独立来源，Ultra先保留；该路线尚无本机adapter或性能/质量证明。已有单窗BF16/SDPA是最少新增代码的实际对照候选，同参数双副本更少改变模型数值方式但需新资源组，不能无条件称其实施成本更低。4份/卡静态容量不决定最优方案，不能复制4份权重当默认终态，也不固定7ASR+1FA或给小模型直接TP8。
+新规划在仓库`docs/plans/2026-10-27-转写提速方案反思与执行优先级.md`。长期优先研究Qwen1.7B BF16+官方vLLM的单卡共享请求引擎，八卡独立来源，Ultra先保留；后续已补最小adapter，但仍没有真实性能/质量证明。已有单窗BF16/SDPA是最少新增代码的实际对照候选，同参数双副本更少改变模型数值方式但需新资源组，不能无条件称其实施成本更低。4份/卡静态容量不决定最优方案，不能复制4份权重当默认终态，也不固定7ASR+1FA或给小模型直接TP8。
 
-先补联合全库准入、唯一消费者与终验，再扩大候选。现有算子审计要求同工程源码、batch1及每次运行内各worker的UUID互不重复（基线和候选可顺序使用同两卡），不适合直接评价vLLM或同卡多副本；新架构用独立协议，保留旧严格检查。恢复分开已发布字节不变、来源不重不漏、未发布重算差异及质量；固定cohort不自动解决半批发布，先持久化完整阶段结果再逐源发布。ASR/FA独立语义缓存为拟议新设计，不能直接改旧键或producer。
+现有算子审计要求同工程源码、batch1及每次运行内各worker的UUID互不重复（基线和候选可顺序使用同两卡），不适合直接评价vLLM或同卡多副本；新架构已用独立协议，保留旧严格检查。恢复分开已发布字节不变、来源不重不漏、未发布重算差异及质量；固定cohort不自动解决半批发布，新ASR阶段库先持久化完整批次再逐源消费。不能直接改旧缓存键或producer；该阶段库不是ASR/FA完整异步调度器。
 
 质量同时比较固定文字的FA和各自文字的端到端结果；只看共同文字子集有选择偏差。人工允许区间、削首/削尾/邻字及分层文字错误比表面小数位更重要。实际旧原生时间格点80ms，FIX小数不能称新增真实精度。未有人审金标时不报完整字准确率，候选吞吐与人工抽检质量分别统计。
 
-vLLM批次不变仍beta，当前文档硬件CC>=8.0不等于Qwen3-ASR已验证，不能沿用旧CC>=9.0结论或只设seed就保证恢复逐位相同。vLLM内存有KV和工作区，不能套旧14.23GiB/实例容量。所有建议仍受用户“GPU先不测”限制，本次仅文档设计，没有新增adapter、资源组或GPU证明。
+vLLM批次不变仍beta，文档硬件CC>=8.0不等于Qwen3-ASR已验证，不能沿用旧CC>=9.0结论或只设seed就保证恢复逐位相同。vLLM内存有KV和工作区，不能套旧14.23GiB/实例容量。所有执行仍受用户“GPU先不测”限制，最小适配已实现不等于实际资源组或GPU证明。
+
+## 联合全库的数据检查与唯一读取
+
+仓库`tools/open_annotation/联合覆盖与唯一读取.md`说明`annotation-union-coverage/v1`的实际格式。`union_coverage.validate_union(spec_path,spec_sha,mode='plan',output_index=...)`用SQLite逐源核原全集、旧完整片/部分片/未领取预置结果、新剩余输入及侧车提交。生产用途固定11521178及三域原计数；CPU小样本显式隔离。检查source完整记录、合同版本、runtime及模型来源，不只比两个数量。它不构造旧WorkQueue或SidecarStore，不修旧commit。
+
+plan要求新鲜终态、旧父锁与broker稳定，核分工和旧保留结果；complete再核全部新旧结果及新队列无租约。complete可用已固定的历史真实终态，不强迫多天后伪造新旧观察，当前锁和broker仍必须核。`cloud_gate.check_union_data`使用独立`annotation-union-data-readiness/v1`与`data_checks_passed`，没有旧门的`passed`；GPU、云提交和训练/评测资格恒false。不能拿这个结果替代W2、实际模型、资源或质量条件。
+
+显式新外部消费索引按不覆盖方式发布并给SHA。`UnionConsumer(spec_path,spec_sha,database_path,database_sha)`上下文只读数据库，核complete/spec绑定，按原分片与source摘要选定原producer并重开原侧车/commit。批量读取复用一个上下文，避免每源重新哈希整库；不按mtime猜版本，资格恒false。数据库或来源改变就拒绝或重新核验。全部旧保留时不造后继，走旧全量终验。
+
+最终准备、联合plan与complete均非轻量进度巡检：会产生全库文本/元数据、旧结果读取和磁盘数据库开销。只在真实交接或终验边界执行；本轮未扫描真实全库，不宣称重新核音频SHA。正在运行使用readonly_progress。
+
+## 跨引擎审计与新阶段恢复
+
+仓库`tools/open_annotation/跨引擎对照协议.md`对应`engine_protocol.py`与`audit_engine_comparison.py`。实际固定原声/PCM、模型、窗口、prompt/语言、generation、质量和定位，变化只限显式backend/code/precision/batching。vLLM轨须引用实际适配spec，核所有控制与源码/版本/模型文件；不能只写一个散列。每源完整侧车/commit和新vLLM native引用都核，request identity、原生ID、cohort SHA形状、EOS、终止、规范化、状态及冻结包绑定，失败不从分母移除。
+
+固定文字定位与各自文字端到端分开；目标不同不强配时间、不报0误差。计时分别统计new/cache/reused/not_run；非合成完整新执行才计算声明墙钟比例，但报告仍`GPU_runtime_verified=false`、`validated_GPU_speedup=null`。已发布恢复以原字节为准，不给未提交跨引擎计算逐位保证。
+
+`vllm_backend.py`普通导入及help不加载真实torch/qwen_asr/vllm。CPU入口`VLLMBackend.from_fake_engine`只接受cpu_fixture；真实`build_real_engine(...,execute=True)`低层构造需pilot、离线环境、实际完整权重/处理器输入、固定依赖及关键实际源码，并在构造前核enqueue/wait公开API，当前不得调用。按实际原生ID映射，不按位置或数字猜；EOS token观察与引擎EOS停止分别留证，矛盾和未知不升completed。
+
+`ASRStageStore`是新producer命名空间。预约和整批commit分别事务；提交后消费异常可恢复零新调用。未提交重做需原cohort完整输入，异常和原生输出保留。旧数据库缺失就拒绝，不能静默重建。缓存恢复允许仅元数据，但若提供PCM仍核其实际字节。只验证本机SQLite和锁，不能外推PFS故障或八卡资源组。
+
+本轮最终798项CPU单元测试实际0skip通过，独立审阅与文件级fake引擎→持久化→完整侧车→跨引擎审计→metadata恢复0新调用已通过；最终静态检查、安装同步和Git身份以私有收据为准。实际过程和未完成项见仓库`docs/reviews/2026-10-27-联合接续与跨引擎CPU实现验收.md`。不把这些结果当真实GPU、人工完整字或新任务提交许可。

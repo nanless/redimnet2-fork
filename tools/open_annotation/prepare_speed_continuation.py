@@ -17,6 +17,7 @@ import os
 from pathlib import Path, PurePosixPath
 import stat
 import sys
+import tempfile
 
 if __package__:
     from .readonly_progress import inspect_progress, read_small, strict_json
@@ -45,6 +46,13 @@ def digest(value):
 
 def byte_sha(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def file_sha(path):
+    h=hashlib.sha256()
+    with physical(path).open('rb')as f:
+        for raw in iter(lambda:f.read(1048576),b''):h.update(raw)
+    return h.hexdigest()
 
 
 def physical(path):
@@ -201,7 +209,8 @@ def old_parent_lock(queue):
         os.close(fd)
 
 
-def partition(index_path, index_sha, queue, contract_sha, tree):
+def partition(index_path, index_sha, queue, contract_sha, tree, scan_unclaimed=False,
+              unclaimed_sink=None, remaining_sink=None):
     """Read-only algorithm; caller separately admits fixed production denominator."""
     progress = inspect_progress(index_path, index_sha, queue, contract_sha)
     index, index_raw = read_json(index_path)
@@ -209,7 +218,7 @@ def partition(index_path, index_sha, queue, contract_sha, tree):
     state = progress['broker_snapshot']; nxt = state['next']; leases = state['leases']
     need(len(leases) <= MAX_PARTIAL_SHARDS, 'more than eight partial shards refused')
     validate = record_validator()
-    retained_chunks = []; partial_references = []; remaining = []; partial_rows = []; partial_seen = set()
+    retained_chunks = []; partial_references = []; remaining = []; partial_rows = []; partial_seen = set(); unclaimed_kept = 0
     for ordinal, shard in enumerate(index['shards']):
         if ordinal < nxt and shard['id'] not in leases:
             fd = os.open(str(physical(queue / 'completion_map.bin')), os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
@@ -231,7 +240,24 @@ def partition(index_path, index_sha, queue, contract_sha, tree):
                 'chunk_receipt_path': str(queue/'completed'/(shard['id']+'.json')),
                 'chunk_receipt_sha256':proof['commit_sha256'], 'source_ids_sha256':proof['source_ids_sha256']})
         elif ordinal >= nxt:
-            remaining.append({'mode': 'copy_original_shard', 'descriptor': dict(shard)})
+            if not scan_unclaimed:
+                remaining.append({'mode': 'copy_original_shard', 'descriptor': dict(shard)})
+                continue
+            need(callable(unclaimed_sink) and callable(remaining_sink), 'final unclaimed scan sinks missing')
+            rows=read_shard(index_path.parent,shard);missing=[];kept_count=0
+            for source in rows:
+                kept=retained_sidecar(source,tree,contract_sha,validate)
+                if kept is None:missing.append(source)
+                else:
+                    unclaimed_sink(kept);unclaimed_kept+=1;kept_count+=1
+            if not kept_count:
+                remaining.append({'mode':'copy_original_shard','descriptor':dict(shard)})
+            elif missing:
+                name='unclaimed-'+shard['id'];data=b''.join(canonical(s)for s in missing)
+                remaining_sink(name,data)
+                remaining.append({'mode':'new_unclaimed_shard','descriptor':{
+                    'id':name,'path':'shards/'+name+'.jsonl','count':len(missing),'sha256':byte_sha(data),
+                    'source_ids_sha256':digest(sorted(s['source_id']for s in missing))},'origin_shard_id':shard['id']})
         else:
             rows = read_shard(index_path.parent, shard); missing = []
             for source in rows:
@@ -250,11 +276,12 @@ def partition(index_path, index_sha, queue, contract_sha, tree):
                     'sha256': byte_sha(data), 'source_ids_sha256':digest(sorted(s['source_id'] for s in missing))}, 'origin_shard_id': shard['id']})
                 partial_rows.append((name, data))
     need(len({v['descriptor']['id'] for v in remaining}) == len(remaining), 'remaining shard ID collision')
-    kept = progress['committed_source_lower_bound'] + len(partial_references)
+    kept = progress['committed_source_lower_bound'] + len(partial_references) + unclaimed_kept
     left = sum(v['descriptor']['count'] for v in remaining)
     need(kept + left == index['source_count'], 'retained and remaining do not cover original denominator')
     return index, progress, {'retained_source_count': kept, 'remaining_source_count': left,
         'retained_complete_shards': retained_chunks, 'retained_partial_sources': partial_references,
+        'retained_unclaimed_source_count':unclaimed_kept,'unclaimed_sidecars_scanned':scan_unclaimed,
         'remaining_shards': remaining}, partial_rows
 
 
@@ -289,7 +316,18 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
         terminal = terminal_observation(terminal_path, terminal_sha, old_task_id, queue)
     ctx = old_parent_lock(queue) if execute_final else contextlib.nullcontext(None)
     with ctx as lock_evidence:
-        index, progress, plan, partial_rows = partition(index_path, index_sha, queue, contract_sha, tree)
+        scratch=None;ledger=None
+        if execute_final:
+            # 仅在旧writer互斥后一次流式扫描；临时文件是新的准备证据，不在旧树内。
+            scratch=Path(tempfile.mkdtemp(prefix='.continuation-build-',dir=output.parent))
+            ledger=(scratch/'retained-unclaimed.jsonl').open('xb')
+        try:
+            index, progress, plan, partial_rows = partition(index_path, index_sha, queue, contract_sha, tree,
+                execute_final, (lambda item:ledger.write(canonical(item))) if ledger else None,
+                (lambda name,data:write_new(scratch/(name+'.jsonl'),data)) if scratch else None)
+        finally:
+            if ledger is not None:
+                ledger.flush();os.fsync(ledger.fileno());ledger.close()
         if execute_final:
             current_lock = physical(queue/'.parent.lock').stat()
             need((current_lock.st_dev,current_lock.st_ino) == (lock_evidence['device'],lock_evidence['inode']), 'old parent lock replaced')
@@ -315,6 +353,10 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
             'old_index_sha256':index_sha,'old_contract_sha256':contract_sha})
         if execute_final:
             (output / 'shards').mkdir()
+            ledger_path=output/'retained-unclaimed.jsonl'
+            os.rename(scratch/'retained-unclaimed.jsonl',ledger_path)
+            report['retained_unclaimed_sources_ref']={'path':str(ledger_path),'sha256':file_sha(ledger_path),
+                'count':plan['retained_unclaimed_source_count']}
             partial = dict(partial_rows); descriptors = []; domains = collections.Counter()
             for item in plan['remaining_shards']:
                 descriptor = dict(item['descriptor'])
@@ -324,12 +366,16 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
                     need(byte_sha(data) == descriptor['sha256'] and len(rows) == descriptor['count'] and
                          len({s['source_id'] for s in rows}) == len(rows), 'remaining source shard changed')
                     descriptor['path'] = 'shards/' + descriptor['id'] + '.jsonl'
+                elif item['mode']=='new_unclaimed_shard':
+                    rows,data=read_json_lines(scratch/(descriptor['id']+'.jsonl'))
+                    need(byte_sha(data)==descriptor['sha256'],'filtered unclaimed shard changed')
                 else:
                     data = partial[descriptor['id']]; rows = [strict_json(v) for v in data.splitlines()]
                 if 'source_ids_sha256' in descriptor:
                     need(digest(sorted(s['source_id'] for s in rows)) == descriptor['source_ids_sha256'], 'remaining source-ID digest differs')
                 domains.update(s['dataset'] for s in rows)
                 write_new(child(output, descriptor['path']), data); descriptors.append(descriptor)
+                if item['mode']=='new_unclaimed_shard':(scratch/(descriptor['id']+'.jsonl')).unlink()
             current_lock = physical(queue/'.parent.lock').stat()
             need((current_lock.st_dev,current_lock.st_ino) == (lock_evidence['device'],lock_evidence['inode']), 'old parent lock replaced')
             _, broker_after = read_json(queue / 'broker.json', 1024**2)
@@ -344,6 +390,7 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
             else:
                 report['status'] = 'all_sources_retained_no_successor_needed'
         write_new(output / 'coverage-plan.json', report)
+        if scratch is not None:scratch.rmdir()
         return report
 
 

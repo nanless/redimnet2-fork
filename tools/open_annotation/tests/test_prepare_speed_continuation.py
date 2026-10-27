@@ -73,6 +73,28 @@ class SpeedContinuationTests(unittest.TestCase):
         self.assertEqual({s['source_id']for s in rows},{s['source_id']for s in self.sources[3:]});self.assertEqual(ix['source_count'],3);self.assertEqual(ix['domains'],{'fixture':3});self.assertEqual(r['status'],'final_prepared_not_started');self.assertFalse(r['formal_runtime_admitted'])
         with self.assertRaisesRegex(ValueError,'fresh'):self.run_prepare(True)
 
+    def test_final_preserves_preseed_result_in_unclaimed_shard(self):
+        self.publish(4);before=self.snapshot();r=self.run_prepare(True)
+        self.assertEqual(self.snapshot(),before)
+        self.assertTrue(r['unclaimed_sidecars_scanned'])
+        self.assertEqual((r['retained_source_count'],r['remaining_source_count']),(4,2))
+        ledger=Path(r['retained_unclaimed_sources_ref']['path']);lines=[json.loads(v)for v in ledger.read_bytes().splitlines()]
+        self.assertEqual([v['source_id']for v in lines],[self.sources[4]['source_id']])
+        self.assertEqual(r['retained_unclaimed_sources_ref']['sha256'],M.file_sha(ledger))
+        index=json.loads((self.root/'out/index.json').read_bytes());remaining=[]
+        for shard in index['shards']:remaining.extend(json.loads(v)for v in (self.root/'out'/shard['path']).read_bytes().splitlines())
+        self.assertEqual({s['source_id']for s in remaining},{self.sources[3]['source_id'],self.sources[5]['source_id']})
+
+    def test_unclaimed_orphan_is_preserved_and_final_refused(self):
+        p,c=self.publish(4);c.unlink();before=p.read_bytes()
+        with self.assertRaisesRegex(ValueError,'orphan'):self.run_prepare(True)
+        self.assertEqual(p.read_bytes(),before);self.assertFalse(c.exists());self.assertFalse((self.root/'out/index.json').exists())
+
+    def test_provisional_explicitly_does_not_claim_full_unclaimed_scan(self):
+        self.publish(4);r=self.run_prepare(False)
+        self.assertFalse(r['unclaimed_sidecars_scanned'])
+        self.assertEqual((r['retained_source_count'],r['remaining_source_count']),(3,3))
+
     def test_active_parent_cannot_prepare_final_but_provisional_does_not_lock(self):
         with (self.queue/'.parent.lock').open('rb')as f:
             fcntl.flock(f.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)

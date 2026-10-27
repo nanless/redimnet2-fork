@@ -28,6 +28,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/open_annotation/
 | `normalization.py`、`quality_axes.py`、`schema.py` | 保存文字规范化中间步骤，分别记录文字、边界、语言、来源和身份的待审状态 |
 | `work_queue.py`、`sidecar.py` | 单父进程锁、分片领取、并发代次、不可覆盖发布、缓存身份和中断恢复 |
 | `readonly_progress.py` | 运行中无写锁读取完成分片下界；不扫描全库侧车，不代替文字与边界审核 |
+| `union_coverage.py`、`union_consumer.py` | 核旧结果与真正剩余输入的精确联合覆盖，完整终验后按固定来源唯一读取；不授运行或训练资格 |
+| `engine_protocol.py`、`audit_engine_comparison.py` | 固定输入、模型、窗口和质量规则，核跨引擎文字、字界、原生结束信息和恢复；区别新计算与缓存 |
+| `vllm_backend.py`、`asr_stage_store.py` | 官方 Qwen 提示与解析的最小离线桥接、稳定请求映射和整批持久化；实际模型兼容及速度未测 |
 | `report.py`、`audit_outputs.py` | 核对计账、侧车与提交记录；退出 GPU 后持同一父锁检查孤儿文件和软链接，不删证据 |
 | `gpu_launch.py`、`gpu_bootstrap.py`、`gpu_challenge.py`、`gpu_common.py`、`gpu_vendor/` | 资源双快照、物理设备锁、七阶段显存挑战、精确子进程身份、归还与退出 |
 | `freeze_contract.py` | 把维护源码复制到新目录，生成新的成对试验/全量合同和源码摘要清单 |
@@ -121,7 +124,7 @@ python3 -B tools/open_annotation/readonly_progress.py \
 
 见[标注吞吐瓶颈与提速验证安排](../../docs/reviews/2026-10-26-标注吞吐瓶颈与提速验证安排.md)。10月26日复核的三域3000条历史摘要中，转写阶段占两个进程累计运行时间87.81%，Ultra字词定位占4.20%。这批2635份新侧车、365份完整旧侧车复用，两阶段缓存命中为0，不是全冷启动测速，也不是今天的实时阶段计时。
 
-`source_batch_rows=8`是CPU来源组织上限；正式单窗策略中，转写和定位实际调用均为1条。旧冻结生产包的`backend_metrics`在worker终态才保存；新维护版本每片另有轻量`performance`计数。10月27日维护版本已增加周期阶段记录和显式转写计算配置；CPU预取、批量及每卡多副本启动器尚未实现，实际模型速度尚未验证。先短小测速定位原因，再有目的地扩大三域样本检查吞吐、文字、字界和恢复；不以十小时长跑替代阶段测量。
+`source_batch_rows=8`是CPU来源组织上限；正式单窗策略中，转写和定位实际调用均为1条。旧冻结生产包的`backend_metrics`在worker终态才保存；新维护版本每片另有轻量`performance`计数。10月27日维护版本已增加周期阶段记录和显式转写计算配置；后续有限vLLM批请求与整批持久化已通过CPU假引擎检查。CPU预取、正式转写/定位异步批调度及每卡多副本资源启动器仍未实现，真实批推理和模型速度未测。先短小测速定位原因，再有目的地扩大三域样本检查吞吐、文字、字界和恢复；不以十小时长跑替代阶段测量。
 
 正式任务的单窗、FP32/eager配置不能热改。新批量或数值方式须绑定新合同、缓存和输出，保留完整身份及质量规则；先独立验证再准备运行切换，不能让新旧任务共写队列。当前CPU检查或历史GPU成功均不自动覆盖新方案。
 
@@ -141,13 +144,31 @@ python3 -B tools/open_annotation/readonly_progress.py \
 
 准备器的输入描述schema为`annotation-speed-matrix-preparation/v1`，包含`base_contract:{path,sha256}`、`indices:{screen,main,recovery}`（各为path/SHA）、`target_uuids`两项、`device_lock_root`和目标`python`绝对路径。代码/输出放新外部任务目录，旧合同、旧索引树与锁目录软链均拒绝。运行`--help`查看参数，准备成功不表示机器空闲。
 
-接续准备器通过`--help`说明旧index/contract/queue/sidecar-tree、输出及可选终态材料的显式参数。默认只读预估，不复制千万行文本；`--execute-final`才会复制剩余分片，须保留真实旧终态与父锁证明。旧完整片依固定索引和完成槽保留，不把它说成全侧车重新审计；未封账片已发布者逐条核commit，孤儿不偷偷修复或重算。新全量准入仍需联合旧覆盖与新剩余证明，不能直接改原固定总分母放行。
+接续准备器通过`--help`说明旧index/contract/queue/sidecar-tree、输出及可选终态材料的显式参数。默认只读预估，不复制千万行文本；`--execute-final`才会复制剩余分片，须保留真实旧终态与父锁证明。最终准备还会扫描未领取片中已经存在的旧侧车，逐条核commit后写新的保留账本，只把真正缺失者写入剩余输入。孤儿不偷偷修复或重算。准备报告的完整片引用不等于重开全部旧结果；后续联合工具会做这项完整核验，不能直接改原固定总分母放行。
 
 容量工具的输入是`annotation-existing-monitor-capacity/v1`已保存八卡监控摘要及SHA，并显式给观察吞吐与剩余来源；`--reserve-mib`默认8192、`--peak-factor`默认1.15都是可见假设。输出为`annotation-eight-GPU-capacity-estimate/v1`，`speedup_measured=false`。每卡静态可放几份与现有程序支持几份分别报告，不能把表格当多副本启动许可。
 
 
 ## 后续架构研究优先级
 
-[方案反思与执行优先级](../../docs/plans/2026-10-27-转写提速方案反思与执行优先级.md)将官方vLLM共享请求引擎列为长期优先研究候选，已有单窗BF16实验为最少新增代码的验证路径、同参数双副本为另一过渡候选。本仓库尚未实现vLLM adapter、多副本资源组或联合全库消费者，不能把这份规划写成运行能力。现有`audit_speed_comparison.py`继续只覆盖同工程源码、单窗的算子对照；新引擎、同卡多worker和分阶段架构须独立声明对照协议，不删除旧限制来凑通过。
+[方案反思与执行优先级](../../docs/plans/2026-10-27-转写提速方案反思与执行优先级.md)将官方vLLM共享请求引擎列为长期优先研究候选，已有单窗BF16实验为最少新增代码的验证路径、同参数双副本为另一过渡候选。后续本轮已实现联合覆盖、唯一消费者、独立跨引擎协议和vLLM最小适配；多副本资源组和真实模型验证仍未完成。现有`audit_speed_comparison.py`继续只覆盖同工程源码、单窗的算子对照，不删除旧限制来凑通过。
 
-后续先补固定总来源的联合准入/消费者/终验，以及unknown原因分层和两类质量对照。阶段语义缓存独立、vLLM原生token/终止原因、子进程资源归属和批次不变性仍是拟议设计。用户“GPU先不测”的最新要求继续有效，本次没有新模型运行或提交。
+当前实现及检查见[联合接续与跨引擎CPU验收](../../docs/reviews/2026-10-27-联合接续与跨引擎CPU实现验收.md)，接口分别见[联合覆盖与唯一读取](联合覆盖与唯一读取.md)、[跨引擎对照协议](跨引擎对照协议.md)和[vLLM阶段恢复](vLLM最小适配与阶段恢复.md)。新阶段库在整批持久化后才返回单条结果；不能用固定批次承诺尚未提交计算跨恢复逐位相同。真实模型、资源控制器、质量分层及人工完整字检查仍待后续验证。用户“GPU先不测”的要求继续有效，本轮没有新模型运行或云任务提交。
+
+## 联合数据检查与实际运行分别验收
+
+下面只检查已保存的来源、合同及结果，不启动模型：
+
+```bash
+python3 -B tools/open_annotation/cloud_gate.py \
+  --spec /absolute/union.json --spec-sha '<联合描述SHA256>' --union-mode plan
+python3 -B tools/open_annotation/cloud_gate.py \
+  --spec /absolute/union.json --spec-sha '<联合描述SHA256>' --union-mode complete \
+  --consumer-index /absolute/new-audit/consumer.sqlite
+python3 -B tools/open_annotation/audit_engine_comparison.py --help
+python3 -B tools/open_annotation/vllm_backend.py --help
+```
+
+`plan`不要求新结果存在；`complete`逐条重开旧新结果并绑定消费索引。两者都不是运行中的轻量巡检：大库会产生文本、旧结果读取及数据库磁盘开销，仅在正式交接或终验边界执行。本轮未对真实千万条执行这些操作。报告使用独立的`data_checks_passed`，GPU运行、云任务提交及训练/评测资格始终未授予；旧资源挑战、W2和实际模型验收均不放宽。
+
+vLLM命令默认只校验配置，`--execute`会构造真实引擎，当前禁止调用。CPU假引擎测试包括实际文件级“阶段库提交→原生输出→完整侧车与commit→跨引擎审计→元数据恢复且零新模型调用”，不证明真实CUDA/vLLM可运行、显存或提速成立。
