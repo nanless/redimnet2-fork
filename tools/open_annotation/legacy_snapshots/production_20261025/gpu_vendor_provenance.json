@@ -1,0 +1,22 @@
+{
+  "source": "sealed word_ft_v3 pure read-only resource primitives; no training entry called",
+  "files": {
+    "resources.py": "c6523f631631b2cfb6611ace0e2ca447bf715cbf0e6c15cd85c9af31c389a4bb",
+    "topology.py": "278382dd8f349a136570d5426128f596fe6e7c2341771d8a96795a368bc7961a",
+    "__init__.py": "71072f6dfa31ef3b329debecaf293c31c9549160700ca8b5f5f4169c6dcb7d5c"
+  },
+  "used": [
+    "capture_snapshot",
+    "selected_devices",
+    "stable_identity",
+    "double_probe",
+    "DeviceLocks",
+    "process_start_time"
+  ],
+  "unused": [
+    "rank_environment",
+    "step_indices",
+    "training_source_identity",
+    "allowed_process_group"
+  ]
+}

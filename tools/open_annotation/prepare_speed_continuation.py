@@ -18,6 +18,8 @@ from pathlib import Path, PurePosixPath
 import stat
 import sys
 import tempfile
+import traceback
+import time
 
 if __package__:
     from .readonly_progress import inspect_progress, read_small, strict_json
@@ -93,6 +95,11 @@ def old_job_key(source, contract_sha):
                    'contract_sha256': contract_sha})
 
 
+def portable_progress(stage,counts):
+    print(json.dumps({'event':'portable_preparation_progress','stage':stage,
+        'observed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),**counts},ensure_ascii=False),flush=True)
+
+
 def record_validator():
     # schema.py has script-style dependency imports. Load only this maintained
     # directory; never import modules from the old writer's frozen tree.
@@ -138,14 +145,18 @@ def read_json_lines(path):
         os.close(fd)
 
 
-def retained_sidecar(source, tree, contract_sha, validate_record):
+def retained_sidecar(source, tree, contract_sha, validate_record, *, portable_context=None, portable_sink=None,
+                     inventory=None,inventory_kind=None):
+    # missing先查新目录项库；不能先child()/physical()，否则仍会逐来源lstat PFS。
+    if inventory is not None and not inventory.select(source,inventory_kind):return None
     path = child(tree, source['sidecar_relpath'])
     commit = path.with_name(path.name + '.commit.json')
     physical(commit)
-    if not path.exists():
-        need(not commit.exists(), 'orphan sidecar commit refused')
-        return None
-    need(commit.is_file(), 'orphan sidecar preserved; explicit old-contract repair required')
+    if inventory is None:
+        if not path.exists():
+            need(not commit.exists(), 'orphan sidecar commit refused')
+            return None
+        need(commit.is_file(), 'orphan sidecar preserved; explicit old-contract repair required')
     record, raw = read_json(path, 32 * 1024**2)
     marker, marker_raw = read_json(commit, 64 * 1024)
     validate_record(record)
@@ -158,7 +169,14 @@ def retained_sidecar(source, tree, contract_sha, validate_record):
                 'sidecar_sha256': byte_sha(raw), 'bytes': len(raw)}
     need(marker == expected, 'partial result commit identity differs')
     identity = record['source_identity']
-    if identity['decode_status'] == 'decoded_complete':
+    if portable_context is not None:
+        need(callable(portable_sink),'explicit portable evidence sink required')
+        need(record['contract']['version']==portable_context['contract_version'],'portable old contract version differs')
+        verifier=portable_context['module']
+        proof=verifier.prove_source_identity(portable_context['spec'],portable_context['spec_sha256'],source,record,
+            contract_sha,byte_sha(raw),byte_sha(marker_raw))
+        portable_sink(proof)
+    elif identity['decode_status'] == 'decoded_complete':
         media = physical(source['audio_path'])
         need(media.is_file() and stat_identity(media) == identity['stat_after'],
              'source stat changed since old result; no silent reinference')
@@ -210,7 +228,7 @@ def old_parent_lock(queue):
 
 
 def partition(index_path, index_sha, queue, contract_sha, tree, scan_unclaimed=False,
-              unclaimed_sink=None, remaining_sink=None):
+              unclaimed_sink=None, remaining_sink=None, *, portable_context=None, portable_sink=None,inventory=None):
     """Read-only algorithm; caller separately admits fixed production denominator."""
     progress = inspect_progress(index_path, index_sha, queue, contract_sha)
     index, index_raw = read_json(index_path)
@@ -239,6 +257,8 @@ def partition(index_path, index_sha, queue, contract_sha, tree, scan_unclaimed=F
             retained_chunks.append({**shard, 'completion_slot_sha256': byte_sha(slot),
                 'chunk_receipt_path': str(queue/'completed'/(shard['id']+'.json')),
                 'chunk_receipt_sha256':proof['commit_sha256'], 'source_ids_sha256':proof['source_ids_sha256']})
+            if inventory is not None:
+                for source in read_shard(index_path.parent,shard):inventory.select(source,'completed')
         elif ordinal >= nxt:
             if not scan_unclaimed:
                 remaining.append({'mode': 'copy_original_shard', 'descriptor': dict(shard)})
@@ -246,7 +266,9 @@ def partition(index_path, index_sha, queue, contract_sha, tree, scan_unclaimed=F
             need(callable(unclaimed_sink) and callable(remaining_sink), 'final unclaimed scan sinks missing')
             rows=read_shard(index_path.parent,shard);missing=[];kept_count=0
             for source in rows:
-                kept=retained_sidecar(source,tree,contract_sha,validate)
+                options={}if portable_context is None else {'portable_context':portable_context,'portable_sink':portable_sink,
+                    'inventory':inventory,'inventory_kind':'unclaimed'}
+                kept=retained_sidecar(source,tree,contract_sha,validate,**options)
                 if kept is None:missing.append(source)
                 else:
                     unclaimed_sink(kept);unclaimed_kept+=1;kept_count+=1
@@ -263,7 +285,9 @@ def partition(index_path, index_sha, queue, contract_sha, tree, scan_unclaimed=F
             for source in rows:
                 need(source['source_id'] not in partial_seen, 'duplicate source across partial shards')
                 partial_seen.add(source['source_id'])
-                kept = retained_sidecar(source, tree, contract_sha, validate)
+                options={}if portable_context is None else {'portable_context':portable_context,'portable_sink':portable_sink,
+                    'inventory':inventory,'inventory_kind':'partial'}
+                kept = retained_sidecar(source, tree, contract_sha, validate,**options)
                 if kept is None:
                     missing.append(source)
                 else:
@@ -286,12 +310,18 @@ def partition(index_path, index_sha, queue, contract_sha, tree, scan_unclaimed=F
 
 
 def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree, output,
-            execute_final=False, terminal_path=None, terminal_sha=None, old_task_id=None):
+            execute_final=False, terminal_path=None, terminal_sha=None, old_task_id=None, *,
+            portable_spec_path=None, portable_spec_sha=None):
     index_path, queue, old_contract_path, tree, output = map(physical,
         (index_path, queue, old_contract_path, tree, output))
     need(not output.exists(), 'output must be a fresh external directory')
-    for protected in (queue, tree, index_path.parent, old_contract_path.parent,
-                      Path(__file__).resolve().parents[2]):
+    here=Path(__file__).resolve().parent
+    repository=next((p for p in here.parents if (p/'AGENTS.md').is_file()and(p/'redimnet2').is_dir()),None)
+    protected_roots=[queue,tree,index_path.parent,old_contract_path.parent,here]
+    if repository is not None:protected_roots.append(repository)
+    if old_contract_path.parent.name=='contracts'and(old_contract_path.parent.parent/'bundle_files.json').is_file():
+        protected_roots.append(old_contract_path.parent.parent)
+    for protected in protected_roots:
         need(output != protected and protected not in output.parents,
              'output overlaps old input, result, queue or repository')
     need(output.parent.is_dir(), 'output parent must already exist')
@@ -310,24 +340,62 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
     need(expected_index.get('domains') == EXPECTED_DOMAINS and
          expected_index.get('RIR_or_MUSAN_or_Child_or_evaluation_in_this_job') is False,
          'formal input must remain the three training domains only')
+    portable=None
+    need((portable_spec_path is None)==(portable_spec_sha is None),'portable source spec path and SHA must be supplied together')
+    if portable_spec_path is not None:
+        need(execute_final,'portable content preparation requires explicit final mode and old writer lock')
+        if __package__:
+            from . import portable_source_identity as V
+        else:
+            import portable_source_identity as V
+        portable_path=physical(portable_spec_path)
+        portable_value=V.load_portable_spec(portable_path,portable_spec_sha,
+            contract_pin={'path':str(old_contract_path),'sha256':contract_sha},index_pin={'path':str(index_path),'sha256':index_sha},
+            queue=queue,tree=tree)
+        portable={'module':V,'spec':portable_value,'spec_sha256':portable_spec_sha,'path':str(portable_path),
+                  'contract_version':contract['version']}
     terminal = None; lock_evidence = None
     if execute_final:
         need(terminal_path and terminal_sha and old_task_id, 'final preparation needs terminal observation pins')
         terminal = terminal_observation(terminal_path, terminal_sha, old_task_id, queue)
     ctx = old_parent_lock(queue) if execute_final else contextlib.nullcontext(None)
     with ctx as lock_evidence:
-        scratch=None;ledger=None
+        scratch=None;ledger=None;content_ledger=None;content_counts=collections.Counter();inventory=None;inventory_summary=None
         if execute_final:
             # 仅在旧writer互斥后一次流式扫描；临时文件是新的准备证据，不在旧树内。
             scratch=Path(tempfile.mkdtemp(prefix='.continuation-build-',dir=output.parent))
             ledger=(scratch/'retained-unclaimed.jsonl').open('xb')
+            if portable is not None:content_ledger=(scratch/'portable-source-evidence.jsonl').open('xb')
+        def retain_content(item):
+            need(content_ledger is not None,'portable content ledger not open')
+            content_ledger.write(canonical(item));content_counts[item['status']]+=1
         try:
+            if portable is not None:
+                inventory=portable['module'].SidecarInventory(scratch/'portable-sidecar-inventory.sqlite',tree,
+                    portable['spec'],portable_spec_sha,expected_index['domains'],progress=portable_progress)
+                inventory.scan()
+                inventory.phase='partition';inventory.emit_progress('partition_started',True)
+            options={}if portable is None else {'portable_context':portable,'portable_sink':retain_content,'inventory':inventory}
             index, progress, plan, partial_rows = partition(index_path, index_sha, queue, contract_sha, tree,
                 execute_final, (lambda item:ledger.write(canonical(item))) if ledger else None,
-                (lambda name,data:write_new(scratch/(name+'.jsonl'),data)) if scratch else None)
+                (lambda name,data:write_new(scratch/(name+'.jsonl'),data)) if scratch else None,
+                **options)
+            if inventory is not None:
+                inventory_summary=inventory.finish(index['source_count']);inventory.emit_progress('partition_finished',True)
+        except BaseException:
+            if portable is not None and scratch is not None:
+                write_new(scratch/'portable-preparation-failure.json',{'traceback':traceback.format_exc(),
+                    'portable_spec_sha256':portable_spec_sha,'old_files_modified_by_this_tool':False,
+                    'inventory_scan_counts':dict(inventory.counts)if inventory is not None else None,
+                    'phase':inventory.phase if inventory is not None else 'before_inventory',
+                    'partial_content_rows_written':sum(content_counts.values())})
+            raise
         finally:
             if ledger is not None:
                 ledger.flush();os.fsync(ledger.fileno());ledger.close()
+            if content_ledger is not None:
+                content_ledger.flush();os.fsync(content_ledger.fileno());content_ledger.close()
+            if inventory is not None:inventory.close()
         if execute_final:
             current_lock = physical(queue/'.parent.lock').stat()
             need((current_lock.st_dev,current_lock.st_ino) == (lock_evidence['device'],lock_evidence['inode']), 'old parent lock replaced')
@@ -357,7 +425,27 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
             os.rename(scratch/'retained-unclaimed.jsonl',ledger_path)
             report['retained_unclaimed_sources_ref']={'path':str(ledger_path),'sha256':file_sha(ledger_path),
                 'count':plan['retained_unclaimed_source_count']}
+            if portable is not None:
+                content_path=output/'portable-source-evidence.jsonl'
+                os.rename(scratch/'portable-source-evidence.jsonl',content_path)
+                content_count=sum(content_counts.values())
+                need(content_count==len(plan['retained_partial_sources'])+plan['retained_unclaimed_source_count'],
+                     'portable content evidence does not exactly cover retained partial/unclaimed sources')
+                report.update(source_identity_mode=portable['module'].MODE,
+                    portable_source_spec_ref={'path':portable['path'],'sha256':portable_spec_sha},
+                    portable_source_ledger_ref={'path':str(content_path),'sha256':file_sha(content_path),'count':content_count},
+                    portable_source_evidence_counts=dict(content_counts),
+                    fresh_media_scope='retained_partial_and_unclaimed_only',
+                    completed_media_scope='original_completed_chunk_reference_not_media_rehashed',
+                    completed_media_rehashed=False,source_PCM_redecoded=False)
+                inventory_path=output/'portable-sidecar-inventory.sqlite'
+                os.rename(scratch/'portable-sidecar-inventory.sqlite',inventory_path)
+                report['portable_sidecar_inventory_ref']={'path':str(inventory_path),'sha256':file_sha(inventory_path)}
+                report['portable_sidecar_inventory_summary']=inventory_summary
             partial = dict(partial_rows); descriptors = []; domains = collections.Counter()
+            if portable is not None:
+                portable_progress('remaining_write_started',{'remaining_shards_total':len(plan['remaining_shards']),
+                    'remaining_source_count':plan['remaining_source_count']});last_progress=time.monotonic()
             for item in plan['remaining_shards']:
                 descriptor = dict(item['descriptor'])
                 if item['mode'] == 'copy_original_shard':
@@ -376,6 +464,9 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
                 domains.update(s['dataset'] for s in rows)
                 write_new(child(output, descriptor['path']), data); descriptors.append(descriptor)
                 if item['mode']=='new_unclaimed_shard':(scratch/(descriptor['id']+'.jsonl')).unlink()
+                if portable is not None and time.monotonic()-last_progress>=30:
+                    portable_progress('remaining_write_progress',{'remaining_shards_written':len(descriptors),
+                        'remaining_shards_total':len(plan['remaining_shards'])});last_progress=time.monotonic()
             current_lock = physical(queue/'.parent.lock').stat()
             need((current_lock.st_dev,current_lock.st_ino) == (lock_evidence['device'],lock_evidence['inode']), 'old parent lock replaced')
             _, broker_after = read_json(queue / 'broker.json', 1024**2)
@@ -389,6 +480,8 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
                     'sha256':write_new(output/'index.json', new_index)}
             else:
                 report['status'] = 'all_sources_retained_no_successor_needed'
+            if portable is not None:portable_progress('remaining_write_finished',{'remaining_shards_written':len(descriptors),
+                'remaining_source_count':plan['remaining_source_count']})
         write_new(output / 'coverage-plan.json', report)
         if scratch is not None:scratch.rmdir()
         return report
@@ -403,9 +496,12 @@ def main(argv=None):
     p.add_argument('--execute-final',action='store_true')
     p.add_argument('--terminal-observation',type=Path);p.add_argument('--terminal-sha')
     p.add_argument('--old-task-id')
+    p.add_argument('--portable-source-spec',type=Path,help='显式新跨节点内容协议；默认严格stat不变，只在final模式使用')
+    p.add_argument('--portable-source-spec-sha')
     a=p.parse_args(argv)
     r=prepare(a.index,a.index_sha,a.queue_root,a.old_contract,a.old_contract_sha,
-              a.old_sidecar_tree,a.output,a.execute_final,a.terminal_observation,a.terminal_sha,a.old_task_id)
+              a.old_sidecar_tree,a.output,a.execute_final,a.terminal_observation,a.terminal_sha,a.old_task_id,
+              portable_spec_path=a.portable_source_spec,portable_spec_sha=a.portable_source_spec_sha)
     print(json.dumps({'output':str(a.output),'status':r['status'],
         'retained_source_count':r['retained_source_count'],'remaining_source_count':r['remaining_source_count'],
         'new_inference_count':0,'formal_runtime_admitted':False},ensure_ascii=False))

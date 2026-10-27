@@ -222,6 +222,12 @@ def check_union_data(spec_path, spec_sha, mode='plan', *, output_index=None):
             'remaining_source_count':report['remaining_source_count'],
             'formal_dataset_scope_verified':report['purpose']=='production',
             'full_result_readback_verified':report['complete_sidecars_reopened'],
+            'source_identity_mode':report['source_identity_mode'],
+            'portable_source_ledger_verified':report['portable_source_ledger_verified'],
+            'portable_sidecar_inventory_verified':report['portable_sidecar_inventory_verified'],
+            'fresh_media_scope':report['fresh_media_scope'],
+            'completed_media_scope':report['completed_media_scope'],
+            'upstream_encoded_content_verified_count':report['upstream_encoded_content_verified_count'],
             'GPU_execution_admitted':False,'cloud_submission_admitted':False,
             'training_or_evaluation_eligibility_released':False,
             'runtime_and_quality_evidence_still_required':True,'union_validation':report}

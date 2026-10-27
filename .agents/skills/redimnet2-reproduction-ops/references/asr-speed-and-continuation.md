@@ -77,4 +77,14 @@ plan要求新鲜终态、旧父锁与broker稳定，核分工和旧保留结果�
 
 原标注恢复用 `resume_existing_annotation.py`及仓库 `tools/open_annotation/同合同标注任务接续.md`，保持原合同、全量索引、冻结包、queue 与 labels。原 fresh 启动脚本不可直接重复执行；原 claim 和语义锁保留，新 attempt2 永久 claim 不得删除。旧 v2 与现 v3 CLI 及 gate 名不同，按实际抽象语法树和字节固定。门后和 GPU 前重核全部可执行原件；外部终态观察和 other_successor_tasks 必须来自真实平台查询，不能手填冒充查询。
 
-只读槽计账核到 1,158,718 已封账来源、4,624 片和 8 个 lease，不等于全量侧车和人工质量验收。旧 source stat 含 device；跨节点可能只有 device 变，但原 worker 仍拒绝。严格恢复继续核完整 stat，新节点不符须在 claim/GPU 前拒绝。不得删 device、伪造旧 stat 或改旧侧车；合法后继必须另有实际内容 SHA、前后稳定 stat、新旧 producer 和不重不漏联合账本，当前该跨节点备选尚未实现。后台巡检保持暂停。
+只读槽计账核到 1,158,718 已封账来源、4,624 片和 8 个 lease，不等于全量侧车和人工质量验收。旧 source stat 含 device；跨节点可能只有 device 变，但原 worker 仍拒绝。严格恢复继续核完整 stat，新节点不符须在 claim/GPU 前拒绝。不得删 device、伪造旧 stat 或改旧侧车；合法后继必须另有实际内容 SHA、前后稳定 stat、新旧 producer 和不重不漏联合账本。该次事故审查时尚未实现，后续实现见下节。后台巡检保持暂停。
+
+## 显式内容身份与独立剩余生产者
+
+新协议维护在仓库`tools/open_annotation/跨节点原音内容证明与剩余输入.md`、`跨节点标注接续运行.md`。`portable_source_identity.py`仅允许device不同，其余stat须相等，真实编码SHA及前后完整stat同时核；旧侧车不改。部分/未领取片内已发布结果逐条内容证明，已封账片在联合门逐侧车重开，但不伪称百万原音都在新节点重哈希。旧解码失败保留failed，不能计内容通过。
+
+目录项先用scandir登记新SQLite，再遍历原全集；缺失来源只查库，避免千万次共享盘missing查询。旧stage cache明确不遍历/重贴，未完整发布的在途阶段可能重做；完整旧侧车不得重推理。清单、内容账本、全部原来源记录、旧保留及新剩余逐源互斥并完整，原分母11521178和三域不改。异常临时文件、孤儿和额外路径保留并拒绝，不自动删除。
+
+旧实际生产代码是23文件、13计算模块，源快照在`legacy_snapshots/production_20261025`；新冻结器只改合同version，旧时钟v1和所有模型/源码/FP32单窗条件不变。当前一般冻结器是14模块和v2时钟，不能混用。继承的只是同一计算profile的历史证据，新八worker、设备和首片必须现场重新验收。
+
+真实CPU准备/union在同节点核计划锁的device/inode。新云运行器消费固定production plan证明和SQLite完整SHA（不是complete标签库），另取得当前真实旧语义锁/旧queue锁；历史路径与inode保持，历史和当前device分别记录。原broker及完整completion map重核，FD交给原GPU父进程直至精确清理结束。新运行观察必须真实且一小时内，旧历史观察不改时间。已有永久lineage claim或失败证据不能删除重跑；先查实际任务。相关代码通过953项完整CPU回归，真实当前状态须读新实测报告，不以该数字授GPU或人工质量结论。

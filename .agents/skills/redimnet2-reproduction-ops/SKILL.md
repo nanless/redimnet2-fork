@@ -26,6 +26,7 @@ description: Inspect and maintain this ReDimNet2 repository, B6 PTN/LM continuit
 - 转写计算提速、阶段计时、有限对照、八卡显存预算与跨合同去重接续：读 [转写提速与接续](references/asr-speed-and-continuation.md)。
 - 联合覆盖/唯一消费者、跨引擎审计、vLLM最小适配与整批恢复也由上述参考路由；实现见仓库`docs/reviews/2026-10-27-联合接续与跨引擎CPU实现验收.md`。本轮798项CPU单元测试实际无跳过通过，真实GPU、速度和人工字界未测。新数据门不授运行资格，不能修改原W2或固定总分母来接后继。
 - 八卡 WebShell 实测失败与同合同恢复：先读仓库 `docs/reviews/2026-10-27-WebShell真实试验故障与标注恢复.md` 和转写提速参考。指定机器、已知进程和空余显存不覆盖旧父进程的持续独占监控；不得同卡另建 CUDA context。当前 `vllm_live_probe`真实构造已关闭，只保留检查及完整缓存恢复；生命周期清理未实现，不写成 GPU 验收通过。严格恢复保留旧 stat 的 device 字段，实际新节点不符即拒绝，不改旧冻结包或标签。
+- 跨节点的新生产者接续：读仓库 `tools/open_annotation/跨节点原音内容证明与剩余输入.md`、`联合覆盖与唯一读取.md`和`跨节点标注接续运行.md`。显式新内容协议保留完整新旧stat，只允许device不同并实际核编码SHA；新旧生产者独立、旧已发布侧车全部排除。`freeze_legacy_successor.py`保留实际旧23文件/13计算模块，仅换合同version，不能用当前14模块冻结器悄悄升级旧计算方式。数据准备证明与当前云FD租约分别核，旧语义锁和旧队列父锁贯穿新GPU。最新真实准备、提交和运行结论以 `docs/reviews/2026-10-27-跨节点标注恢复实测.md` 为准；CPU通过不是八卡恢复成功。
 - 官方模型完整字自然变长训练、候选消费与长度交叉评测：读 [完整字实验](references/complete-word-experiments.md)。
 - 修改、部署、历史证据与仓库同步：读 [版本与证据](references/repository-and-evidence.md)。
 

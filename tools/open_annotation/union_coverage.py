@@ -14,6 +14,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import sys
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from contracts import digest, job_key, model_provenance
@@ -157,7 +158,7 @@ def _complete_chunk(index_pin, descriptor, ordinal, queue, producer_value, rows,
     need({k:decisions[k] for k in ('candidate','unknown','failed')} == slot['decision_counts'], 'chunk decision count differs')
 
 
-def _terminal(plan, old, mode):
+def _terminal(plan, old, mode, spec=None):
     proof = plan.get('terminal_observation'); lock = plan.get('old_parent_lock')
     need(isinstance(proof,dict) and isinstance(lock,dict) and proof.get('platform_authentication_performed_by_this_tool') is False,
          'final plan lacks external terminal/lock evidence')
@@ -171,7 +172,27 @@ def _terminal(plan, old, mode):
     observed=datetime.datetime.fromisoformat(obs['observed_utc'])
     need(observed.tzinfo is not None, 'terminal observation timezone missing')
     age=(datetime.datetime.now(datetime.timezone.utc)-observed).total_seconds()
-    need(age>=0 and (mode!='plan' or age<=3600), 'plan terminal observation stale or future')
+    portable=spec is not None and spec.get('source_identity_mode')==PORTABLE_SOURCE_MODE
+    need(age>=0 and (portable or mode!='plan' or age<=3600), 'plan terminal observation stale or future')
+    if portable:
+        current_ref=spec.get('current_terminal_observation')
+        need(current_ref is not None,'portable union requires an explicit current terminal observation')
+        current=ref(current_ref)
+        need(current.get('schema')=='annotation-writer-terminal-observation/v1' and
+             current.get('task_id')==obs['task_id'] and current.get('queue_root')==old['queue_root'] and
+             current.get('state')in {'Stopped','Failed','Succeeded','Completed'},
+             'current terminal observation old task/queue/state differs')
+        workers=current.get('workers')
+        need(isinstance(workers,list) and len(workers)==1 and
+             workers[0].get('name')==obs['task_id']+'-worker-0' and
+             workers[0].get('state')in {'Stopped','Failed','Succeeded','Completed'} and
+             type(current.get('active_workers'))is int and current['active_workers']==0,
+             'current terminal observation has active or unbound worker')
+        timestamp=datetime.datetime.fromisoformat(current['observed_utc'])
+        need(timestamp.tzinfo is not None,'current terminal observation timezone missing')
+        current_age=(datetime.datetime.now(datetime.timezone.utc)-timestamp).total_seconds()
+        need(current_age>=0 and (mode!='plan' or current_age<=3600),
+             'current terminal observation stale or future')
     need(lock.get('existing_lock_opened_readonly') is True and lock.get('lock_created') is False and
          lock.get('path') == str(Path(old['queue_root'])/'.parent.lock'), 'final preparation lock proof differs')
     return lock
@@ -205,7 +226,142 @@ def _load_unclaimed_ledger(plan,db):
     need(count==expected and h.hexdigest()==item['sha256'],'unclaimed ledger SHA/count differs')
 
 
-def _select_old_source(db,source,expected,old,tree,contract):
+STRICT_SOURCE_MODE = 'recorded_source_stat/v1'
+PORTABLE_SOURCE_MODE = 'portable_encoded_sha256/v1'
+PORTABLE_FRESH_SCOPE = 'retained_partial_and_unclaimed_only'
+PORTABLE_COMPLETED_SCOPE = 'original_completed_chunk_reference_not_media_rehashed'
+
+
+def _portable_ledger(spec, plan, old, oldc, new, newc, db):
+    """只核显式跨节点内容证据；旧strict分支没有skip或stat例外。"""
+    mode=spec.get('source_identity_mode',STRICT_SOURCE_MODE)
+    need(mode in {STRICT_SOURCE_MODE,PORTABLE_SOURCE_MODE},'unsupported explicit source identity mode')
+    fields=('portable_source_spec_ref','portable_source_ledger_ref')
+    if mode==STRICT_SOURCE_MODE:
+        need(plan.get('source_identity_mode',STRICT_SOURCE_MODE)==STRICT_SOURCE_MODE and
+             not any(k in spec or k in plan for k in fields+('portable_sidecar_inventory_ref',)),
+             'portable evidence requires explicit new union mode')
+        return None
+    need(plan.get('source_identity_mode')==mode and
+         plan.get('fresh_media_scope')==PORTABLE_FRESH_SCOPE and
+         plan.get('completed_media_scope')==PORTABLE_COMPLETED_SCOPE,
+         'portable preparation media scope differs')
+    for key in fields:
+        need(key in spec and spec[key]==plan.get(key),'portable evidence must be pinned in both union and preparation: '+key)
+    policy=ref(spec['portable_source_spec_ref'])
+    from portable_source_identity import validate_portable_spec
+    validate_portable_spec(policy)
+    need(policy.get('schema')=='annotation-portable-source-spec/v1' and policy.get('source_identity_mode')==mode and
+         policy.get('purpose')==spec['purpose'] and policy.get('old_contract')==old['contract'] and
+         policy.get('full_index')==spec['full_index'] and policy.get('old_queue_root')==old['queue_root'] and
+         policy.get('old_sidecar_tree')==old['sidecar_tree'] and policy.get('allowed_difference')==['device'] and
+         policy.get('encoded_hash_algorithm')=='sha256','portable policy source/producer/full denominator differs')
+    need(old['contract']['sha256']!=new['contract']['sha256'] and oldc['version']!=newc['version'],
+         'portable successor requires a separate contract and version')
+    for key in ('models','runtime','decoder','alignment','quality_policy','source_files','engine_source_files'):
+        need(oldc.get(key)==newc.get(key),'portable successor changed frozen inference semantics: '+key)
+    if spec['purpose']=='production':
+        runtime=oldc['runtime']
+        need(runtime.get('dtype')=='float32' and runtime.get('attention')=='eager' and runtime.get('TF32') is False and
+             runtime.get('asr_compute',{'dtype':'float32','attention':'eager'})=={'dtype':'float32','attention':'eager'},
+             'portable successor must preserve original FP32/eager inference')
+        need(isinstance(oldc.get('engine_source_files'),dict) and bool(oldc['engine_source_files']),
+             'portable successor lacks original inference module pins')
+    item=spec['portable_source_ledger_ref']
+    need(isinstance(item,dict) and set(item)=={'path','sha256','count'} and type(item['count']) is int and item['count']>=0,
+         'portable source ledger must have exact path/SHA/count')
+    db.execute('CREATE TABLE portable_retained(sid TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL)')
+    fd=open_readonly(physical(item['path']));h=hashlib.sha256();count=0
+    try:
+        before=os.fstat(fd)
+        with os.fdopen(fd,'rb',closefd=False)as stream:
+            while True:
+                line=stream.readline(65537)
+                if not line:break
+                need(line.strip() and len(line)<=65536,'portable source ledger row blank or oversized')
+                h.update(line);row=strict_json(line)
+                need(isinstance(row.get('source_id'),str) and bool(row['source_id']),'portable source ledger ID missing')
+                try:db.execute('INSERT INTO portable_retained VALUES(?,?)',(row['source_id'],line.decode('utf-8')))
+                except sqlite3.IntegrityError as exc:raise ValueError('duplicate portable source ledger ID')from exc
+                count+=1
+        after=os.fstat(fd)
+        need((before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)==
+             (after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns),'portable ledger changed during read')
+    finally:os.close(fd)
+    need(count==item['count'] and h.hexdigest()==item['sha256'],'portable source ledger SHA/count differs')
+    return {'policy':policy,'spec_sha':spec['portable_source_spec_ref']['sha256'],'count':count,
+            'verified':collections.Counter()}
+
+
+def _portable_inventory(spec,plan,portable,old,db):
+    """读取准备器固定的新目录项库；missing只查新SQLite，不逐源stat旧PFS。"""
+    key='portable_sidecar_inventory_ref';pin=plan.get(key)
+    if pin is None:
+        need(key not in spec,'union inventory ref absent from preparation')
+        return
+    need(spec.get(key)==pin,'portable inventory must be pinned in union and preparation')
+    need(isinstance(pin,dict) and set(pin)=={'path','sha256'},'exact portable inventory path/SHA required')
+    path=physical(pin['path']);stamp=path.stat()
+    need(sha_file(path)==pin['sha256'],'portable inventory SHA differs')
+    uri='file:'+quote(str(path),safe='/')+'?mode=ro'
+    db.execute('ATTACH DATABASE ? AS portable_inventory',(uri,))
+    summary={k:strict_json(v)for k,v in db.execute('SELECT key,value FROM portable_inventory.metadata')}
+    need(summary==plan.get('portable_sidecar_inventory_summary') and
+         summary.get('schema')=='annotation-portable-sidecar-inventory/v1' and
+         summary.get('portable_spec_sha256')==portable['spec_sha'] and
+         summary.get('old_contract')==old['contract'] and summary.get('full_index')==spec['full_index'] and
+         summary.get('old_sidecar_tree')==old['sidecar_tree'] and
+         summary.get('all_inventory_paths_matched_original_sources') is True and
+         summary.get('source_audio_read_by_inventory') is False and
+         summary.get('completed_sidecar_content_read_by_inventory') is False and
+         summary.get('stage_cache_traversed') is False,
+         'portable inventory metadata/spec/producer differs')
+    bad=db.execute("SELECT relative FROM portable_inventory.paths WHERE sidecar!=1 OR commit_marker!=1 OR seen!=1 OR source_id IS NULL OR kind NOT IN ('completed','partial','unclaimed') LIMIT 1").fetchone()
+    need(bad is None,'portable inventory contains orphan, unmatched or invalid source entry')
+    portable['inventory']={'path':path,'stamp':stamp,'summary':summary,'matched':0}
+
+
+def _inventory_source(db,portable,source,kind):
+    if portable is None or 'inventory'not in portable:return False
+    row=db.execute('SELECT sidecar,commit_marker,seen,source_id,kind FROM portable_inventory.paths WHERE relative=?',
+                   (source['sidecar_relpath'],)).fetchone()
+    if kind is None:
+        need(row is None,'portable inventory exposes an omitted old published source')
+    else:
+        need(row==(1,1,1,source['source_id'],kind),'portable inventory source/path/selection differs')
+        portable['inventory']['matched']+=1
+    return True
+
+
+def _inventory_finished(db,portable,total):
+    if portable is None or 'inventory'not in portable:return
+    inventory=portable['inventory'];summary=inventory['summary']
+    count=db.execute('SELECT COUNT(*) FROM portable_inventory.paths').fetchone()[0]
+    need(inventory['matched']==count and summary.get('original_sources_checked')==total and
+         summary.get('missing_source_lookups_without_PFS_stat')==total-count,
+         'portable inventory full source coverage/count differs')
+    need(sum(summary.get('matched_'+kind+'_sources',-1)for kind in ('completed','partial','unclaimed'))==count,
+         'portable inventory selected kind counts differ')
+    now=inventory['path'].stat();old=inventory['stamp']
+    need((old.st_dev,old.st_ino,old.st_size,old.st_mtime_ns,old.st_ctime_ns)==
+         (now.st_dev,now.st_ino,now.st_size,now.st_mtime_ns,now.st_ctime_ns),
+         'portable inventory changed during union validation')
+
+
+def _consume_portable_entry(db,source,record,record_sha,commit_sha,old,portable):
+    if portable is None:return
+    row=db.execute('SELECT value FROM portable_retained WHERE sid=?',(source['source_id'],)).fetchone()
+    need(row is not None,'portable ledger omits retained partial/unclaimed source')
+    entry=strict_json(row[0])
+    need(entry.get('sidecar_sha256')==record_sha and entry.get('commit_sha256')==commit_sha,
+         'portable ledger differs from retained original sidecar/commit bytes')
+    from portable_source_identity import validate_ledger_entry
+    validate_ledger_entry(entry,source,record,old['contract']['sha256'],portable['policy'],spec_sha=portable['spec_sha'])
+    portable['verified'][entry['status']]+=1
+    db.execute('DELETE FROM portable_retained WHERE sid=?',(source['source_id'],))
+
+
+def _select_old_source(db,source,expected,old,tree,contract,portable=None):
     need(expected['source_record_sha256']==digest(source) and expected['producer_contract_sha256']==old['contract']['sha256'] and
          expected['sidecar_path']==str(child(tree,source['sidecar_relpath'])) and
          expected['commit_path']==str(child(tree,source['sidecar_relpath']+'.commit.json')), 'retained old source identity differs')
@@ -213,6 +369,7 @@ def _select_old_source(db,source,expected,old,tree,contract):
     need(before is None,'source retained twice')
     record,rs,cs=read_result(source,old,expected['sidecar_sha256'],expected['commit_sha256'],contract=contract)
     need(expected['decision']==record['decision']['state'],'retained decision changed')
+    _consume_portable_entry(db,source,record,rs,cs,old,portable)
     db.execute('UPDATE sources SET selected=?,record_sha=?,commit_sha=?,decision=? WHERE sid=?',(old['id'],rs,cs,record['decision']['state'],source['source_id']))
     return record['decision']['state']
 
@@ -252,10 +409,12 @@ def _validate(spec, spec_sha, mode, db):
     need(plan.get('new_inference_count')==0 and plan.get('old_queue_mutated') is False and
          plan.get('old_results_rewritten') is False and plan.get('stage_cache_relabelled') is False,
          'old producer preservation declaration missing')
-    lock_proof=_terminal(plan,old,mode)
+    lock_proof=_terminal(plan,old,mode,spec)
     db.execute('CREATE TABLE sources(sid TEXT PRIMARY KEY, source_sha TEXT NOT NULL, shard INTEGER NOT NULL, row_number INTEGER NOT NULL, relative TEXT NOT NULL, selected TEXT, record_sha TEXT, commit_sha TEXT, decision TEXT)')
     db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
     _load_unclaimed_ledger(plan,db)
+    portable=_portable_ledger(spec,plan,old,oldc,new,newc,db)
+    if portable is not None:_portable_inventory(spec,plan,portable,old,db)
     domains=collections.Counter();total=0;retained=0;remaining=0;decisions=collections.Counter()
     retained_chunks={s['id']:s for s in plan['retained_complete_shards']}
     need(len(retained_chunks)==len(plan['retained_complete_shards']), 'duplicate retained chunk')
@@ -288,18 +447,21 @@ def _validate(spec, spec_sha, mode, db):
                     retained+=1;decisions[decision]+=1
             for source in rows:
                 extra=db.execute('SELECT value FROM retained_extras WHERE sid=?',(source['source_id'],)).fetchone()
+                kind=('completed'if descriptor['id']in expected_retained else
+                      'partial'if source['source_id']in partial else 'unclaimed'if extra is not None else None)
+                inventory_used=_inventory_source(db,portable,source,kind)
                 if source['source_id'] in partial:
                     expected=partial.pop(source['source_id'])
                     need(extra is None and ordinal<state['next'] and descriptor['id'] in state['leases'],
                          'partial retained source is duplicated or not from a leased shard')
-                    decision=_select_old_source(db,source,expected,old,ot,oldc)
+                    decision=_select_old_source(db,source,expected,old,ot,oldc,portable)
                     retained+=1;decisions[decision]+=1
                 elif extra is not None:
                     need(ordinal>=state['next'],'unclaimed retained source is not in an unclaimed shard')
-                    decision=_select_old_source(db,source,strict_json(extra[0]),old,ot,oldc)
+                    decision=_select_old_source(db,source,strict_json(extra[0]),old,ot,oldc,portable)
                     db.execute('DELETE FROM retained_extras WHERE sid=?',(source['source_id'],))
                     retained+=1;decisions[decision]+=1
-                elif descriptor['id'] not in expected_retained:
+                elif descriptor['id'] not in expected_retained and not inventory_used:
                     # 包括未领取片中的预置旧结果。不能因准备器未列出而重新推理。
                     old_path=child(ot,source['sidecar_relpath'])
                     old_commit=old_path.with_name(old_path.name+'.commit.json')
@@ -308,6 +470,10 @@ def _validate(spec, spec_sha, mode, db):
                          'final plan omits an already published/orphan old source')
             db.commit()
         need(not retained_chunks and not partial, 'retained source/chunk absent from full index')
+        _inventory_finished(db,portable,total)
+        if portable is not None:
+            need(db.execute('SELECT COUNT(*) FROM portable_retained').fetchone()[0]==0,
+                 'portable ledger contains extra, completed, or non-retained sources')
         need(db.execute('SELECT COUNT(*) FROM retained_extras').fetchone()[0]==0,'unclaimed retained source absent from full index')
         need(total==full['source_count'] and dict(domains)==full.get('domains'), 'original full domain counts differ')
         if spec['purpose']=='production':need(dict(domains)==PRODUCTION_DOMAINS, 'production row domains differ')
@@ -341,6 +507,14 @@ def _validate(spec, spec_sha, mode, db):
             'complete_sidecars_reopened':mode=='complete','old_retained_sidecars_reopened':True,
             'formal_runtime_admitted':False,'training_or_evaluation_eligibility_released':False,
             'GPU_executed':False,'source_audio_rehashed':False,'platform_authentication_performed':False}
+    report.update(source_identity_mode=spec.get('source_identity_mode',STRICT_SOURCE_MODE),
+                  portable_source_ledger_verified=portable is not None,
+                  portable_source_evidence_count=portable['count'] if portable else 0,
+                  portable_sidecar_inventory_verified=portable is not None and 'inventory'in portable,
+                  upstream_encoded_content_verified_count=portable['verified']['encoded_content_verified'] if portable else 0,
+                  historical_decode_failure_not_content_verified_count=portable['verified']['historical_decode_failure_preserved_not_content_verified'] if portable else 0,
+                  fresh_media_scope=PORTABLE_FRESH_SCOPE if portable else None,
+                  completed_media_scope=PORTABLE_COMPLETED_SCOPE if portable else None)
     if mode=='complete':
         # 消费千万条时按原顺序流式读取，避免每轮再对全表排序。
         db.execute('CREATE INDEX source_sequence ON sources(shard,row_number)')
@@ -352,7 +526,7 @@ def _validate(spec, spec_sha, mode, db):
 def validate_union(spec_path, spec_sha, mode='plan', *, output_index=None):
     spec=ref({'path':str(spec_path),'sha256':spec_sha})
     def build(path):
-        db=sqlite3.connect(str(path));db.execute('PRAGMA journal_mode=DELETE');db.execute('PRAGMA synchronous=FULL')
+        db=sqlite3.connect(str(path),uri=True);db.execute('PRAGMA journal_mode=DELETE');db.execute('PRAGMA synchronous=FULL')
         db.execute('PRAGMA temp_store=FILE');db.execute('PRAGMA cache_size=-8192')
         try:return _validate(spec,spec_sha,mode,db)
         finally:db.close()
@@ -361,6 +535,8 @@ def validate_union(spec_path, spec_sha, mode='plan', *, output_index=None):
             return build(Path(tmp)/'consumer.sqlite')
     output=physical(output_index);need(not output.exists() and output.parent.is_dir(),'consumer index must be a new external file')
     protected=[physical(spec['full_index']['path']).parent,physical(spec['continuation_plan']['path']).parent]
+    for key in ('portable_source_spec_ref','portable_source_ledger_ref','portable_sidecar_inventory_ref'):
+        if key in spec:protected.append(physical(spec[key]['path']).parent)
     for p in (spec['old_producer'],spec['new_producer']):protected.extend([physical(p['queue_root']),physical(p['sidecar_tree']),physical(p['contract']['path']).parent])
     need(all(output!=p and p not in output.parents for p in protected),'consumer index overlaps producer input/output tree')
     fd,tmp=tempfile.mkstemp(prefix='.consumer-building-',suffix='.sqlite',dir=output.parent);os.close(fd)
