@@ -25,12 +25,14 @@ if __package__:
         existing_lock, frozen_bundle, frozen_roots, ref_unpinned, legacy_media_path)
     from .readonly_progress import inspect_progress
     from .freeze_legacy_successor import BUNDLE_SHA256, ENGINE_MODULES, LEGACY_RUNTIME
+    from .verify_portable_successor_mounts import validate_output_namespaces
     from ..task_names import validate_task_name
 else:
     from resume_existing_annotation import (physical, ref, pinned_file, file_sha, write_new,
         existing_lock, frozen_bundle, frozen_roots, ref_unpinned, legacy_media_path)
     from readonly_progress import inspect_progress
     from freeze_legacy_successor import BUNDLE_SHA256, ENGINE_MODULES, LEGACY_RUNTIME
+    from verify_portable_successor_mounts import validate_output_namespaces
     if not (Path(__file__).resolve().parent/'task_names.py').is_file():
         sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
     from task_names import validate_task_name
@@ -233,6 +235,7 @@ def inputs(spec):
     need(union['new_producer']['queue_root']==str(queue) and
          union['new_producer']['sidecar_tree']==str(labels/newc['version']), 'new producer output namespace differs')
     evidence=physical(spec['evidence_root'])
+    validate_output_namespaces(old,freeze,union,run,evidence,controller_root=Path(__file__).resolve().parent)
     need(not evidence.exists() and evidence.parent.is_dir() and all(evidence!=p and p not in evidence.parents and
          evidence not in p.parents for p in (run,oldrun,code,physical(old['code_root']))), 'fresh disjoint execution evidence required')
     for field,name in (('old_broker','broker.json'),('old_completion_map','completion_map.bin'),('old_queue_identity','identity.json')):
@@ -251,7 +254,11 @@ def inputs(spec):
           '--shard-index',union['new_producer']['index']['path'],'--index-sha',union['new_producer']['index']['sha256'],
           '--queue-root',str(queue),'--output-root',str(labels),'--output',str(resources),'--target-uuids','auto8',
           '--memory-budget-mib','60000','--max-runtime-seconds','2592000']
-    return {'old':old,'freeze':freeze,'union':union,'plan':plan,'data':data,'checks':checks,'gpu_command':argv,
+    mount_checker=Path(__file__).resolve().with_name('verify_portable_successor_mounts.py')
+    mount_pin={'path':str(mount_checker),'sha256':file_sha(mount_checker)}
+    return {'old':old,'freeze':freeze,'union':union,'plan':plan,'data':data,'checks':[checks[0]],
+        'check_sources':[old['checks'][0]['script'],mount_pin],'historical_mount_check':checks[1],
+        'portable_mount_checker':mount_pin,'gpu_command':argv,
         'current_old_parent_lock':{'path':str(oldq/'.parent.lock'),'device':current.st_dev,'inode':current.st_ino},
         'historical_preparation_lock':historic_lock,'runtime_mount_gate_still_required':True,
         'new_run_root':str(run),'new_resources':str(resources),'GPU_started':False,'new_GPU_acceptance_inherited':False}
@@ -260,6 +267,9 @@ def inputs(spec):
 def recheck(spec,checked,semantic_fd,queue_fd,*,owned_claim=None,run_identity=None):
     """门后/启动前重核旧与新可执行件和数据证明，当前锁用当前FD身份核验。"""
     old=checked['old'];frozen_bundle(old)
+    validate_output_namespaces(old,checked['freeze'],checked['union'],checked['new_run_root'],spec['evidence_root'],
+                               controller_root=Path(__file__).resolve().parent)
+    pinned_file(checked['portable_mount_checker'])
     legacy_media_path(old,None);platform_observation(spec['current_platform_observation'],old)
     frozen_bundle({'code_root':checked['freeze']['code_root'],'bundle':checked['freeze']['bundle']})
     pinned_file(old['original_launcher']);verify_python(old)
@@ -312,6 +322,8 @@ def run(path,pin,*,execute=False,runner=None):
     need(runner is None or spec.get('purpose')=='cpu_fixture','synthetic runner may only execute CPU fixtures')
     need(not execute or spec.get('purpose')=='production' or runner is not None,'CPU fixture cannot call real commands')
     checked=inputs(spec)
+    checked['checks'].append([checked['old']['python'],'-B',checked['portable_mount_checker']['path'],
+                              '--spec',str(path),'--spec-sha',pin])
     if not execute:return {'schema':'annotation-portable-successor-check/v1','passed':True,
         'data_scope':'fixed production union plan, not complete labels','current_old_parent_lock':checked['current_old_parent_lock'],
         'historical_preparation_lock':checked['historical_preparation_lock'],'GPU_started':False,'runtime_admitted':False}
@@ -322,7 +334,7 @@ def run(path,pin,*,execute=False,runner=None):
     try:
         with existing_lock(old['semantic_lock'])as semantic_fd:
             for ordinal,argv in enumerate(checked['checks']):
-                pinned_file(old['checks'][ordinal]['script'])
+                pinned_file(checked['check_sources'][ordinal])
                 verify_python(old)
                 rc=invoked(argv,evidence/('old-profile-check-%d.log'%ordinal),(semantic_fd,))
                 need(type(rc)is int and rc==0,'historical profile/mount gate failed')

@@ -6,6 +6,8 @@
 from __future__ import annotations
 import argparse
 import collections
+import contextlib
+from concurrent.futures import ThreadPoolExecutor
 import datetime
 import hashlib
 import json
@@ -13,13 +15,14 @@ import os
 from pathlib import Path
 import sqlite3
 import tempfile
+import time
 import sys
 from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from contracts import digest, job_key, model_provenance
 from readonly_progress import read_small, strict_json, inspect_progress, open_readonly
-from prepare_speed_continuation import physical, child, old_parent_lock, read_json_lines
+from prepare_speed_continuation import physical, child, old_parent_lock, read_json_lines, source_roles
 from schema import assert_valid_record
 from source_registry import source_id
 from work_queue import decode_completion_slot, SLOT_BYTES
@@ -27,10 +30,20 @@ from work_queue import decode_completion_slot, SLOT_BYTES
 SCHEMA = 'annotation-union-coverage/v1'
 PRODUCTION_COUNT = 11521178
 PRODUCTION_DOMAINS = {'voxceleb2': 1092009, 'voxblink2': 9904382, 'cnceleb2': 524787}
+MAX_RETAINED_READ_WORKERS = 4
+MAX_RETAINED_READ_BATCH = 256
 
 
 def need(ok, message):
     if not ok: raise ValueError(message)
+
+
+def retained_read_workers(spec):
+    """显式纯读容量；缺省保持串行，bool/float/字符串都不能充整数。"""
+    workers=spec.get('retained_read_workers',1)
+    need(type(workers)is int and 1<=workers<=MAX_RETAINED_READ_WORKERS,
+         'retained_read_workers must be an explicit integer in 1..4')
+    return workers
 
 
 def sha_file(path):
@@ -124,7 +137,7 @@ def read_result(source, value, expected_record_sha=None, expected_commit_sha=Non
 
 
 def _complete_chunk(index_pin, descriptor, ordinal, queue, producer_value, rows, expected_chunk_sha=None,
-                    expected_slot_sha=None, *, contract):
+                    expected_slot_sha=None, *, contract, read_executor=None, read_stats=None):
     fd=open_readonly(physical(queue/'completion_map.bin'))
     try:raw=os.pread(fd,SLOT_BYTES,ordinal*SLOT_BYTES)
     finally:os.close(fd)
@@ -145,16 +158,35 @@ def _complete_chunk(index_pin, descriptor, ordinal, queue, producer_value, rows,
     need(len(receipts) == len(chunk['sources']) == len(rows) and set(receipts) == {s['source_id'] for s in rows}, 'chunk source coverage differs')
     need(digest(sorted(receipts)) == slot['source_ids_sha256'], 'chunk source ID digest differs')
     decisions = collections.Counter()
-    for source in rows:
-        receipt = receipts[source['source_id']]
-        record, record_sha, commit_sha = read_result(source, producer_value,
-            receipt['sidecar_sha256'], receipt['commit_sha256'], contract=contract)
-        need(receipt['job_key'] == job_key(source,producer_value['contract']['sha256']) and
-             receipt['sidecar_relpath'] == source['sidecar_relpath'] and
-             receipt['sidecar_bytes'] == child(Path(producer_value['sidecar_tree']),source['sidecar_relpath']).stat().st_size and
-             receipt['decision'] == record['decision']['state'], 'chunk per-source receipt differs')
-        decisions[record['decision']['state']] += 1
-        yield source, record_sha, commit_sha, record['decision']['state']
+    def read_one(source):
+        # 线程内只做独立文件读取/解析/校验，不触SQLite、进度、选择集合，不修改共享合同。
+        receipt=receipts[source['source_id']]
+        record,record_sha,commit_sha=read_result(source,producer_value,
+            receipt['sidecar_sha256'],receipt['commit_sha256'],contract=contract)
+        return record_sha,commit_sha,record['decision']['state']
+    for start in range(0,len(rows),MAX_RETAINED_READ_BATCH):
+        batch=rows[start:start+MAX_RETAINED_READ_BATCH]
+        if read_executor is None:
+            results=map(read_one,batch)
+            if read_stats is not None:read_stats['max_submitted_batch']=max(read_stats['max_submitted_batch'],int(bool(batch)))
+        else:
+            if read_stats is not None:read_stats['max_submitted_batch']=max(read_stats['max_submitted_batch'],len(batch))
+            try:
+                # map按source原序返回。每批最多256个小结果，整片结束才提交下一片。
+                results=list(read_executor.map(read_one,batch))
+            except BaseException:
+                # 失败必须在调用者仍持旧父锁时排空/取消此pool，不能先放锁再留后台读取。
+                read_executor.shutdown(wait=True,cancel_futures=True)
+                raise
+        for source,(record_sha,commit_sha,decision)in zip(batch,results):
+            receipt=receipts[source['source_id']]
+            need(receipt['job_key']==job_key(source,producer_value['contract']['sha256']) and
+                 receipt['sidecar_relpath']==source['sidecar_relpath'] and
+                 receipt['sidecar_bytes']==child(Path(producer_value['sidecar_tree']),source['sidecar_relpath']).stat().st_size and
+                 receipt['decision']==decision,'chunk per-source receipt differs')
+            decisions[decision]+=1
+            if read_stats is not None:read_stats['old_completed_source_reads']+=1
+            yield source,record_sha,commit_sha,decision
     need({k:decisions[k] for k in ('candidate','unknown','failed')} == slot['decision_counts'], 'chunk decision count differs')
 
 
@@ -374,7 +406,15 @@ def _select_old_source(db,source,expected,old,tree,contract,portable=None):
     return record['decision']['state']
 
 
-def _validate(spec, spec_sha, mode, db):
+def _validate(spec, spec_sha, mode, db, progress=None, retained_executor=None):
+    workers=retained_read_workers(spec)
+    read_stats={'max_submitted_batch':0,'old_completed_source_reads':0}
+    last_progress=[0.]
+    def emit(stage,force=False,**counts):
+        now=time.monotonic()
+        if progress is not None and (force or now-last_progress[0]>=30):
+            progress({'schema':'annotation-union-progress/v1','stage':stage,**counts});last_progress[0]=now
+    emit('started',True,full_rows_checked=0,retained_sources_checked=0,remaining_rows_checked=0)
     need(mode in {'plan','complete'}, 'unknown union mode')
     need(spec.get('schema') == SCHEMA and spec.get('purpose') in {'production','cpu_fixture'}, 'wrong union schema/purpose')
     need(spec.get('selection_policy') == 'old_retained_else_new_remaining', 'explicit source selection policy required')
@@ -430,6 +470,7 @@ def _validate(spec, spec_sha, mode, db):
         state=old_progress['broker_snapshot'];expected_retained={s['id'] for i,s in enumerate(full['shards'])
             if i<state['next'] and s['id'] not in state['leases']}
         need(set(retained_chunks)==expected_retained,'final plan omits/adds completed old chunks')
+        emit('original_full_and_retained',True,full_rows_checked=0,retained_sources_checked=0,remaining_rows_checked=0)
         for ordinal,descriptor,rows in shards(full,spec['full_index']['path']):
             for number,source in enumerate(rows):
                 if spec['purpose']=='production':need(set(source.get('roles',[])) and
@@ -442,9 +483,11 @@ def _validate(spec, spec_sha, mode, db):
                 expected=retained_chunks.pop(descriptor['id'])
                 need(all(expected.get(k)==descriptor.get(k) for k in ('id','path','count','sha256')), 'retained shard descriptor differs')
                 for source,rs,cs,decision in _complete_chunk(spec['full_index']['sha256'],descriptor,ordinal,oq,old,rows,
-                        expected['chunk_receipt_sha256'],expected['completion_slot_sha256'],contract=oldc):
+                        expected['chunk_receipt_sha256'],expected['completion_slot_sha256'],contract=oldc,
+                        read_executor=retained_executor,read_stats=read_stats):
                     db.execute('UPDATE sources SET selected=?,record_sha=?,commit_sha=?,decision=? WHERE sid=?',(old['id'],rs,cs,decision,source['source_id']))
                     retained+=1;decisions[decision]+=1
+                    emit('original_full_and_retained',full_rows_checked=total,retained_sources_checked=retained,remaining_rows_checked=0)
             for source in rows:
                 extra=db.execute('SELECT value FROM retained_extras WHERE sid=?',(source['source_id'],)).fetchone()
                 kind=('completed'if descriptor['id']in expected_retained else
@@ -456,11 +499,13 @@ def _validate(spec, spec_sha, mode, db):
                          'partial retained source is duplicated or not from a leased shard')
                     decision=_select_old_source(db,source,expected,old,ot,oldc,portable)
                     retained+=1;decisions[decision]+=1
+                    emit('original_full_and_retained',full_rows_checked=total,retained_sources_checked=retained,remaining_rows_checked=0)
                 elif extra is not None:
                     need(ordinal>=state['next'],'unclaimed retained source is not in an unclaimed shard')
                     decision=_select_old_source(db,source,strict_json(extra[0]),old,ot,oldc,portable)
                     db.execute('DELETE FROM retained_extras WHERE sid=?',(source['source_id'],))
                     retained+=1;decisions[decision]+=1
+                    emit('original_full_and_retained',full_rows_checked=total,retained_sources_checked=retained,remaining_rows_checked=0)
                 elif descriptor['id'] not in expected_retained and not inventory_used:
                     # 包括未领取片中的预置旧结果。不能因准备器未列出而重新推理。
                     old_path=child(ot,source['sidecar_relpath'])
@@ -469,6 +514,7 @@ def _validate(spec, spec_sha, mode, db):
                     need(not old_path.exists() and not old_commit.exists(),
                          'final plan omits an already published/orphan old source')
             db.commit()
+            emit('original_full_and_retained',full_rows_checked=total,retained_sources_checked=retained,remaining_rows_checked=0)
         need(not retained_chunks and not partial, 'retained source/chunk absent from full index')
         _inventory_finished(db,portable,total)
         if portable is not None:
@@ -478,10 +524,12 @@ def _validate(spec, spec_sha, mode, db):
         need(total==full['source_count'] and dict(domains)==full.get('domains'), 'original full domain counts differ')
         if spec['purpose']=='production':need(dict(domains)==PRODUCTION_DOMAINS, 'production row domains differ')
         if mode=='complete':
-            progress=inspect_progress(new['index']['path'],new['index']['sha256'],nq,new['contract']['sha256'])
-            need(progress['committed_source_lower_bound']==remaining_index['source_count'] and progress['snapshot_leased_chunks_excluded']==0,
+            new_progress=inspect_progress(new['index']['path'],new['index']['sha256'],nq,new['contract']['sha256'])
+            need(new_progress['committed_source_lower_bound']==remaining_index['source_count'] and new_progress['snapshot_leased_chunks_excluded']==0,
                  'new remaining producer not complete')
-            new_broker=progress['broker_snapshot_sha256']
+            new_broker=new_progress['broker_snapshot_sha256']
+        remaining_roles=collections.Counter()
+        emit('remaining_inputs',True,full_rows_checked=total,retained_sources_checked=retained,remaining_rows_checked=0)
         for ordinal,descriptor,rows in shards(remaining_index,new['index']['path']):
             proofs={}
             if mode=='complete':proofs={s['source_id']:(rs,cs,d) for s,rs,cs,d in _complete_chunk(new['index']['sha256'],descriptor,ordinal,nq,new,rows,contract=newc)}
@@ -492,15 +540,31 @@ def _validate(spec, spec_sha, mode, db):
                 rs,cs,d=proofs.get(source['source_id'],(None,None,None))
                 db.execute('UPDATE sources SET selected=?,record_sha=?,commit_sha=?,decision=? WHERE sid=?',(new['id'],rs,cs,d,source['source_id']))
                 remaining+=1
+                if portable is not None:remaining_roles.update(source_roles(source))
+                emit('remaining_inputs',full_rows_checked=total,retained_sources_checked=retained,remaining_rows_checked=remaining)
                 if d is not None:decisions[d]+=1
             db.commit()
         need(retained==plan['retained_source_count'] and remaining==plan['remaining_source_count']==remaining_index['source_count'], 'plan retained/remaining counts differ')
         missing=db.execute('SELECT COUNT(*) FROM sources WHERE selected IS NULL').fetchone()[0]
         need(missing==0 and retained+remaining==total, 'union leaves missing sources')
+        if portable is not None and (spec['purpose']=='production' or 'role_union_counts'in remaining_index):
+            measured={role:remaining_roles[role]for role in ('train_ptn','train_lm')}
+            need(remaining_index.get('role_union_counts')==measured and
+                 remaining_index.get('role_union_counts_scope')=='remaining_index_sources',
+                 'remaining role aggregate differs from actual remaining sources')
+            if spec['purpose']=='production':
+                need(measured['train_ptn']==remaining and remaining_index.get('parent_role_union_counts')==full.get('role_union_counts') and
+                     remaining_index.get('role_union_counts_parent_index')==spec['full_index'],
+                     'remaining role aggregate lacks original full scope binding')
         _,broker_after=read_json(oq/'broker.json');need(broker_after==broker_before,'old writer changed during union validation')
         if mode=='complete':need(read_json(nq/'broker.json')[1]==new_broker,'new producer changed during complete validation')
     report={'schema':'annotation-union-validation/v1','spec_sha256':spec_sha,'mode':mode,'purpose':spec['purpose'],
             'source_count':total,'retained_source_count':retained,'remaining_source_count':remaining,
+            'retained_read_workers':workers,'retained_read_executor':'thread_pool'if workers>1 else'serial',
+            'retained_read_scope':'old_completed_chunks_only',
+            'retained_read_submission_limit':MAX_RETAINED_READ_BATCH if workers>1 else 1,
+            'retained_read_max_submitted_batch':read_stats['max_submitted_batch'],
+            'retained_completed_source_reads':read_stats['old_completed_source_reads'],
             'domains':dict(domains),'decision_counts':{k:decisions[k]for k in ('candidate','unknown','failed')},
             'decision_count_scope':'all_selected' if mode=='complete' else 'retained_only',
             'exact_union_and_disjoint':True,
@@ -520,15 +584,22 @@ def _validate(spec, spec_sha, mode, db):
         db.execute('CREATE INDEX source_sequence ON sources(shard,row_number)')
     for key,value in {'spec':spec,'spec_sha256':spec_sha,'validation':report}.items():
         db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value,sort_keys=True,ensure_ascii=False)))
-    db.commit();return report
+    db.commit();emit('completed',True,full_rows_checked=total,retained_sources_checked=retained,remaining_rows_checked=remaining)
+    return report
 
 
-def validate_union(spec_path, spec_sha, mode='plan', *, output_index=None):
+def validate_union(spec_path, spec_sha, mode='plan', *, output_index=None, progress=None):
     spec=ref({'path':str(spec_path),'sha256':spec_sha})
+    workers=retained_read_workers(spec)
+    if progress is None and spec.get('purpose')=='production':
+        progress=lambda event:print(json.dumps(event,ensure_ascii=False),file=sys.stderr,flush=True)
     def build(path):
         db=sqlite3.connect(str(path),uri=True);db.execute('PRAGMA journal_mode=DELETE');db.execute('PRAGMA synchronous=FULL')
         db.execute('PRAGMA temp_store=FILE');db.execute('PRAGMA cache_size=-8192')
-        try:return _validate(spec,spec_sha,mode,db)
+        try:
+            pool=(ThreadPoolExecutor(max_workers=workers,thread_name_prefix='retained-sidecar-read')
+                  if workers>1 else contextlib.nullcontext(None))
+            with pool as executor:return _validate(spec,spec_sha,mode,db,progress,executor)
         finally:db.close()
     if output_index is None:
         with tempfile.TemporaryDirectory(prefix='annotation-union-readonly-audit-') as tmp:

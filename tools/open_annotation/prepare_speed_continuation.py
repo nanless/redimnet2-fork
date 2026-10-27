@@ -90,6 +90,14 @@ def write_new(path, value):
     return byte_sha(data)
 
 
+def source_roles(source):
+    """按来源并集计角色；PTN与LM可重叠，拒绝重复或未知角色。"""
+    roles=source.get('roles')
+    need(isinstance(roles,list) and roles and all(isinstance(r,str)for r in roles) and
+         len(roles)==len(set(roles)) and set(roles)<={'train_ptn','train_lm'},'invalid/duplicate training source roles')
+    return roles
+
+
 def old_job_key(source, contract_sha):
     return digest({'source_id': source['source_id'], 'source_record_sha256': digest(source),
                    'contract_sha256': contract_sha})
@@ -442,7 +450,7 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
                 os.rename(scratch/'portable-sidecar-inventory.sqlite',inventory_path)
                 report['portable_sidecar_inventory_ref']={'path':str(inventory_path),'sha256':file_sha(inventory_path)}
                 report['portable_sidecar_inventory_summary']=inventory_summary
-            partial = dict(partial_rows); descriptors = []; domains = collections.Counter()
+            partial = dict(partial_rows); descriptors = []; domains = collections.Counter(); roles=collections.Counter()
             if portable is not None:
                 portable_progress('remaining_write_started',{'remaining_shards_total':len(plan['remaining_shards']),
                     'remaining_source_count':plan['remaining_source_count']});last_progress=time.monotonic()
@@ -462,6 +470,7 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
                 if 'source_ids_sha256' in descriptor:
                     need(digest(sorted(s['source_id'] for s in rows)) == descriptor['source_ids_sha256'], 'remaining source-ID digest differs')
                 domains.update(s['dataset'] for s in rows)
+                for source in rows:roles.update(source_roles(source))
                 write_new(child(output, descriptor['path']), data); descriptors.append(descriptor)
                 if item['mode']=='new_unclaimed_shard':(scratch/(descriptor['id']+'.jsonl')).unlink()
                 if portable is not None and time.monotonic()-last_progress>=30:
@@ -474,7 +483,12 @@ def prepare(index_path, index_sha, queue, old_contract_path, contract_sha, tree,
                  'broker changed before remaining index publication')
             new_index = {**index, 'source_count':plan['remaining_source_count'], 'shards':descriptors, 'domains':dict(domains),
                 'parent_full_index':{'path':str(index_path),'sha256':index_sha},
-                'coverage_plan_file':'coverage-plan.json', 'source_count_is_remaining_not_full':True}
+                'coverage_plan_file':'coverage-plan.json', 'source_count_is_remaining_not_full':True,
+                'role_union_counts':{role:roles[role]for role in ('train_ptn','train_lm')},
+                'role_union_counts_scope':'remaining_index_sources'}
+            if 'role_union_counts'in index:
+                new_index['parent_role_union_counts']=index['role_union_counts']
+                new_index['role_union_counts_parent_index']={'path':str(index_path),'sha256':index_sha}
             if descriptors:
                 report['remaining_index'] = {'path':str(output/'index.json'),
                     'sha256':write_new(output/'index.json', new_index)}

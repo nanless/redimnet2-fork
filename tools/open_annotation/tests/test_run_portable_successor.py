@@ -318,3 +318,59 @@ class PortableSuccessorTests(unittest.TestCase):
         self.f.spec['union_attestation']=pin(self.f.att);self.f.refresh()
         with self.assertRaisesRegex(ValueError,'unique-source table'):self.f.run(True,self.f.fake)
         self.assertEqual(self.f.calls,[])
+
+    def test_execution_keeps_W2_but_replaces_old_fresh_mount_command_with_new_spec(self):
+        oldmount=Path(self.f.f.spec['checks'][1]['script']['path']);before=oldmount.read_bytes()
+        self.f.run(True,self.f.fake)
+        self.assertEqual(self.f.calls[0],[self.f.f.spec['python'],'-B',self.f.f.spec['checks'][0]['script']['path'],
+            *self.f.f.spec['checks'][0]['args']])
+        mount=self.f.calls[1]
+        self.assertEqual(Path(mount[2]).name,'verify_portable_successor_mounts.py')
+        self.assertEqual(mount[mount.index('--spec')+1],str(self.f.path))
+        self.assertEqual(mount[mount.index('--spec-sha')+1],self.f.sha)
+        self.assertNotIn(str(oldmount),[x for command in self.f.calls for x in command])
+        self.assertEqual(oldmount.read_bytes(),before)
+
+    def _rebind_newrun(self,path):
+        self.f.newrun=Path(path);self.f.spec['new_run_root']=str(path)
+        self.f.union_value['new_producer']['queue_root']=str(Path(path)/'queue')
+        self.f.union_value['new_producer']['sidecar_tree']=str(Path(path)/'labels/new-v2')
+        self.f.union.write_bytes(R.canonical(self.f.union_value));self.f.validation['spec_sha256']=R.file_sha(self.f.union)
+        self.f.rebuild_attestation();self.f.spec['union_spec']=pin(self.f.union);self.f.spec['union_attestation']=pin(self.f.att);self.f.refresh()
+    def test_rebound_new_run_inside_original_frozen_code_is_refused(self):
+        before=self.f.snapshot();self._rebind_newrun(self.f.f.code/'mistyped-new-run')
+        with self.assertRaisesRegex(ValueError,'namespace'):self.f.run()
+        self.assertEqual(before,self.f.snapshot());self.assertFalse(self.f.newrun.exists())
+    def test_rebound_new_run_inside_original_control_or_claim_directory_is_refused(self):
+        for directory in (self.f.f.control,Path(self.f.f.spec['semantic_lock']).parent):
+            with self.subTest(directory=str(directory)):
+                self._rebind_newrun(directory/'mistyped-new-run')
+                with self.assertRaisesRegex(ValueError,'namespace'):self.f.run()
+                self.assertFalse(self.f.newrun.exists())
+    def test_new_run_cannot_be_sibling_of_code_inside_frozen_package(self):
+        package=self.f.f.task/'frozen-package';package.mkdir();code=package/'code';shutil.move(self.f.code,code)
+        self.f.code=code;self.f.freeze_value['code_root']=str(code);self.f.freeze_value['bundle']=pin(code/'bundle_files.json')
+        self.f.freeze.write_bytes(R.canonical(self.f.freeze_value));self.f.spec['freeze_receipt']=pin(self.f.freeze)
+        self._rebind_newrun(package/'wrong-run')
+        with self.assertRaisesRegex(ValueError,'namespace'):self.f.run()
+        self.assertFalse(self.f.newrun.exists())
+    def test_evidence_cannot_write_old_inputs_controls_claims_or_controller_source(self):
+        roots=(self.f.f.base.inputs,self.f.f.control,Path(self.f.f.spec['semantic_lock']).parent,HERE)
+        for directory in roots:
+            with self.subTest(directory=str(directory)):
+                self.f.spec['evidence_root']=str(directory/('forbidden-'+self.f.root.name));self.f.refresh()
+                with self.assertRaisesRegex(ValueError,'namespace'):self.f.run()
+                self.assertFalse(Path(self.f.spec['evidence_root']).exists())
+    def test_namespace_guard_protects_dedicated_remaining_input_directory(self):
+        from verify_portable_successor_mounts import validate_output_namespaces
+        union=copy.deepcopy(self.f.union_value);directory=self.f.f.task/'remaining-inputs';directory.mkdir()
+        union['new_producer']['index']={'path':str(directory/'index.json'),'sha256':'a'*64}
+        with self.assertRaisesRegex(ValueError,'namespace'):
+            validate_output_namespaces(self.f.f.spec,self.f.freeze_value,union,directory/'new-run',self.f.evidence,controller_root=HERE)
+        with self.assertRaisesRegex(ValueError,'namespace'):
+            validate_output_namespaces(self.f.f.spec,self.f.freeze_value,union,self.f.newrun,directory/'evidence',controller_root=HERE)
+
+    def test_evidence_cannot_write_into_original_shared_input_tree(self):
+        self.f.spec['evidence_root']=str(Path(self.f.f.spec['legacy_source_alias']['target_path'])/'forbidden-evidence');self.f.refresh()
+        with self.assertRaisesRegex(ValueError,'namespace'):self.f.run()
+        self.assertFalse(Path(self.f.spec['evidence_root']).exists())

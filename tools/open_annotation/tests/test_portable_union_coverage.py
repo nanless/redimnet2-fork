@@ -2,6 +2,7 @@
 import copy
 import datetime
 import json
+import itertools
 import sqlite3
 from pathlib import Path
 import sys
@@ -108,6 +109,16 @@ class PortableUnionTests(unittest.TestCase):
             rows=list(reader.iter_selected_sources())
         self.assertEqual([r['producer_id']for r in rows],['old']*3+['new']*3)
         self.assertEqual(before,self.x.f.old_snapshot());self.assertEqual(r['source_count'],6)
+    def test_union_progress_has_phases_and_low_frequency_actual_counters(self):
+        events=[];ticks=itertools.count(0,31)
+        with patch.object(U.time,'monotonic',side_effect=lambda:next(ticks)):
+            report=U.validate_union(self.x.f.spec_path,self.x.f.spec_sha,'plan',progress=events.append)
+        self.assertEqual(events[0]['stage'],'started');self.assertEqual(events[-1]['stage'],'completed')
+        self.assertGreater(len(events),4)
+        self.assertEqual(events[-1]['full_rows_checked'],report['source_count'])
+        self.assertEqual(events[-1]['retained_sources_checked'],report['retained_source_count'])
+        self.assertEqual(events[-1]['remaining_rows_checked'],report['remaining_source_count'])
+
     def test_cloud_gate_is_only_data_readiness_and_retains_full_denominator(self):
         r=G.check_union_data(self.x.f.spec_path,self.x.f.spec_sha,'plan')
         self.assertTrue(r['data_checks_passed']);self.assertEqual(r['original_full_source_count'],6)

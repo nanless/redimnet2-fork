@@ -53,7 +53,7 @@ plan要求新鲜终态、旧父锁与broker稳定，核分工和旧保留结果�
 
 显式新外部消费索引按不覆盖方式发布并给SHA。`UnionConsumer(spec_path,spec_sha,database_path,database_sha)`上下文只读数据库，核complete/spec绑定，按原分片与source摘要选定原producer并重开原侧车/commit。批量读取复用一个上下文，避免每源重新哈希整库；不按mtime猜版本，资格恒false。数据库或来源改变就拒绝或重新核验。全部旧保留时不造后继，走旧全量终验。
 
-最终准备、联合plan与complete均非轻量进度巡检：会产生全库文本/元数据、旧结果读取和磁盘数据库开销。只在真实交接或终验边界执行；本轮未扫描真实全库，不宣称重新核音频SHA。正在运行使用readonly_progress。
+最终准备、联合plan与complete均非轻量进度巡检：会产生全库文本/元数据、旧结果读取和磁盘数据库开销。只在真实交接或终验边界执行；该工具最初的CPU实现记录没有扫描真实全库，不能外推真实音频SHA。10月27日后续现场准备与联合检查另见`docs/reviews/2026-10-27-跨节点标注恢复实测.md`，逐项区分来源文本、侧车内容和媒体内容证明。正在运行使用readonly_progress。
 
 ## 跨引擎审计与新阶段恢复
 
@@ -88,3 +88,7 @@ plan要求新鲜终态、旧父锁与broker稳定，核分工和旧保留结果�
 旧实际生产代码是23文件、13计算模块，源快照在`legacy_snapshots/production_20261025`；新冻结器只改合同version，旧时钟v1和所有模型/源码/FP32单窗条件不变。当前一般冻结器是14模块和v2时钟，不能混用。继承的只是同一计算profile的历史证据，新八worker、设备和首片必须现场重新验收。
 
 真实CPU准备/union在同节点核计划锁的device/inode。新云运行器消费固定production plan证明和SQLite完整SHA（不是complete标签库），另取得当前真实旧语义锁/旧queue锁；历史路径与inode保持，历史和当前device分别记录。原broker及完整completion map重核，FD交给原GPU父进程直至精确清理结束。新运行观察必须真实且一小时内，旧历史观察不改时间。已有永久lineage claim或失败证据不能删除重跑；先查实际任务。相关代码通过953项完整CPU回归，真实当前状态须读新实测报告，不以该数字授GPU或人工质量结论。
+
+后续复审发现，c4a时的剩余索引继承原全库角色数，实际PTN/LM用途逐源未变，但聚合统计错误。未来准备器直接数真实remaining roles；已有v1用`finalize_remaining_roles.py`另发`index-roles-v2.json`、`coverage-plan-roles-v2.json`及收据。只读原分片、账本和目录库，不读取媒体；所有旧SHA保留。PTN/LM角色可重叠，不按比例估计LM数量。原version、过滤器SHA和raw-line政策等继承项只是父级历史声明，元数据定稿不把它们改称新测结果；分片不变仅指相对v1。正式portable union还按实际remaining逐行重计角色一致。
+
+原`verify_ultra_cloud_mounts_v2.py`是首次启动检查，旧run已存在时必然拒绝。恢复入口保留其SHA和原admission，不改原件；仍执行原W2历史质量门，实际挂载改用`verify_portable_successor_mounts.py`绑定新spec核精确GPFS source/target、用户RW、共享RO、明确别名、实际控制/输入/模型资产位置和全新独立run。默认CPU检查或模拟findmnt不证明云端挂载已通过。部署源码修改后必须新建控制源目录，不热改已部署版本；新run及证据应与旧源码、原输入、新输入、控制目录和旧声明目录互不包含。GPU前仍由原父进程核模型完整SHA、设备双快照和持续独占；全库complete终验仍在满足计划锁身份的准备节点执行。
