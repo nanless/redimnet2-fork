@@ -297,6 +297,62 @@ class PortableSuccessorTests(unittest.TestCase):
         self._reject_rebound_database('INSERT INTO sources VALUES(?,?,?,?,?,?,?,?,?)',('src_'+'f'*64,'a'*64,3,0,'fixture/extra.annotation.json','new',None,None,None))
     def test_plan_wrong_producer_is_refused_even_when_rebound(self):
         self._reject_rebound_database("UPDATE sources SET selected='foreign' WHERE sid=(SELECT sid FROM sources LIMIT 1)")
+    def test_plan_null_producer_is_refused_even_when_rebound(self):
+        self._reject_rebound_database("UPDATE sources SET selected=NULL WHERE sid=(SELECT sid FROM sources LIMIT 1)")
+    def test_plan_unknown_producer_is_refused_even_when_rebound(self):
+        self._reject_rebound_database("UPDATE sources SET selected='unknown' WHERE sid=(SELECT sid FROM sources LIMIT 1)")
+    def test_plan_additional_foreign_producer_is_not_hidden_by_correct_old_new_counts(self):
+        # 旧/新计数仍恰好各3条；总数检查必须拒绝第三组，不能只核两项条件和。
+        self._reject_rebound_database('INSERT INTO sources VALUES(?,?,?,?,?,?,?,?,?)',
+            ('src_'+'f'*64,'a'*64,3,0,'fixture/extra.annotation.json','foreign',None,None,None))
+    def test_plan_additional_null_producer_is_not_hidden_by_correct_old_new_counts(self):
+        self._reject_rebound_database('INSERT INTO sources VALUES(?,?,?,?,?,?,?,?,?)',
+            ('src_'+'f'*64,'a'*64,3,0,'fixture/extra.annotation.json',None,None,None,None))
+    def test_plan_producer_match_cannot_inherit_nocase_or_rtrim_column_collation(self):
+        for collation,alias in (('NOCASE','OLD'),('RTRIM','old ')):
+            with self.subTest(collation=collation):
+                self.f.rebuild_attestation()
+                with sqlite3.connect(str(self.f.db))as database:
+                    database.execute('ALTER TABLE sources RENAME TO original_sources')
+                    database.execute('CREATE TABLE sources(sid TEXT PRIMARY KEY,source_sha TEXT,shard INTEGER,'
+                        'row_number INTEGER,relative TEXT,selected TEXT COLLATE '+collation+',record_sha TEXT,commit_sha TEXT,decision TEXT)')
+                    database.execute('INSERT INTO sources SELECT * FROM original_sources')
+                    database.execute('DROP TABLE original_sources')
+                self._reject_rebound_database('UPDATE sources SET selected=? WHERE sid=(SELECT sid FROM sources WHERE selected=? LIMIT 1)',
+                    (alias,'old'))
+    def test_absent_partition_is_refused_even_if_attested_count_is_zero(self):
+        # 旧GROUP BY字典要求实际出现两组；零计数不能让空组或空表变为合法计划。
+        original=copy.deepcopy(self.f.validation)
+        for absent in ('old','new','both'):
+            with self.subTest(absent=absent):
+                self.f.validation=copy.deepcopy(original)
+                if absent in ('old','both'):self.f.validation['retained_source_count']=0
+                if absent in ('new','both'):self.f.validation['remaining_source_count']=0
+                self.f.validation['source_count']=self.f.validation['retained_source_count']+self.f.validation['remaining_source_count']
+                self.f.rebuild_attestation()
+                with sqlite3.connect(str(self.f.db))as database:
+                    if absent=='both':database.execute('DELETE FROM sources')
+                    else:database.execute('DELETE FROM sources WHERE selected=?',(absent,))
+                with self.assertRaisesRegex(ValueError,'source/producer partition'):
+                    P.check_database(pin(self.f.db),self.f.union_value,self.f.validation)
+    def test_actual_partition_query_uses_one_scan_without_a_temporary_sort(self):
+        # 使用检查器实际送给SQLite的SQL做执行计划检查，不另写一份新聚合冒充。
+        actual_connect=sqlite3.connect;plans=[]
+        with actual_connect(str(self.f.db))as database:
+            oldplan=database.execute('EXPLAIN QUERY PLAN SELECT selected,COUNT(*) FROM sources GROUP BY selected').fetchall()
+        self.assertTrue(any('TEMP B-TREE'in row[3]for row in oldplan))
+        class ObservedConnection:
+            def __init__(self,*args,**kwargs):self.database=actual_connect(*args,**kwargs)
+            def execute(self,sql,parameters=()):
+                if 'SUM(CASE'in sql:
+                    plans.append(self.database.execute('EXPLAIN QUERY PLAN '+sql,parameters).fetchall())
+                return self.database.execute(sql,parameters)
+            def close(self):self.database.close()
+        with patch.object(P.sqlite3,'connect',side_effect=ObservedConnection):
+            P.check_database(pin(self.f.db),self.f.union_value,self.f.validation)
+        self.assertEqual(len(plans),1)
+        self.assertEqual(sum('SCAN sources'in row[3]for row in plans[0]),1)
+        self.assertFalse(any('TEMP B-TREE'in row[3]for row in plans[0]))
     def test_plan_new_selection_cannot_claim_completed_results(self):
         self._reject_rebound_database("UPDATE sources SET record_sha=?,commit_sha=?,decision='candidate' WHERE selected='new'",('d'*64,'e'*64))
     def test_plan_retained_selection_requires_real_proof_shapes(self):

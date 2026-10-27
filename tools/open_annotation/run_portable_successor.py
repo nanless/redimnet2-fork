@@ -108,8 +108,15 @@ def check_database(pin,union,attestation):
              columns['sid'][5]==1 and sum(bool(row[5])for row in columns.values())==1,
              'plan database lacks the real unique-source table')
         oldid=union['old_producer']['id'];newid=union['new_producer']['id']
-        counts=dict(db.execute('SELECT selected,COUNT(*) FROM sources GROUP BY selected'))
-        need(counts=={oldid:attestation['retained_source_count'],newid:attestation['remaining_source_count']},
+        # 两个合法生产者用一次全表聚合核数，避免千万行GROUP BY建立临时排序表。
+        # 两组必须实际存在且按字节精确匹配；NULL、未知生产者和额外行仍拒绝。
+        total,oldcount,newcount=db.execute('''SELECT COUNT(*),
+            COALESCE(SUM(CASE WHEN selected COLLATE BINARY=? THEN 1 ELSE 0 END),0),
+            COALESCE(SUM(CASE WHEN selected COLLATE BINARY=? THEN 1 ELSE 0 END),0) FROM sources''',
+            (oldid,newid)).fetchone()
+        need(oldcount>0 and newcount>0 and oldcount==attestation['retained_source_count'] and
+             newcount==attestation['remaining_source_count'] and
+             total==oldcount+newcount,
              'plan database source/producer partition differs from full attestation')
         malformed=db.execute('''SELECT COUNT(*) FROM sources WHERE
             typeof(source_sha)!='text' OR typeof(sid)!='text' OR typeof(selected)!='text'
