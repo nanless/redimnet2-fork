@@ -22,7 +22,7 @@ description: Inspect and maintain this ReDimNet2 repository, B6 PTN/LM continuit
 ## 按任务阅读
 
 - 主训练、model47受控接续、完整故障取证、大间隔微调及三段准备：读 [训练与接续](references/training-and-continuation.md)；具体接口读取已定位仓库内的 `tools/ptn_resume/README.md`。
-- 三训练域自动转写、字词时间、队列、发布/恢复、吞吐定位与独立提速验证、十进制时钟和撇号诊断：读 [自动标注](references/open-annotation.md)。
+- 三训练域自动转写、字词时间、队列、发布/恢复、待审具体原因的有限原音／内部API复核、吞吐定位与独立提速验证、十进制时钟和撇号诊断：读 [自动标注](references/open-annotation.md)。
 - 转写计算提速、阶段计时、有限对照、八卡显存预算与跨合同去重接续：读 [转写提速与接续](references/asr-speed-and-continuation.md)。
 - 联合覆盖/唯一消费者、跨引擎审计、vLLM最小适配与整批恢复也由上述参考路由；实现见仓库`docs/reviews/2026-10-27-联合接续与跨引擎CPU实现验收.md`。本轮798项CPU单元测试实际无跳过通过，真实GPU、速度和人工字界未测。新数据门不授运行资格，不能修改原W2或固定总分母来接后继。
 - 八卡 WebShell 实测失败与同合同恢复：先读仓库 `docs/reviews/2026-10-27-WebShell真实试验故障与标注恢复.md` 和转写提速参考。指定机器、已知进程和空余显存不覆盖旧父进程的持续独占监控；不得同卡另建 CUDA context。当前 `vllm_live_probe`真实构造已关闭，只保留检查及完整缓存恢复；生命周期清理未实现，不写成 GPU 验收通过。严格恢复保留旧 stat 的 device 字段，实际新节点不符即拒绝，不改旧冻结包或标签。
