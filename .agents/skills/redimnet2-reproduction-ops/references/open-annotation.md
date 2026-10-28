@@ -1,6 +1,6 @@
 # 开源模型自动标注
 
-实时封账进度可用`tools/open_annotation/readonly_progress.py`：只读一个原子broker快照及其中已完成、非活动租约的固定槽，不构造WorkQueue、不拿写锁、不扫描全部侧车。报告必须称完成下界；`failed`是发布决定，不表示所有操作错误为0。一个快照不能给ETA，须同口径时间窗口增量；输出放新审计目录，不能放队列内。原子替换可改变旧FD的ctime，不能只凭该变化误拒合法快照；仍核已打开FD的尺寸、mtime、完整JSON及固定身份。
+旧v1分片协议的实时封账进度可用`tools/open_annotation/readonly_progress.py`：只读一个原子broker快照及其中已完成、非活动租约的固定槽，不构造WorkQueue、不拿写锁、不扫描全部侧车。报告必须称完成下界；`failed`是发布决定，不表示所有操作错误为0。一个快照不能给ETA，须同口径时间窗口增量；输出放新审计目录，不能放队列内。原子替换可改变旧FD的ctime，不能只凭该变化误拒合法快照；仍核已打开FD的尺寸、mtime、完整JSON及固定身份。
 
 2026-10-26检查时待复核约占七成，包含原生零/负时长、未解决重叠、库内修补及文字读法未决。`processing_errors_preserved`可能是保存这些模型结果几何错误，不一定是worker程序崩溃。不得为提高产出比例放宽判据；候选和待复核都不自动授予训练或正式评测资格。固定前缀抽查不是随机金标，不能推算全库文字/字界准确率。
 
@@ -59,3 +59,10 @@
 有限原音和API工具见仓库`tools/open_annotation/有限原音与内部API复核.md`，图工具见`已保存原音与字界图审.md`。先盲审，参考只用于具体冲突；批准的原件范围和内部目的地明确后沿用，不反复确认。默认预检不读密钥／不联网，最多24唯一来源，裁片保留连续原声及完整native/FIX背景。真实API输出只表示模型观察，usable_model_observation仅协议／结构合格；API自身可漏字、变读法或把音乐切口／句意未完当语音硬切，不能充人工字界真值。源坐标看绑定清单，不把局部WAV的0…frames当原owned范围。
 
 本次实际24原音、32上下文视图及少量同源必要裁片均保留本机；完整文本／原件／原始SSE不入公开Git。具体数字和PTN八rank、192worker及瞬时八卡信息见`docs/reviews/2026-10-28-待审原因有限抽样与PTN实测.md`；之后报告仍重新读取带时间的真实证据，不能把10月28日快照称实时。
+
+
+## 新薄索引的轻量进度
+
+10月28日正式B8使用`annotation-bounded-source-index/v1`。仅查询进度时使用仓库`tools/open_annotation/bounded_metadata_progress.py`及《仅元数据的标注进度》：固定薄index／report pins和新queue／contract，只读身份、单broker快照及已完成非leased槽，核实际count、槽SHA／producer／顺序与三态守恒。历史保留与新生产者发布量分开；publication ownership不是本attempt模型调用数，unknown／failed也不是人工质量。一个快照只给下界，至少间隔120秒同口径增量才给有条件ETA，取完即停，不擅启后台。
+
+`readonly_progress --bounded`／`inspect_bounded_progress`仍构造严格来源闭包reader，实际会读最多8个原JSONL、partial和旧commit，不能宣称是本次纯metadata接口。该严格reader继续用于运行或终验，不修改其规则；新轻量工具明确`source_closed_scope_revalidated=false`、`runtime_admitted=false`、`human_quality_verified=false`，不得用它授运行、训练或评测资格。
