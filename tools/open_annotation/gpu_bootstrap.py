@@ -14,12 +14,17 @@ from gpu_common import need, sha, write, process_start, verify_bundle, verify_mo
 from gpu_challenge import worker_challenge, normalized_uuid
 
 
+_BOUNDED_LEASE = None  # 持有到CUDA进程退出，异常也不提前释放旧writer锁。
+
+
 def main():
+    global _BOUNDED_LEASE
     p = argparse.ArgumentParser()
     for name in ('ticket', 'ticket-sha', 'bundle-sha', 'contract', 'contract-sha',
                  'shard-index', 'index-sha', 'queue-root', 'output-root', 'worker-id',
                  'worker-output', 'resource-attestation'):
         p.add_argument('--' + name, required=True)
+    p.add_argument('--bounded-runtime-spec'); p.add_argument('--bounded-runtime-sha')
     a = p.parse_args()
     here = Path(__file__).resolve().parent
     verify_bundle(here, a.bundle_sha)
@@ -51,6 +56,13 @@ def main():
             else:
                 fcntl.flock(stream, fcntl.LOCK_UN)
                 raise RuntimeError('parent UUID lock not held')
+    from bounded_speed_runtime import runtime_options, RuntimeLease
+    bounded_pin = runtime_options(a)
+    need(('bounded_lineage' in t) == (bounded_pin is not None), 'bounded ticket/schema routing differs')
+    if bounded_pin is not None:
+        _BOUNDED_LEASE = RuntimeLease.adopt(bounded_pin, t['bounded_lineage'])
+        need(_BOUNDED_LEASE.compiled['spec']['new_contract'] == {'path':a.contract,'sha256':a.contract_sha},
+             'bounded ticket new producer differs')
     verify_model_stats(t['model_facts'])
     c = json.loads(Path(a.contract).read_text())
     for name, digest in c.get('source_files', {}).items():
@@ -82,7 +94,9 @@ def main():
                  'output_root', 'worker_id', 'resource_attestation', 'ticket',
                  'ticket_sha', 'worker_output'):
         argv.extend(['--' + name.replace('_', '-'), getattr(a, name)])
-    summary = model_main(argv)
+    if bounded_pin is not None:
+        argv += ['--bounded-runtime-spec',a.bounded_runtime_spec,'--bounded-runtime-sha',a.bounded_runtime_sha]
+    summary = model_main(argv, bounded_lease=_BOUNDED_LEASE)
     summary_path = out / 'worker_summary.json'
     need(summary_path.is_file(), 'worker summary missing')
     stored = json.loads(summary_path.read_text())
@@ -92,6 +106,7 @@ def main():
     need(stored['model_API_calls'] == 0, 'formal worker used a model API')
     verify_model_stats(t['model_facts'])
     verify_bundle(here, a.bundle_sha)
+    if _BOUNDED_LEASE is not None: _BOUNDED_LEASE.verify()
     ready = {'schema': 'open-annotation-terminal-ready/v1', 'nonce': nonce,
              'worker_id': a.worker_id, 'worker_pid': os.getpid(),
              'worker_start_ticks': process_start(os.getpid()), 'ticket_sha256': a.ticket_sha,

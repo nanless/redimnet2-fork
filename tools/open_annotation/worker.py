@@ -39,6 +39,7 @@ def progress_performance(backend, counters, process_started_utc, process_started
     backend_values = backend.snapshot_stats()
     selected = ('assigned_source_rows', 'sidecars_committed', 'sidecar_cache_hits',
                 'stage_cache_hits', 'model_windows', 'decoded_audio_seconds', 'pipeline_seconds')
+    selected += tuple(key for key in ('retained_previous_producer_hits','retained_previous_decision_counts') if key in counters)
     current = {'worker_elapsed_seconds': now - process_started_monotonic,
                'backend': backend_values,
                'counters': {key: copy.deepcopy(counters[key]) for key in selected}}
@@ -114,7 +115,19 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
     contexts = []; receipts = []
     for source in sources:
         claim.assert_member(source); counters["assigned_source_rows"] += 1
+        previous = None
+        if hasattr(getattr(claim, 'queue', None), 'previous_receipt'):
+            previous = timed_call(counters, 'source_lookup', claim.queue.previous_receipt, claim, source)
         old = timed_call(counters, 'source_lookup', store.lookup, source)
+        need(previous is None or old is None, 'ambiguous source has both old and new producer results; preserve and inspect')
+        if previous is not None:
+            receipts.append(previous)
+            counters['retained_previous_producer_hits'] += 1
+            counters['retained_previous_decision_counts'][previous['decision']] += 1
+            counters['decision_counts'][previous['decision']] += 1
+            timed_call(counters, 'journal', claim.journal, {'source_id':source['source_id'],
+                       'status':'verified_previous_producer_retained', 'receipt':previous})
+            continue
         if old is not None:
             receipts.append(old); counters["sidecar_cache_hits"] += 1; counters["decision_counts"][old["decision"]] += 1
             timed_call(counters, 'journal', claim.journal, {"source_id": source["source_id"], "status": "verified_sidecar_cache_hit", "receipt": old})
@@ -203,19 +216,27 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
     return receipts
 
 
-def main(argv=None):
+def main(argv=None, *, bounded_lease=None):
     global _ACTIVE_BACKEND
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("contract", "contract-sha", "shard-index", "index-sha", "queue-root", "output-root", "worker-id", "worker-output"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--resource-attestation"); parser.add_argument("--ticket"); parser.add_argument("--ticket-sha")
     parser.add_argument("--backend", choices=("qwen", "fixture"), default="qwen")
+    parser.add_argument('--bounded-runtime-spec'); parser.add_argument('--bounded-runtime-sha')
     args = parser.parse_args(argv); started = utcnow(); start_time = time.monotonic()
     contract = read_contract(args.contract, args.contract_sha)
     need(contract["purpose"] == "cpu_fixture" if args.backend == "fixture" else contract["purpose"] != "cpu_fixture", "backend purpose differs")
     output = Path(args.worker_output); output.mkdir(parents=True, exist_ok=True)
     need(not (output / "worker_summary.json").exists(), "worker evidence output is not fresh")
-    queue = WorkQueue(args.shard_index, args.index_sha, args.queue_root, args.contract_sha)
+    from bounded_speed_runtime import runtime_options
+    bounded_pin = runtime_options(args)
+    need((bounded_pin is not None) == (bounded_lease is not None), 'authenticated bounded lineage lease required for thin index')
+    if bounded_pin is None:
+        queue = WorkQueue(args.shard_index, args.index_sha, args.queue_root, args.contract_sha)
+    else:
+        need(bounded_lease.pin == bounded_pin, 'worker inherited runtime pin differs')
+        queue = bounded_lease.queue(args, contract)
     store = SidecarStore(args.output_root, contract, args.contract_sha); cache = StageCache(store.root / ".stage_cache")
     ticket = authenticate_resource(args) if args.backend == "qwen" else None
     bundle_sha = ticket["bundle_sha256"] if ticket else digest({"cpu_fixture_code": "production-worker/v1"})
@@ -232,6 +253,8 @@ def main(argv=None):
         descriptor["provenance"]["runtime_qwen_modules"] = _ACTIVE_BACKEND.module_provenance
     counters = {"assigned_source_rows": 0, "sidecars_committed": 0, "sidecar_cache_hits": 0,
                 "decision_counts": {"candidate": 0, "unknown": 0, "failed": 0}, "stage_cache_hits": {"asr": 0, "aligner": 0},
+                "retained_previous_producer_hits": 0,
+                "retained_previous_decision_counts": {"candidate":0,"unknown":0,"failed":0},
                 "model_windows": 0, "decoded_audio_seconds": 0.0, "error_source_count": 0, "errors": [],
                 "pipeline_seconds": {key: 0.0 for key in PIPELINE_TIMERS}}
     refs = []; assigned = 0; group_size = int(contract["runtime"].get("source_batch_rows", 8))

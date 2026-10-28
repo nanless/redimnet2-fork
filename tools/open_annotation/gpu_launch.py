@@ -96,7 +96,7 @@ def selected_uuids(snapshot, target, purpose):
     return uuids
 
 
-def run(args):
+def _run(args, bounded=None):
     need(int(os.environ.get('WORLD_SIZE', '1')) == 1 and int(os.environ.get('RANK', '0')) == 0
          and 'LOCAL_RANK' not in os.environ, 'parent must execute once, not inside platform rank group')
     need(1 <= args.max_runtime_seconds <= 720 * 3600, 'invalid bounded run time')
@@ -136,8 +136,12 @@ def run(args):
               'training_DDP_used': False, 'human_accuracy_certified': False}
     with os.fdopen(fd, 'a+b') as parent_lock:
         fcntl.flock(parent_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        from work_queue import prepare_queue
-        prepare_queue(args.shard_index, args.index_sha, args.queue_root, args.contract_sha, args.output_root)
+        if bounded is None:
+            from work_queue import prepare_queue
+            prepare_queue(args.shard_index, args.index_sha, args.queue_root, args.contract_sha, args.output_root)
+        else:
+            bounded.queue(args, contract)
+            bounded.gates(queue_root / ('runtime-admission-' + output.name))
         with G.DeviceLocks(global_locks, uuids) as locks:
             lease_started = time.monotonic()
             probe = G.double_probe(indices, args.memory_budget_mib, interval_seconds=5., reserve_mib=8192)
@@ -163,6 +167,9 @@ def run(args):
                               'target_uuid': uuid, 'minor_map': minors, 'memory_budget_mib': args.memory_budget_mib,
                               'bundle_sha256': args.bundle_sha, 'contract_sha256': args.contract_sha,
                               'index_sha256': args.index_sha, 'nonce': nonce}
+                    if bounded is not None:
+                        bounded.verify()
+                        ticket['bounded_lineage'] = bounded.ticket_evidence
                     ticket_path = out / 'admission.json'
                     write(ticket_path, ticket)
                     env = os.environ.copy()
@@ -181,8 +188,13 @@ def run(args):
                                        ('output-root', args.output_root), ('worker-id', worker_id),
                                        ('worker-output', out), ('resource-attestation', out / 'resource_attestation.json')]:
                         command += ['--' + key, str(value)]
+                    if bounded is not None:
+                        command += ['--bounded-runtime-spec', args.bounded_runtime_spec,
+                                    '--bounded-runtime-sha', args.bounded_runtime_sha]
                     log = (out / 'worker.log').open('x')
                     pass_fds = [parent_lock.fileno()] + [e['fd'] for e in locks.evidence]
+                    if bounded is not None:
+                        pass_fds += list(bounded.pass_fds)
                     proc = subprocess.Popen(command, env=env, cwd=HERE, stdout=log, stderr=subprocess.STDOUT,
                                             pass_fds=pass_fds, start_new_session=True)
                     state = {'worker_id': worker_id, 'out': out, 'nonce': nonce, 'proc': proc,
@@ -296,7 +308,7 @@ def run(args):
         # CUDA has been drained and physical GPU leases returned before CPU verification.
         from report import verify_run
         verification = verify_run(args.contract, args.shard_index, args.queue_root, args.output_root,
-                                  full=args.full_verify)
+                                  full=args.full_verify, **({'bounded_parent_lock_fd':parent_lock.fileno()} if bounded is not None else {}))
         result.update(verification=verification, full_sidecar_readback=args.full_verify,
                       parent_elapsed_seconds=time.monotonic() - t0,
                       finished_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
@@ -304,6 +316,31 @@ def run(args):
         write(output / 'parent_result.json', result)
         print(json.dumps({'parent_finished': True, 'output': str(output), 'worker_count': len(states),
                           'verification': verification}, ensure_ascii=False), flush=True)
+
+
+def run(args):
+    """新schema必须显式固定祖先和实际试验证明；旧v1行为不变。"""
+    verify_bundle(HERE, args.bundle_sha)
+    # 保留旧父进程先拒绝坏合同和正式auto2的顺序，再识别新schema。
+    preflight_contract = read_contract(args.contract, args.contract_sha)
+    need(getattr(args, 'target_uuids', None) != 'auto2' or preflight_contract['purpose'] == 'pilot_validation',
+         'auto2 is reserved for independent pilot_validation')
+    from bounded_speed_runtime import runtime_options, RuntimeLease
+    pin = runtime_options(args)
+    if pin is None:
+        return _run(args)
+    with RuntimeLease(pin) as lineage:
+        spec = lineage.compiled['spec']
+        need(spec['new_run_root'] == str(Path(args.run_root)) and
+             spec['new_code_root'] == str(HERE) and
+             spec['new_bundle'] == {'path': str(HERE/'bundle_files.json'), 'sha256': args.bundle_sha} and
+             spec['device_lock_root'] == str(Path(args.device_lock_root)), 'bounded runtime argument namespace differs')
+        need(spec['purpose'] != 'production' or args.target_uuids == 'auto8',
+             'production bounded successor requires auto8 and eight actual A800 GPUs')
+        need(not args.full_verify, 'bounded successor forbids full-library verification; use metadata terminal route')
+        result = _run(args, bounded=lineage)
+        lineage.verify()
+        return result
 
 
 def main():
@@ -315,6 +352,8 @@ def main():
     p.add_argument('--memory-budget-mib', type=int, default=60000)
     p.add_argument('--max-runtime-seconds', type=int, default=7200)
     p.add_argument('--full-verify', action='store_true')
+    p.add_argument('--bounded-runtime-spec')
+    p.add_argument('--bounded-runtime-sha')
     run(p.parse_args())
 
 

@@ -38,7 +38,7 @@ def unique_source_scope(contract, index):
                 connection.close()
 
 
-def verify_run(contract, index, queue_root, output_root, full=False):
+def verify_run(contract, index, queue_root, output_root, full=False, *, bounded_parent_lock_fd=None, bounded_terminal_pin=None, bounded_task_id=None):
     """No models/CUDA imported. full=False is completion-protocol verification.
 
     The light mode reads one sequential fixed-slot file, not millions of labels.
@@ -58,8 +58,24 @@ def verify_run(contract, index, queue_root, output_root, full=False):
     if isinstance(contract, (str, Path)):
         contract = read_contract(contract, contract_sha)
     if isinstance(index, (str, Path)):
+        from bounded_speed_runtime import index_kind
+        if index_kind(index, index_sha) == 'annotation-bounded-source-index/v1':
+            need(not full, 'bounded successor forbids full-library audit; select metadata verification')
+            from bounded_speed_queue import verify_bounded_terminal_metadata
+            tree = output_root / contract['version']
+            need(json.loads((tree/'identity.json').read_text()) == {'schema':'redimnet2-sidecar-tree/v1',
+                 'version':contract['version'],'contract_sha256':contract_sha}, 'bounded new sidecar tree identity differs')
+            value = verify_bounded_terminal_metadata(index,index_sha,queue_root,contract_sha,
+                parent_lock_fd=bounded_parent_lock_fd,terminal_pin=bounded_terminal_pin,task_id=bounded_task_id)
+            return dict(value,passed=value['metadata_complete'],database_created=False,
+                        source_count=value['progress']['source_count'],contract_sha256=contract_sha,index_sha256=index_sha,
+                        full_sidecar_readback_verified=False,sidecars_individually_reopened=0)
+        need(bounded_parent_lock_fd is None and bounded_terminal_pin is None and bounded_task_id is None,
+             'v1 report refuses bounded-only terminal options')
         index_path = Path(index).resolve(); index = read_index(index_path, index_sha)
     else:
+        need(bounded_parent_lock_fd is None and bounded_terminal_pin is None and bounded_task_id is None,
+             'v1 report refuses bounded-only terminal options')
         index_path = None
         need(isinstance(index, dict) and index.get("schema") == "redimnet2-shard-index/v1", "wrong loaded index")
     need(contract["version"], "contract version missing")
@@ -162,8 +178,13 @@ def main(argv=None):
     p.add_argument("--contract", required=True); p.add_argument("--shard-index", required=True)
     p.add_argument("--queue-root", required=True); p.add_argument("--output-root", required=True)
     p.add_argument("--full", action="store_true"); p.add_argument("--report", required=True)
+    p.add_argument('--bounded-terminal-observation'); p.add_argument('--bounded-terminal-sha'); p.add_argument('--bounded-task-id')
     args = p.parse_args(argv)
-    result = verify_run(args.contract, args.shard_index, args.queue_root, args.output_root, full=args.full)
+    need(bool(args.bounded_terminal_observation)==bool(args.bounded_terminal_sha)==bool(args.bounded_task_id),
+         'bounded external terminal path/SHA/task must be complete')
+    terminal = {'path':args.bounded_terminal_observation,'sha256':args.bounded_terminal_sha} if args.bounded_terminal_observation else None
+    result = verify_run(args.contract, args.shard_index, args.queue_root, args.output_root, full=args.full,
+                        bounded_terminal_pin=terminal,bounded_task_id=args.bounded_task_id)
     from contracts import atomic_new
     atomic_new(args.report, result); print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["passed"] else 2

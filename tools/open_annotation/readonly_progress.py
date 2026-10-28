@@ -163,12 +163,17 @@ def main(argv=None):
     parser.add_argument('--queue-root', required=True, type=Path)
     parser.add_argument('--contract-sha', required=True)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--bounded', action='store_true', help='explicit bounded schema metadata route; v1 stays strict')
     args = parser.parse_args(argv)
     require(not args.output.exists() and not args.output.is_symlink(), 'output must be a new file')
     out = args.output.resolve(); queue = args.queue_root.resolve()
     require(out != queue and queue not in out.parents, 'output must be outside queue tree')
     require(out != args.index.resolve(), 'output overlaps index')
-    result = inspect_progress(args.index, args.index_sha, args.queue_root, args.contract_sha)
+    if args.bounded:
+        from bounded_speed_queue import inspect_bounded_progress
+        result = inspect_bounded_progress(args.index,args.index_sha,args.queue_root,args.contract_sha)
+    else:
+        result = inspect_progress(args.index, args.index_sha, args.queue_root, args.contract_sha)
     result['tool_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     # Never create a queue or report directory implicitly.
     with out.open('x', encoding='utf-8') as stream:
