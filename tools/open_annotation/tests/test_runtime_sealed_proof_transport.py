@@ -296,16 +296,25 @@ finally:lease.__exit__(None,None,None)
     def test_repeated_parent_verification_hashes_every_finite_input_and_small_critical_role(self):
         with M.RuntimeLease(self.r.pin)as parent:
             small={p['path']for p in parent._small_pins()};large={v['pin']['path']for v in parent.proof.payload['snapshot']['files']}-small
-            called=[];original=M.R.file_sha
+            called=[];original=M.R.file_sha;open0=os.open;read0=os.read;fds={};read_bytes={};read_EOFs={}
             def observed(path):
                 called.append(str(path))
                 return original(path)
-            with patch.object(M.R,'file_sha',side_effect=observed):
+            def opening(path,*args,**kwargs):
+                fd=open0(path,*args,**kwargs);fds[fd]=str(path);return fd
+            def reading(fd,size):
+                block=read0(fd,size);path=fds[fd]
+                read_bytes[path]=read_bytes.get(path,0)+len(block)
+                if not block:read_EOFs[path]=read_EOFs.get(path,0)+1
+                return block
+            with patch.object(M.R,'file_sha',side_effect=observed),patch.object(os,'open',side_effect=opening),patch.object(os,'read',side_effect=reading):
                 for _ in range(3):parent.verify()
             self.assertIn(self.n.selected['quality_review']['path'],called)
             self.assertIn(self.n.selected['candidate_contract']['path'],called)
-            self.assertTrue(large);self.assertTrue(large<=set(called))
-            for path in large:self.assertGreaterEqual(called.count(path),3)
+            self.assertTrue(large);self.assertTrue(large<=set(read_EOFs))
+            for path in large:
+                self.assertGreaterEqual(read_EOFs[path],3)
+                self.assertGreaterEqual(read_bytes[path],3*Path(path).stat().st_size)
 
     def test_current_platform_TTL_and_old_lineage_compile_are_not_skipped(self):
         with M.RuntimeLease(self.r.pin)as parent:

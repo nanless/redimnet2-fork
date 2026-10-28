@@ -43,7 +43,7 @@ SHARED_SOURCE={'bounded_speed_handoff.py','bounded_speed_queue.py','bounded_spee
     'prepare_speed_continuation.py','resume_existing_annotation.py','readonly_progress.py','portable_source_identity.py',
     'verify_portable_successor_mounts.py','contracts.py','schema.py','normalization.py','quality_axes.py','source_clock.py',
     'freeze_legacy_successor.py','native_transformers_batch.py','native_batch_admission.py','native_batch_readback.py',
-    'audit_native_transformers_batch.py','audit_speed_comparison.py','gpu_vendor/__init__.py','gpu_vendor/resources.py','gpu_vendor/topology.py'}
+    'audit_native_transformers_batch.py','audit_speed_comparison.py','work_queue.py','gpu_vendor/__init__.py','gpu_vendor/resources.py','gpu_vendor/topology.py'}
 REQUIRED_SOURCE={'gpu_launch.py','gpu_bootstrap.py','worker.py',*SHARED_SOURCE}
 OUTER_NAMES=SHARED_SOURCE|{'native_batch_queue_handoff.py','build-receipt.json'}
 need=H.need

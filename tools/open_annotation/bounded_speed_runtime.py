@@ -117,10 +117,32 @@ def _verify_snapshot(snapshot):
     need([v.get('path')for v in directories]==expected,'sealed snapshot ancestor coverage incomplete')
     for entry in directories:need(_directory_stamp(entry['path'])==entry['stamp'],'sealed proof ancestor identity changed')
     for entry in files:
-        need(_file_stamp(entry['pin']['path'])==entry['stamp'],'sealed proof input identity/content timestamp changed')
-        # Linux实测可在同tick改字节并回拨mtime，使全部stat字段碰撞。
-        # 指纹只快速拒绝；内容身份每次必须实际SHA，不声称省I/O。
-        R.pinned_file(entry['pin'])
+        _verify_snapshot_file(entry)
+    for entry in directories:need(_directory_stamp(entry['path'])==entry['stamp'],'sealed proof ancestor identity changed during SHA read')
+
+
+def _verify_snapshot_file(entry):
+    """祖先由调用者前后各核一次；每个文件仍实际读完整SHA，并核FD与路径。"""
+    need(hasattr(os,'O_NOFOLLOW')and hasattr(os,'O_NONBLOCK'),'safe nonfollowing proof FD flags required')
+    pin=entry['pin'];expected=entry['stamp'];fd=None
+    def stamp(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+    need(_file_stamp(pin['path'])==expected,'sealed proof input identity/content timestamp changed')
+    try:
+        # 不跟随末级软链接；FIFO等替换也不能在fstat拒绝前把父进程挂住。
+        fd=os.open(pin['path'],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        before=os.fstat(fd)
+        need(stat.S_ISREG(before.st_mode)and stamp(before)==expected,'sealed proof input identity/content timestamp changed')
+        actual=hashlib.sha256();size=0
+        while True:
+            block=os.read(fd,4*1024**2)
+            if not block:break
+            size+=len(block);actual.update(block)
+        need(stamp(os.fstat(fd))==expected and _file_stamp(pin['path'])==expected,
+             'sealed proof input changed during SHA read')
+        # Linux同tick全部stat值可能碰撞；指纹从不替代实际内容摘要。
+        need(size==expected[3]and actual.hexdigest()==pin['sha256'],'pinned file differs: '+pin['path'])
+    finally:
+        if fd is not None:os.close(fd)
 
 
 def _boot_id():return Path('/proc/sys/kernel/random/boot_id').read_text().strip()

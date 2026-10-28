@@ -271,10 +271,34 @@ class FeatureOuterClosure(unittest.TestCase):
     def child_check(self,controller,contract_pin):
         code="import sys,json;sys.path.insert(0,sys.argv[1]);import native_batch_queue_handoff as Q;import contracts as C;c=json.load(open(sys.argv[2]));m=json.load(open(sys.argv[3]));controller=json.loads(sys.argv[4]);bundle=json.loads(sys.argv[5]);Q.verify_outer(controller,m,production=False,contract=c,gpu_bundle_pin=bundle);print(json.dumps({'feature_profile':C.asr_feature_profile(c),'torch_imported':'torch' in sys.modules}))"
         return subprocess.run([sys.executable,'-I','-B','-c',code,controller['root'],contract_pin['path'],self.bundle['path'],json.dumps(controller),json.dumps(self.bundle)],capture_output=True,text=True)
+    def admission_import_check(self,controller):
+        # 真正进入选型时才加载两个审计器；单测进程里预先导入的模块不能补这个依赖。
+        code="""import sys,json,importlib
+sys.path.insert(0,sys.argv[1])
+for name in ('native_batch_admission','native_batch_readback','audit_native_transformers_batch','audit_speed_comparison','work_queue'):
+ module=importlib.import_module(name)
+ if not module.__file__.startswith(sys.argv[1]+'/'):raise RuntimeError('import escaped frozen outer: '+name)
+print(json.dumps({'all_admission_modules_loaded':True,'model_modules_loaded':[name for name in sys.modules if name.split('.')[0] in {'torch','qwen_asr','vllm','transformers'}]}))
+"""
+        return subprocess.run([sys.executable,'-I','-S','-B','-c',code,controller['root']],capture_output=True,text=True,timeout=30)
+    def test_isolated_feature_outer_loads_actual_admission_auditors_without_site_or_GPU(self):
+        outer=self.build(feature_contract_pin=self.cp);result=self.admission_import_check(outer)
+        self.assertEqual(result.returncode,0,result.stderr);value=json.loads(result.stdout)
+        self.assertTrue(value['all_admission_modules_loaded']);self.assertEqual(value['model_modules_loaded'],[])
+        self.assertEqual(F.ref(outer['manifest'])['work_queue.py'],self.members['work_queue.py'])
+    def test_isolated_old_outer_also_loads_actual_admission_auditors(self):
+        outer=self.build();self.assertEqual(len(F.ref(outer['manifest'])),26)
+        result=self.admission_import_check(outer);self.assertEqual(result.returncode,0,result.stderr)
+    def test_old_missing_work_queue_failure_is_reproduced_in_isolated_process(self):
+        outer=self.build(feature_contract_pin=self.cp);(Path(outer['root'])/'work_queue.py').unlink()
+        result=self.admission_import_check(outer);self.assertNotEqual(result.returncode,0)
+        self.assertIn("No module named 'work_queue'",result.stderr)
+        with self.assertRaisesRegex(ValueError,'undeclared import members'):
+            M.verify_outer(outer,self.members,production=False,contract=self.c,gpu_bundle_pin=self.bundle)
     def test_explicit16_build_then_real_subprocess_check_imports_core(self):
-        outer=self.build(feature_contract_pin=self.cp);members=F.ref(outer['manifest']);self.assertEqual(len(members),26);self.assertEqual(members[M.FEATURE_CORE],self.members[M.FEATURE_CORE])
+        outer=self.build(feature_contract_pin=self.cp);members=F.ref(outer['manifest']);self.assertEqual(len(members),27);self.assertEqual(members[M.FEATURE_CORE],self.members[M.FEATURE_CORE])
         result=self.child_check(outer,self.cp);self.assertEqual(result.returncode,0,result.stderr);value=json.loads(result.stdout);self.assertEqual(value['feature_profile'],{'policy':M.FEATURE_POLICY});self.assertFalse(value['torch_imported'])
-    def test_old15_has_exact25_and_never_requires_absent_core(self):
+    def test_old15_has_exact26_and_never_requires_absent_core(self):
         c=copy.deepcopy(self.c);c['runtime'].pop('asr_preprocessing');c.pop('asr_preprocessing_sources');c['engine_source_files'].pop(M.FEATURE_CORE)
         (self.code/M.FEATURE_CORE).unlink();self.members.pop(M.FEATURE_CORE);self.bundle=self.put(self.code/'bundle_files.json',self.members);cp=self.put(self.root/'old-contract.json',c)
         outer=self.build();self.assertEqual(set(F.ref(outer['manifest'])),M.OUTER_NAMES);self.assertFalse((Path(outer['root'])/M.FEATURE_CORE).exists())
