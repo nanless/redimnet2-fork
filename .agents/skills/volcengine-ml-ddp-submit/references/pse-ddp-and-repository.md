@@ -52,6 +52,8 @@ ssh <dev-host> 'cd /root/code/gitlab_repos/se_train && \
 
 先区分Git服务和实际执行主机。本机Mac对GitHub永远只读，任何下面的push示例都不授权在Mac上执行。本次明确允许的GitHub写入只在`dev_a800_2gpus`自身仓库和进程执行；SSH发起远程命令可以，本机push透传不可以。原`se_train`的GitLab命令仍仅作用于已授权的GitLab仓库，不得靠改remote把它当GitHub上传通道。本机disabled配置和已删除分支均保留原限制，提交作者按该项目的用户要求设置。
 
+核服务器原始remote配置与实际展开URL，防止既有`insteadOf`把指定GitHub目标替换为第三方代理。认证用服务器已有方式，不搬运Mac私钥或本机push流。若用bundle同步浅历史，先核原真实浅边界和服务器可用对象；本机bundle verify成功不是空服务器已能导入的证明。缺祖先可由服务器从指定仓库只读取得固定提交，导入后再核HEAD、作者和工作区。认证失败保留原件，远端SHA未回读一致前不报push完成。
+
 只有用户明确要求 commit/push 时才执行。暂存确切的新文件或修改，不使用宽泛路径：
 
 ```bash
