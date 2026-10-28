@@ -1,6 +1,7 @@
 """新native正式协议的合成原件反例；不读取真实媒体、模型、GPU或平台。"""
 from __future__ import annotations
 import copy
+from collections import Counter
 import hashlib
 import json
 from pathlib import Path
@@ -138,7 +139,7 @@ class NativeFixture:
         for role in (left,right):
             records=self.records[role]
             tracks[role]=dict(contract=self.contracts[role],contract_sha256=self.contractpins[role]['sha256'],spec_sha256=self.tracks[role]['pin']['sha256'],
-                records=records,performance=self.performances[role],decision_counts={state:sum(r['decision']['state']==state for r in records.values())for state in ('candidate','unknown','failed')})
+                records=records,performance=self.performances[role],decision_counts=dict(Counter(r['decision']['state']for r in records.values())))
         value=NativeFixtureModule.A.analyze(tracks[left],tracks[right],mode=mode)
         # 仅CPU结构反例模拟被声明的速度；production必先拒绝cpu_fixture合同。
         if mode=='speed':value.update(cold_speed_ratio_valid=True,cold_end_to_end_speed_ratio=2.)
@@ -410,6 +411,9 @@ class NativeAdmissionTests(unittest.TestCase):
         pin=self.f.put('actual-auditor-sealed.json',sealed)
         value=B.verify_readback_receipt(pin,track['spec_pin'],track['spec'],track['contract'],sealed['bundle_sha256'],1,'cpu_fixture')
         self.assertEqual(value['records'],track['records'])
+        # 真冻结auditor用Counter，只出现实际状态；不能让手造fixture的零键掩盖差异。
+        self.assertEqual(value['track']['decision_counts'],track['decision_counts'])
+        self.assertTrue(all(type(count)is int and count>0 for count in value['track']['decision_counts'].values()))
 
     def test_seal_cli_with_real_finite_auditor_and_no_models(self):
         import subprocess,shutil

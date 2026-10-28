@@ -4,6 +4,7 @@ import copy
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 if __package__:
     from . import bounded_speed_handoff as H
@@ -15,6 +16,15 @@ need=H.need
 
 
 SEALED_SCHEMA='annotation-native-finite-admission-readback/v2'
+
+
+def _sparse_decision_counts(records):
+    """沿冻结load_track的Counter表达，只出现真实状态；不补零、不丢非法状态。"""
+    need(isinstance(records,dict)and records and all(isinstance(r,dict)and isinstance(r.get('decision'),dict)for r in records.values()),
+         'complete native decision records required')
+    states=[record['decision'].get('state')for record in records.values()]
+    need(all(type(state)is str and state in {'candidate','unknown','failed'}for state in states),'invalid native source decision state')
+    return dict(Counter(states))
 
 
 def seal_admission_readback(track):
@@ -161,7 +171,7 @@ def verify_readback_receipt(pin,track_pin,track,contract,bundle_sha,count,purpos
                 path=base/name;pins.append(dict(path=str(path),sha256=R.file_sha(path)))
     return dict(pins=pins,sources=source_map,rows=row_map,proof=proof,records=records,performance=actual_perf,
                 track=dict(contract=contract,contract_sha256=track['contract']['sha256'],spec_sha256=track_pin['sha256'],records=records,performance=actual_perf,
-                           decision_counts={state:sum(r['decision']['state']==state for r in records.values())for state in ('candidate','unknown','failed')}))
+                           decision_counts=_sparse_decision_counts(records)))
 
 
 def verify_comparison_maps(comparison,proofs):
@@ -174,7 +184,9 @@ def verify_comparison_maps(comparison,proofs):
     for key in ('counts','source_count','baseline_total_sources','candidate_total_sources','decoded_audio_identity_comparable_sources',
                 'maximum_same_target_endpoint_delta_ms','baseline_decision_counts','candidate_decision_counts',
                 'baseline_contract_sha256','candidate_contract_sha256','baseline_spec_sha256','candidate_spec_sha256'):
-        need(comparison.get(key)==actual[key],'native complete comparison aggregate differs from actual sidecars: '+key)
+        # 仅decision聚合要求字节级JSON类型相等；不把零键删掉，也不接受True/浮点充当计数。
+        equal=H.P.canonical(comparison.get(key))==H.P.canonical(actual[key])if key in ('baseline_decision_counts','candidate_decision_counts')else comparison.get(key)==actual[key]
+        need(equal,'native complete comparison aggregate differs from actual sidecars: '+key)
     pa,pb=(proofs[name]['performance']for name in ('baseline','candidate'))
     need(comparison['baseline_performance']==pa and comparison['candidate_performance']==pb,'native compared throughput not from actual parent summaries')
     if mode=='speed':

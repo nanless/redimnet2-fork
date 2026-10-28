@@ -1,0 +1,9 @@
+{
+  "schema": "annotation-native-startup-cost-plan/v1",
+  "selected": {"path": "/实际新正式根/controls/selected-pilot-admission-v2.json", "sha256": "REPLACE_ACTUAL_SELECTED_SHA256"},
+  "formal_contract": {"path": "/实际新正式根/controls/native-formal-contract.json", "sha256": "REPLACE_ACTUAL_FORMAL_CONTRACT_SHA256"},
+  "formal_bundle": {"path": "/实际新正式根/frozen-native-reviewed-v2/bundle_files.json", "sha256": "REPLACE_ACTUAL_FORMAL_BUNDLE_SHA256"},
+  "code_root": "/实际新正式根/frozen-native-reviewed-v2",
+  "output_root": "/实际新正式根/cpu-startup-cost-v2",
+  "max_seconds": 900
+}
