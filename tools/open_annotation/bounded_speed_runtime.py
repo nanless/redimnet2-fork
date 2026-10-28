@@ -28,6 +28,8 @@ else:
     from verify_portable_successor_mounts import validate_row
 
 SCHEMA='annotation-bounded-speed-runtime/v1'
+NATIVE_SCHEMA='annotation-bounded-native-runtime/v2'
+NATIVE_ADMISSION_SCHEMA='annotation-native-selected-pilot-admission/v2'
 PLATFORM_SCHEMA='annotation-bounded-speed-platform-observation/v1'
 ADMISSION_SCHEMA='annotation-asr-speed-selected-pilot-admission/v1'
 QUALITY_SCHEMA='annotation-asr-speed-quality-review/v1'
@@ -56,6 +58,25 @@ def runtime_options(args):
     bounded=index_kind(args.shard_index,args.index_sha)==H.INDEX_SCHEMA
     need(bounded==bool(path),'thin index requires explicit bounded runtime; v1 refuses bounded options')
     return {'path':str(path),'sha256':sha}if bounded else None
+
+
+def guard_native_formal_route(contract,runtime_pin,*,lease=None,require_lease=False):
+    """正式合批不借一般索引或旧单窗准入；此检查本身不授GPU资格。"""
+    runtime=contract.get('runtime',{})
+    native=runtime.get('execution_policy')=='asr_fixed_cohort_fa_single/v1'
+    formal=native and contract.get('purpose')=='silver_annotation'
+    if not formal:return False
+    from contracts import asr_batch_profile
+    need(asr_batch_profile(contract)is not None,'explicit native formal contract structure required')
+    need(runtime_pin is not None,'native silver requires authenticated bounded native runtime v2; ordinary v1 index is forbidden')
+    spec=pinned(runtime_pin)
+    need(spec.get('schema')==NATIVE_SCHEMA and spec.get('purpose')=='production','native silver cannot borrow single-window runtime/admission')
+    if require_lease:
+        need(lease is not None and lease.pin==runtime_pin and lease.compiled['spec'].get('schema')==NATIVE_SCHEMA and
+             lease.compiled.get('new_contract')==contract and lease.compiled.get('selected',{}).get('schema')==NATIVE_ADMISSION_SCHEMA,
+             'native silver worker requires inherited verified native v2 lineage lease')
+        lease.assert_held()
+    return True
 
 
 def same_profile(a,b,*,allow_control_changes=False):
@@ -184,7 +205,7 @@ def check_platform(pin,index,*,fresh=True):
 def compile_runtime(runtime_pin,*,fresh=True):
     """固定薄索引、前一真实run和原始祖先；不运行旧union或任何数据库查询。"""
     spec=pinned(runtime_pin);purpose=spec.get('purpose')
-    need(spec.get('schema')==SCHEMA and purpose in {'production','cpu_fixture'},'explicit bounded runtime schema/purpose required')
+    need(spec.get('schema')in {SCHEMA,NATIVE_SCHEMA} and purpose in {'production','cpu_fixture'},'explicit bounded runtime schema/purpose required')
     need(type(spec.get('model_API_calls_allowed'))is int and spec['model_API_calls_allowed']==0 and
          spec.get('release_training_labels')is False,'offline API0/no automatic label release required')
     need(isinstance(spec.get('task_name'),str)and spec['task_name'].startswith('zhounan_'),'task name must start zhounan_')
@@ -234,7 +255,15 @@ def compile_runtime(runtime_pin,*,fresh=True):
     new=pinned(spec['new_contract']);need(new.get('schema')=='redimnet2-production-contract/v2'and
         new.get('purpose')==('cpu_fixture'if purpose=='cpu_fixture'else'silver_annotation')and new.get('version')!=index['old_contract_version'],
         'distinct new producer contract required')
-    selected=check_selected_pilot(spec['selected_pilot_admission'],new,purpose)
+    if spec['schema']==NATIVE_SCHEMA:
+        if __package__:from .native_batch_admission import check_native_selected_pilot
+        else:from native_batch_admission import check_native_selected_pilot
+        selected=check_native_selected_pilot(spec['selected_pilot_admission'],new,purpose)
+        need(selected['verified_native_bundle_sha256']==spec['new_bundle']['sha256'],'native formal GPU executable bundle must equal actual selected pilot bundle')
+    else:
+        need(new.get('runtime',{}).get('execution_policy')!='asr_fixed_cohort_fa_single/v1',
+             'old runtime v1 refuses native contract; use explicit native v2')
+        selected=check_selected_pilot(spec['selected_pilot_admission'],new,purpose)
     run=R.physical(spec['new_run_root']);code=R.physical(spec['new_code_root'])
     need(base in run.parents and base in code.parents and run!=code and run not in code.parents and code not in run.parents,'new runtime/code namespace differs')
     need(index['new_queue_root']==str(run/'queue')and index['new_sidecar_root']==str(run/'labels')and

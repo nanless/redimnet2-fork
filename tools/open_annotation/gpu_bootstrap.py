@@ -56,15 +56,16 @@ def main():
             else:
                 fcntl.flock(stream, fcntl.LOCK_UN)
                 raise RuntimeError('parent UUID lock not held')
-    from bounded_speed_runtime import runtime_options, RuntimeLease
+    from bounded_speed_runtime import runtime_options, RuntimeLease, guard_native_formal_route
     bounded_pin = runtime_options(a)
     need(('bounded_lineage' in t) == (bounded_pin is not None), 'bounded ticket/schema routing differs')
     if bounded_pin is not None:
         _BOUNDED_LEASE = RuntimeLease.adopt(bounded_pin, t['bounded_lineage'])
         need(_BOUNDED_LEASE.compiled['spec']['new_contract'] == {'path':a.contract,'sha256':a.contract_sha},
              'bounded ticket new producer differs')
-    verify_model_stats(t['model_facts'])
     c = json.loads(Path(a.contract).read_text())
+    guard_native_formal_route(c, bounded_pin, lease=_BOUNDED_LEASE, require_lease=True)
+    verify_model_stats(t['model_facts'])
     for name, digest in c.get('source_files', {}).items():
         need(sha(name) == digest, 'inference source changed before CUDA')
     print('RESOURCE_GUARDS_PASSED_BEFORE_TORCH ' + a.worker_id, flush=True)

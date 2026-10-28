@@ -1,0 +1,108 @@
+{
+  "schema": "annotation-native-selected-pilot-admission/v2",
+  "purpose": "production",
+  "candidate_contract": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/selected-native-pilot-contract.json",
+    "sha256": "REPLACE_ACTUAL_SELECTED_NATIVE_PILOT_CONTRACT_SHA256"
+  },
+  "baseline_track": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-baseline-track.json",
+    "sha256": "REPLACE_ACTUAL_NATIVE_BASELINE_TRACK_SHA256"
+  },
+  "main_track": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-main-track.json",
+    "sha256": "REPLACE_ACTUAL_NATIVE_MAIN_TRACK_SHA256"
+  },
+  "recovery_track": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-recovery-track.json",
+    "sha256": "REPLACE_ACTUAL_NATIVE_RECOVERY_TRACK_SHA256"
+  },
+  "selected_profile_name": "native-fp32-sdpa-b4",
+  "selected_asr_batching": {
+    "policy": "fixed_cohort_until_durable/v1",
+    "max_requests": 4,
+    "ordering": "frames_then_row_id_within_source_group/v1"
+  },
+  "comparison": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-speed-comparison.json",
+    "sha256": "REPLACE_ACTUAL_NATIVE_SPEED_COMPARISON_SHA256"
+  },
+  "recovery_comparison": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-recovery-comparison.json",
+    "sha256": "REPLACE_ACTUAL_NATIVE_RECOVERY_COMPARISON_SHA256"
+  },
+  "pilot_result": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-pilot-result.json",
+    "sha256": "REPLACE_ACTUAL_NATIVE_PILOT_RESULT_SHA256"
+  },
+  "quality_review": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-quality-review.json",
+    "sha256": "REPLACE_ACTUAL_NATIVE_QUALITY_REVIEW_SHA256"
+  },
+  "native_readbacks": {
+    "baseline": {
+      "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-baseline-sealed-readback.json",
+      "sha256": "REPLACE_ACTUAL_NATIVE_BASELINE_SEALED_READBACK_SHA256"
+    },
+    "main": {
+      "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-main-sealed-readback.json",
+      "sha256": "REPLACE_ACTUAL_NATIVE_MAIN_SEALED_READBACK_SHA256"
+    },
+    "recovery": {
+      "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-recovery-sealed-readback.json",
+      "sha256": "REPLACE_ACTUAL_NATIVE_RECOVERY_SEALED_READBACK_SHA256"
+    }
+  },
+  "resource_evidence": {
+    "baseline": {
+      "parent_result": {
+        "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/baseline-parent-result.json",
+        "sha256": "REPLACE_ACTUAL_BASELINE_PARENT_RESULT_SHA256"
+      },
+      "resource_return": {
+        "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/baseline-resource-return.json",
+        "sha256": "REPLACE_ACTUAL_BASELINE_RESOURCE_RETURN_SHA256"
+      },
+      "terminal_drain": {
+        "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/baseline-terminal-drain.json",
+        "sha256": "REPLACE_ACTUAL_BASELINE_TERMINAL_DRAIN_SHA256"
+      }
+    },
+    "main": {
+      "parent_result": {
+        "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/main-parent-result.json",
+        "sha256": "REPLACE_ACTUAL_MAIN_PARENT_RESULT_SHA256"
+      },
+      "resource_return": {
+        "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/main-resource-return.json",
+        "sha256": "REPLACE_ACTUAL_MAIN_RESOURCE_RETURN_SHA256"
+      },
+      "terminal_drain": {
+        "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/main-terminal-drain.json",
+        "sha256": "REPLACE_ACTUAL_MAIN_TERMINAL_DRAIN_SHA256"
+      }
+    },
+    "recovery": {
+      "parent_result": {
+        "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/recovery-parent-result.json",
+        "sha256": "REPLACE_ACTUAL_RECOVERY_PARENT_RESULT_SHA256"
+      },
+      "resource_return": {
+        "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/recovery-resource-return.json",
+        "sha256": "REPLACE_ACTUAL_RECOVERY_RESOURCE_RETURN_SHA256"
+      },
+      "terminal_drain": {
+        "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/recovery-terminal-drain.json",
+        "sha256": "REPLACE_ACTUAL_RECOVERY_TERMINAL_DRAIN_SHA256"
+      }
+    }
+  },
+  "formal_execution_bundle": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/frozen-native-reviewed-v1/bundle_files.json",
+    "sha256": "REPLACE_FORMAL_NATIVE_BUNDLE_SHA256"
+  },
+  "control_source_review": {
+    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-control-source-review.json",
+    "sha256": "REPLACE_ACTUAL_NATIVE_CONTROL_SOURCE_REVIEW_SHA256"
+  }
+}

@@ -325,12 +325,14 @@ def run(args):
     preflight_contract = read_contract(args.contract, args.contract_sha)
     need(getattr(args, 'target_uuids', None) != 'auto2' or preflight_contract['purpose'] == 'pilot_validation',
          'auto2 is reserved for independent pilot_validation')
-    from bounded_speed_runtime import runtime_options, RuntimeLease
+    from bounded_speed_runtime import runtime_options, RuntimeLease, guard_native_formal_route
     pin = runtime_options(args)
+    guard_native_formal_route(preflight_contract, pin)
     if pin is None:
         return _run(args)
     with RuntimeLease(pin) as lineage:
         spec = lineage.compiled['spec']
+        guard_native_formal_route(preflight_contract, pin, lease=lineage, require_lease=True)
         need(spec['new_run_root'] == str(Path(args.run_root)) and
              spec['new_code_root'] == str(HERE) and
              spec['new_bundle'] == {'path': str(HERE/'bundle_files.json'), 'sha256': args.bundle_sha} and

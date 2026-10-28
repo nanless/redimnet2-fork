@@ -1,0 +1,18 @@
+{
+  "schema": "annotation-native-cpu-sealer-run/v1",
+  "sealer": {
+    "path": "/root/experiments/redimnet2/native-asr-batch-20261028-v1/cpu-helper-v2/native_batch_readback.py",
+    "sha256": "REPLACE_ACTUAL_SEALER_SHA256"
+  },
+  "track": {
+    "path": "/root/experiments/redimnet2/native-asr-batch-20261028-v1/main-v1/native-fp32-sdpa-b1/native-track.json",
+    "sha256": "cbad5e98d7884b6a038bd239ec4fe2ea2574a4574dd2bbef67b5db89ae5a88f3"
+  },
+  "audit_code_root": "/root/experiments/redimnet2/native-asr-batch-20261028-v1/main-v1/native-fp32-sdpa-b1/code",
+  "audit_bundle": {
+    "path": "/root/experiments/redimnet2/native-asr-batch-20261028-v1/main-v1/native-fp32-sdpa-b1/code/bundle_files.json",
+    "sha256": "d80c7b0a4f5e077e853c14af0f61035ed4360c68dbcb480a0044ed647ef4c46d"
+  },
+  "execution_root": "/root/experiments/redimnet2/native-asr-batch-20261028-v1/cpu-sealer-validation-v1",
+  "deadline_seconds": 300
+}

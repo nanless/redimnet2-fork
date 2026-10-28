@@ -1,0 +1,42 @@
+{
+  "schema": "annotation-native-control-source-review/v2",
+  "purpose": "production",
+  "pilot_bundle": {
+    "path": "/明确控制目录/actual-frozen-pilot/bundle_files.json",
+    "sha256": "REPLACE_ACTUAL_SHA256"
+  },
+  "formal_bundle": {
+    "path": "/明确控制目录/actual-prepared-formal/bundle_files.json",
+    "sha256": "REPLACE_ACTUAL_SHA256"
+  },
+  "changed_control_sources": {
+    "native_batch_admission.py": {
+      "pilot": "REPLACE_PILOT_MEMBER_SHA256",
+      "formal": "REPLACE_FORMAL_MEMBER_SHA256"
+    },
+    "native_batch_readback.py": {
+      "pilot": "REPLACE_PILOT_MEMBER_SHA256",
+      "formal": "REPLACE_FORMAL_MEMBER_SHA256"
+    },
+    "native_batch_queue_handoff.py": {
+      "pilot": "REPLACE_PILOT_MEMBER_SHA256",
+      "formal": "REPLACE_FORMAL_MEMBER_SHA256"
+    },
+    "bounded_speed_runtime.py": {
+      "pilot": "REPLACE_PILOT_MEMBER_SHA256",
+      "formal": "REPLACE_FORMAL_MEMBER_SHA256"
+    }
+  },
+  "math_engine_source_files": {
+    "REPLACE_WITH_EXACT_DECLARED_REAL_ENGINE_NAMES": "REPLACE_REAL_ENGINE_SHA256"
+  },
+  "GPU_math_source_unchanged": false,
+  "independent_review_complete": false,
+  "CPU_tests_passed": false,
+  "review_evidence": [
+    {
+      "path": "/明确控制目录/independent-actual-review-and-CPU-results.json",
+      "sha256": "REPLACE_ACTUAL_SHA256"
+    }
+  ]
+}

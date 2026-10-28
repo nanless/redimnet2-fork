@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import socket
 import tempfile
+import sys
 import unittest
 from unittest import mock
 import numpy as np
@@ -67,5 +68,21 @@ class BoundedTiming(unittest.TestCase):
         mono=resample_poly(data.mean(axis=1,dtype=np.float32),2,1).astype('<f4')
         self.source['windows']=[dict(window_id='resample',context_start_sample=0,context_end_sample=len(data),input_pcm_sha256=sha(mono.tobytes()))]
         r=self.run_measure();self.assertTrue(r['passed']);self.assertEqual(r['sources'][0]['windows'][0]['model_frames'],16000)
+    def test_repository_cpu_helpers_are_not_heavy_model_packages(self):
+        # 用真正的维护模块复现整套 discover 的导入顺序；不删模块躲守卫。
+        import vllm_backend
+        import vllm_live_probe
+        self.assertIs(sys.modules['vllm_backend'],vllm_backend)
+        self.assertIs(sys.modules['vllm_live_probe'],vllm_live_probe)
+        self.assertTrue(self.run_measure()['passed'])
+        self.assertIs(sys.modules['vllm_backend'],vllm_backend)
+    def test_real_model_package_names_and_submodules_still_refused_before_audio_open(self):
+        for name in ('torch','torch.nn','qwen_asr','qwen_asr.inference','vllm','vllm.engine'):
+            marker=object()
+            with self.subTest(name=name),mock.patch.dict(sys.modules,{name:marker}),\
+                 mock.patch.object(M.os,'open',side_effect=AssertionError('must reject before original audio open')):
+                with self.assertRaisesRegex(ValueError,'heavy model module already imported'):
+                    self.run_measure()
+                self.assertIs(sys.modules[name],marker)
 
 if __name__=='__main__':unittest.main()

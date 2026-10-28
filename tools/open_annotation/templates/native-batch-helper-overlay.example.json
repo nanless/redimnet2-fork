@@ -1,0 +1,21 @@
+{
+  "schema": "annotation-native-cpu-helper-overlay/v2",
+  "files": {
+    "native_batch_admission.py": {
+      "path": "/明确已审维护代码/native_batch_admission.py",
+      "sha256": "REPLACE_EXACT_HELPER_SHA256"
+    },
+    "native_batch_readback.py": {
+      "path": "/明确已审维护代码/native_batch_readback.py",
+      "sha256": "REPLACE_EXACT_HELPER_SHA256"
+    },
+    "native_batch_queue_handoff.py": {
+      "path": "/明确已审维护代码/native_batch_queue_handoff.py",
+      "sha256": "REPLACE_EXACT_HELPER_SHA256"
+    },
+    "bounded_speed_runtime.py": {
+      "path": "/明确已审维护代码/bounded_speed_runtime.py",
+      "sha256": "REPLACE_EXACT_HELPER_SHA256"
+    }
+  }
+}

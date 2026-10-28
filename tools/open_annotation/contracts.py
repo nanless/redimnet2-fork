@@ -17,6 +17,57 @@ ENGINE_MODULES = ("contracts.py", "audio_windows.py", "qwen_backend.py", "worker
                   "schema.py", "sidecar.py", "work_queue.py", "report.py",
                   "source_registry.py", "manifest_builder.py", "normalization.py",
                   "alignment_observer.py", "quality_axes.py", "source_clock.py")
+NATIVE_BATCH_POLICY = 'asr_fixed_cohort_fa_single/v1'
+ASR_B1_FEATURE_POLICY = 'official_b1_features_then_pad/v1'
+NATIVE_FORMAL_DECLARATION = dict(schema='annotation-native-formal-contract/v1',
+    admission_schema='annotation-native-selected-pilot-admission/v2',
+    execution_requires='authenticated_bounded_runtime_v2',default_enabled=False)
+
+
+def asr_batch_profile(contract):
+    """新合批只属于独立试验；原单窗和正式标注不会隐式接受批处理字段。"""
+    runtime = contract['runtime']
+    if runtime.get('execution_policy') != NATIVE_BATCH_POLICY:
+        need('asr_batching' not in runtime, 'ASR batch declaration needs explicit native pilot policy')
+        need('asr_preprocessing' not in runtime, 'B1 feature preprocessing needs explicit native policy')
+        need('native_formal' not in contract, 'native formal declaration cannot change old policy')
+        return None
+    purpose=contract.get('purpose')
+    if purpose=='silver_annotation':
+        declaration=contract.get('native_formal')
+        need(isinstance(declaration,dict)and declaration==NATIVE_FORMAL_DECLARATION and declaration.get('default_enabled')is False,
+             'native ASR batches are pilot-only without explicit default-disabled formal declaration')
+    else:
+        need(purpose in {'pilot_validation','cpu_fixture'} and 'native_formal'not in contract,
+             'native pilot must not contain a formal declaration')
+    value = runtime.get('asr_batching')
+    need(isinstance(value, dict) and set(value) == {'policy', 'max_requests', 'ordering'} and
+         value['policy'] == 'fixed_cohort_until_durable/v1' and
+         type(value['max_requests']) is int and value['max_requests'] in (1, 4, 8) and
+         value['ordering'] == 'frames_then_row_id_within_source_group/v1', 'explicit native batch 1/4/8 and fixed ordering required')
+    need(type(runtime.get('max_batch')) is int and runtime['max_batch'] == 1,
+         'Ultra must retain max_batch=1 independently of ASR')
+    return dict(value)
+
+
+def asr_feature_profile(contract):
+    """独立B1声学特征协议必须显式声明；旧合同不会被隐式修正。"""
+    runtime=contract['runtime']
+    if 'asr_preprocessing'not in runtime:return None
+    value=runtime['asr_preprocessing']
+    need(asr_batch_profile(contract)is not None and isinstance(value,dict)and value=={'policy':ASR_B1_FEATURE_POLICY},
+         'explicit official B1 feature preprocessing declaration required')
+    need(asr_compute_profile(contract)=={'dtype':'float32','attention':'sdpa'},
+         'new B1 feature protocol initially requires reviewed FP32/SDPA')
+    if contract.get('purpose')!='cpu_fixture':
+        from native_b1_feature_padding import validate_source_bindings
+        validate_source_bindings(contract,verify_files=False)
+    return dict(value)
+
+
+def engine_modules_for_contract(contract):
+    return ENGINE_MODULES + (('native_transformers_batch.py',) if asr_batch_profile(contract) is not None else ()) + (
+        ('native_b1_feature_padding.py',)if asr_feature_profile(contract)is not None else())
 
 
 def need(condition, message):
@@ -110,6 +161,10 @@ def atomic_new(path, value):
 
 def validate_execution_policy(contract):
     runtime = contract["runtime"]; policy = runtime.get("execution_policy")
+    batch = asr_batch_profile(contract)
+    if batch is not None:
+        asr_feature_profile(contract)
+        return policy
     if contract.get("purpose") == "silver_annotation":
         need(policy == "single_window_independent" and runtime.get("max_batch") == 1,
              "silver annotation requires single_window_independent max_batch=1; batch cohort is an observed semantic input")
@@ -147,7 +202,7 @@ def read_contract(path, expected_sha=None):
     need(value.get("purpose") in {"silver_annotation", "pilot_validation", "cpu_fixture"}, "unknown purpose")
     if value["purpose"] != "cpu_fixture":
         pins = value.get("engine_source_files", {})
-        need(set(pins) == set(ENGINE_MODULES), "production semantic engine source pins missing")
+        need(set(pins) == set(engine_modules_for_contract(value)), "production semantic engine source pins missing")
         for name, expected in pins.items():
             need(sha_file(Path(__file__).resolve().parent / name) == expected, "semantic engine bytes changed; use a new contract/version: " + name)
     need(value.get("model_API_calls_allowed") == 0, "formal model API must be zero")
@@ -166,7 +221,9 @@ def read_contract(path, expected_sha=None):
         need(alignment.get("mode") == "ultra_no_head" and alignment.get("head_used") is False, "only measured Ultra no-head is admitted")
         need(alignment.get("repo_id") == "17slever17/Qwen3-ForcedAligner-Ultra" and alignment.get("revision") == "765dc1d714e4c80196782a5df5bfbcb3e1416736", "Ultra author identity differs")
         need(value["models"]["aligner"]["files"].get("model.safetensors", {}).get("sha256") == "e6fcf5be2c11b265f7217ba6102917a7fe64438506357be6999f6ad5a707cb5f", "Ultra main weights identity differs")
-        need(runtime.get("max_batch") == 1 and runtime.get("execution_policy") == "single_window_independent", "Ultra production must remain single-window independent")
+        need(runtime.get("max_batch") == 1 and
+             (runtime.get("execution_policy") == "single_window_independent" or asr_batch_profile(value) is not None),
+             "Ultra must remain single-window; native ASR policy is pilot-only")
     need(1 <= runtime.get("length_ratio_limit", 0) <= 4, "invalid batch length ratio")
     need(type(runtime.get("max_new_tokens")) is int and runtime["max_new_tokens"] > 0, "invalid token bound")
     window = runtime["window"]

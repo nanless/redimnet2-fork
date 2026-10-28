@@ -89,7 +89,12 @@ def validate_input(value):
 def measure_sources(value, expected_hostname):
     sources = validate_input(value)
     need(socket.gethostname() == expected_hostname, 'actual CPU observation host differs')
-    need(not any(n == 'torch' or n.startswith(('torch.','qwen_asr','vllm')) for n in sys.modules), 'heavy model module already imported')
+    # 只识别模型包本身及其点分子模块。仓库的 vllm_backend、
+    # vllm_live_probe 是不加载模型的 CPU 控制程序，不属于 vllm 包。
+    model_packages = ('torch', 'qwen_asr', 'vllm')
+    need(not any(n == package or n.startswith(package + '.')
+                 for n in sys.modules for package in model_packages),
+         'heavy model module already imported')
     for name in ('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR_NUM_THREADS'):
         os.environ[name] = '1'
     import numpy as np

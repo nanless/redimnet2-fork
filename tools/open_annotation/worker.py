@@ -13,7 +13,7 @@ from pathlib import Path
 import time
 import traceback
 from audio_windows import inspect_source, plan_windows, read_window, reuse_vad, units_from_windows, verify_decoder
-from contracts import atomic_new, digest, job_key, model_provenance, native_json, need, read_contract, sha_file, stat_identity, utcnow
+from contracts import atomic_new, digest, job_key, model_provenance, native_json, need, read_contract, sha_file, stat_identity, utcnow, asr_batch_profile, safe_join
 from schema import build_record
 from sidecar import SidecarStore, StageCache
 from work_queue import WorkQueue
@@ -111,7 +111,8 @@ def _stage_inputs(stage, window, context, contract, contract_sha, models):
 
 
 def process_group(sources, claim, store, cache, backend, contract, args, descriptor, counters):
-    """At most source_batch_rows source objects and max_batch*4 PCM windows."""
+    """单窗沿原缓冲；明确新试验先固定最多256窗整组，整批提交后才发布。"""
+    native_profile=asr_batch_profile(contract)
     contexts = []; receipts = []
     for source in sources:
         claim.assert_member(source); counters["assigned_source_rows"] += 1
@@ -141,21 +142,36 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
         contexts.append({"source": source, "identity": identity, "vad": vad, "windows": windows,
                          "errors": errors, "started_utc": started})
 
+    if native_profile is not None:
+        total_windows=sum(len(c['windows'])for c in contexts)
+        need(total_windows<=256, 'native pilot source group exceeds 256 fixed windows; preserve and reject, no regrouping')
+        if total_windows:
+            # 完整来源组（包括本次已命中的侧车）决定稳定地址，不能用剩余行另起计划。
+            group=safe_join(store.root,'.native_torch_cohorts/'+claim.shard['id']+'/'+digest(sources))
+            backend.prepare_native_group(group,args.contract_sha,descriptor['provenance']['code_sha256'])
+
     def flush(rows):
         if not rows: return
         asr_misses = []
         for row in rows:
             context, window = row["context"], row["window"]
             inputs = _stage_inputs("asr", window, context, contract, args.contract_sha, descriptor["provenance"]["models"])
-            row["asr_inputs"] = inputs; cached = timed_call(counters, 'stage_cache', cache.get, "asr", inputs)
+            row["asr_inputs"] = inputs
+            # 新策略只认完整批次文件事务，不允许逐窗缓存把未提交cohort拆散。
+            cached = None if native_profile is not None else timed_call(counters, 'stage_cache', cache.get, "asr", inputs)
             if cached is None: asr_misses.append(row)
             else: window["asr"] = cached; window["asr_cache_hit"] = True; counters["stage_cache_hits"]["asr"] += 1
         answers = backend.transcribe(asr_misses)
         need(set(answers) == {r["row_id"] for r in asr_misses}, "ASR result mapping differs")
         for row in asr_misses:
             result = answers[row["row_id"]]
-            if result["status"] != "failed": result = timed_call(counters, 'stage_cache', cache.put, "asr", row["asr_inputs"], result)
-            row["window"]["asr"] = result; row["window"]["asr_cache_hit"] = False
+            hit=False
+            if native_profile is not None:
+                hit=result.get('durable_native_batch',{}).get('cache_hit')
+                need(type(hit)is bool, 'native batch result needs actual per-row durable cache accounting')
+                counters['stage_cache_hits']['asr']+=int(hit)
+            elif result["status"] != "failed": result = timed_call(counters, 'stage_cache', cache.put, "asr", row["asr_inputs"], result)
+            row["window"]["asr"] = result; row["window"]["asr_cache_hit"] = hit
         fa_misses = []
         for row in rows:
             context, window = row["context"], row["window"]; row["asr"] = window["asr"]
@@ -175,7 +191,7 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
                 if window[stage].get("error"): context["errors"].append({"stage": stage, "window_id": window["window_id"], "traceback": window[stage]["error"]})
             counters["model_windows"] += 1
 
-    rows = []; pending_limit = contract["runtime"]["max_batch"] * 4
+    rows = []; pending_limit = 257 if native_profile is not None else contract["runtime"]["max_batch"] * 4
     for context in contexts:
         for window in context["windows"]:
             try:
@@ -229,8 +245,9 @@ def main(argv=None, *, bounded_lease=None):
     need(contract["purpose"] == "cpu_fixture" if args.backend == "fixture" else contract["purpose"] != "cpu_fixture", "backend purpose differs")
     output = Path(args.worker_output); output.mkdir(parents=True, exist_ok=True)
     need(not (output / "worker_summary.json").exists(), "worker evidence output is not fresh")
-    from bounded_speed_runtime import runtime_options
+    from bounded_speed_runtime import runtime_options, guard_native_formal_route
     bounded_pin = runtime_options(args)
+    guard_native_formal_route(contract, bounded_pin, lease=bounded_lease, require_lease=True)
     need((bounded_pin is not None) == (bounded_lease is not None), 'authenticated bounded lineage lease required for thin index')
     if bounded_pin is None:
         queue = WorkQueue(args.shard_index, args.index_sha, args.queue_root, args.contract_sha)
