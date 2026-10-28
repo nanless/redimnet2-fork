@@ -1,5 +1,12 @@
 # 在本仓库里写字、改代码时请遵守的说明
 
+## 2026年10月28日起的全局GitHub限制
+
+- 本机任何情况下都不得向GitHub上传或推送文件、代码、文档、数据及分支；GitHub只读。
+- `remote.*.pushurl=disabled://github-push-blocked-by-policy`不得恢复，不得用完整GitHub URL、临时remote、其他端口或服务器中转绕过。
+- 用户已删除`nanless/redimnet2-fork`的远端`codex/repository-audit-20261025`分支，不重新创建或重推。
+- 后续在本地提交，作者与提交者仍为`nanless <francis7999@outlook.com>`；需要远程协作时只使用用户明确指定的GitLab。本条覆盖所有旧文档中的GitHub推送流程，历史推送事实保留为历史记录。
+
 这份文件给两类读者看：
 
 1. **刚接触说话人验证的研究生**：用来弄清本仓库在做什么、数据放哪、训练怎么接起来。  
