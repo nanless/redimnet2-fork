@@ -72,8 +72,14 @@ def prepare(spec_path, spec_sha, output):
     need(type(seconds) is int and 60 <= seconds <= 7200, 'bounded runtime must be 60..7200 seconds')
     python = physical(spec['python'])
     output = physical(output)
-    repo = Path(__file__).resolve().parents[2]
-    need(not output.exists() and disjoint(output, repo), 'fresh output outside repository required')
+    code_root = Path(__file__).resolve().parent
+    # 仓库入口与部署副本的目录深度不同。只有同时存在仓库说明和模型源码
+    # 的实际祖先才是仓库；部署时不能把任意两级祖先误当成受保护仓库。
+    repo = next((p for p in (code_root, *code_root.parents)
+                 if (p / 'AGENTS.md').is_file() and (p / 'redimnet2').is_dir()), None)
+    source_root = repo if repo is not None else code_root
+    need(not output.exists() and disjoint(output, source_root),
+         'fresh output outside repository or deployed code required')
     named_roots = spec.get('protected_roots')
     need(isinstance(named_roots, list) and 1 <= len(named_roots) <= 16,
          'explicit current production/PTN protected roots required')

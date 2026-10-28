@@ -3,6 +3,7 @@ import copy
 import json
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -80,6 +81,41 @@ class BoundedPreparation(unittest.TestCase):
         self.assertEqual(contracts[2]['runtime']['asr_compute'],{'dtype':'bfloat16','attention':'sdpa'})
         self.assertNotIn('torch',sys.modules)
         self.assertFalse(list((self.root/'real-freeze').rglob('*.sqlite')))
+
+    def test_deployed_preparer_real_freezes_sibling_output_not_arbitrary_ancestor(self):
+        """复现云端build-code部署；真正复制源码并在新解释器执行准备器。"""
+        base=Path(self.spec['base_contract']['path']);base.write_bytes(C.canonical_bytes(external_contract()))
+        self.spec['base_contract']['sha256']=C.sha_file(base)
+        task=self.root/'experiments'/'redimnet2'/'bounded-pilot';task.mkdir(parents=True)
+        code=task/'build-code-v2'
+        P.freezer.freeze(base,C.sha_file(base),code,'deployment-fixture')
+        self.spec['target_uuids']='auto2';self.spec_path.write_bytes(C.canonical_bytes(self.spec))
+        output=task/'screen-v2'
+        interpreter=[sys.executable,'-I','-B']+(['-O'] if sys.flags.optimize else [])
+        proc=subprocess.run([*interpreter,str(code/'prepare_bounded_speed_validation.py'),
+            '--spec',str(self.spec_path),'--spec-sha',C.sha_file(self.spec_path),'--output',str(output)],
+            capture_output=True,text=True,timeout=30)
+        self.assertEqual(proc.returncode,0,proc.stderr)
+        result=json.loads((output/'prepared.json').read_text())
+        self.assertEqual(result['worker_count'],2)
+        for variant in result['variants'].values():
+            frozen=Path(variant['freeze']['frozen_copy'])
+            self.assertEqual(C.sha_file(frozen/'prepare_bounded_speed_validation.py'),
+                             C.sha_file(code/'prepare_bounded_speed_validation.py'))
+            self.assertTrue((frozen/'bundle_files.json').is_file())
+        self.assertFalse(result['GPU_executed']);self.assertFalse(result['database_created'])
+        # 同一部署入口仍不能把输出放进其现行源码目录。
+        blocked=subprocess.run([*interpreter,str(code/'prepare_bounded_speed_validation.py'),
+            '--spec',str(self.spec_path),'--spec-sha',C.sha_file(self.spec_path),'--output',str(code/'blocked')],
+            capture_output=True,text=True,timeout=30)
+        self.assertNotEqual(blocked.returncode,0)
+        self.assertIn('deployed code',blocked.stderr);self.assertFalse((code/'blocked').exists())
+
+    def test_real_repository_output_remains_refused(self):
+        repo=next(p for p in HERE.parents if (p/'AGENTS.md').is_file() and (p/'redimnet2').is_dir())
+        with self.assertRaisesRegex(RuntimeError,'outside repository'):
+            self.run_prepare(repo/'must-not-create-bounded-test-output')
+        self.assertEqual(self.calls,[])
 
     def test_explicit_two_cards_and_selected_candidate_only(self):
         self.spec['target_uuids']=['GPU-00000000-0000-0000-0000-000000000001','GPU-00000000-0000-0000-0000-000000000002']
