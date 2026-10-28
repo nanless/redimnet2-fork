@@ -2,10 +2,11 @@
 
 ## 2026年10月28日起的全局GitHub限制
 
-- 本机任何情况下都不得向GitHub上传或推送文件、代码、文档、数据及分支；GitHub只读。
-- `remote.*.pushurl=disabled://github-push-blocked-by-policy`不得恢复，不得用完整GitHub URL、临时remote、其他端口或服务器中转绕过。
-- 用户已删除`nanless/redimnet2-fork`的远端`codex/repository-audit-20261025`分支，不重新创建或重推。
-- 后续在本地提交，作者与提交者仍为`nanless <francis7999@outlook.com>`；需要远程协作时只使用用户明确指定的GitLab。本条覆盖所有旧文档中的GitHub推送流程，历史推送事实保留为历史记录。
+- 本机（本地Mac）任何时候都不得向GitHub上传／推送任何文件、代码、文档、数据、提交对象及分支；本机对GitHub只读，只浏览／下载／clone／fetch／pull，禁止网页、API、gh或自动同步上传。
+- 本机`remote.*.pushurl=disabled://github-push-blocked-by-policy`必须保留，不得恢复，也不能改URL／remote／端口或用代理／隧道让本机继续上传。
+- 用户最新明确允许：可把任务需要的仓库同步到`dev_a800_2gpus`，由服务器自身的仓库／进程连接GitHub并执行任务需要的提交／推送。本机可以用SSH发起远程命令；不能在本机执行git push再透传数据流。此前“服务器中转也禁止”的笼统限制已被本次服务器许可替代。
+- 已删除的`nanless/redimnet2-fork`远端`codex/repository-audit-20261025`分支不恢复、不重建；本机26仓库的禁推配置不变，不重新扫描这些仓库。
+- 本地编辑、commit可以进行，作者与提交者仍为`nanless <francis7999@outlook.com>`。需要GitHub写入时采用上述服务器方式；GitLab仍按用户指定目的地协作。规则维护本身不代表已经迁移仓库或执行推送，历史操作保持历史含义。
 
 这份文件给两类读者看：
 

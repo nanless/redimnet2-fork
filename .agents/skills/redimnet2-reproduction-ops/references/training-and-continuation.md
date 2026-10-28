@@ -1,5 +1,7 @@
 # 主训练和大间隔微调
 
+查询实时进度先读[任务状态与只读巡检](task-status-and-readonly-progress.md)。2026年10月28日22:28已核ctjsk推进到第71轮并有稳定model70；本页较早“尚无完整48轮”的文字描述当时观察，不代表现在仍无新检查点。原NaN根因未确定、恢复演练和后续LM资格仍分别处理。
+
 训练入口在 `applications/speaker_rec/`；旧两段准备工具在 `tools/lm_continuation/`；本次47→48的新包、状态比较、双卡工程与运行包装在 `tools/ptn_resume/`。先读相应目录说明，再执行仓库测试；不能从旧实验目录导入仓库中没有的唯一依赖。
 
 历史普通接续入口、数据子进程和恢复检查参考在 `tools/ptn_reference/`。先读其 README、逐文件索引和公开维护差异；只可用 `audit_reference.py` 核摘要、Python 编译语法与 `bash -n`。不要导入归档模块或执行 `archive/launch.sh`，其中含实际启动和进程管理动作。缺少原合同、源码凭证、终态和权重时不能补空文件放行；`runtime_admission` 始终为 false。去除真实诊断标识后的公开版本有新身份，不能声称与全部历史文件原字节一致或已继承 GPU 证明。
