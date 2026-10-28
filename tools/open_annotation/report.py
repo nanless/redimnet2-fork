@@ -1,6 +1,7 @@
 """Fast protocol accounting, and an independent CPU-only full-sidecar audit."""
 from __future__ import annotations
 import argparse
+import contextlib
 from collections import Counter
 import hashlib
 import json
@@ -13,13 +14,38 @@ from schema import assert_valid_record
 from work_queue import SLOT_BYTES, decode_completion_slot, read_index
 
 
+@contextlib.contextmanager
+def unique_source_scope(contract, index):
+    """有限pilot用严格上限的set；正式全量旧分支保持原SQLite行为。"""
+    count=index.get('source_count')
+    bounded=(contract.get('purpose')=='pilot_validation' and type(count)is int and 0<count<=4096)
+    if bounded:
+        seen=set()
+        def add(value):
+            need(value not in seen,'duplicate source ID across finite pilot shards')
+            need(len(seen)<4096,'finite pilot source-ID memory limit exceeded')
+            seen.add(value)
+        yield add, lambda:len(seen), lambda:None, 'bounded_pilot_memory_set'
+    else:
+        with tempfile.TemporaryDirectory(prefix='redimnet2-full-sidecar-audit-')as temp:
+            connection=sqlite3.connect(str(Path(temp)/'seen.sqlite'))
+            try:
+                connection.execute('CREATE TABLE seen(source_id TEXT PRIMARY KEY)')
+                yield (lambda value:connection.execute('INSERT INTO seen VALUES (?)',(value,)),
+                       lambda:connection.execute('SELECT COUNT(*) FROM seen').fetchone()[0],
+                       connection.commit, 'legacy_local_sqlite')
+            finally:
+                connection.close()
+
+
 def verify_run(contract, index, queue_root, output_root, full=False):
     """No models/CUDA imported. full=False is completion-protocol verification.
 
     The light mode reads one sequential fixed-slot file, not millions of labels.
     It deliberately does not claim fresh byte-level sidecar or audio verification.
     full=True reopens every immutable chunk, sidecar and sidecar commit and uses a
-    temporary local SQLite unique index to check global source-ID disjointness.
+    bounded in-memory source-ID set for pilot_validation <=4096 sources; other
+    historical full modes retain their temporary local SQLite unique index.
     """
     queue_root, output_root = Path(queue_root), Path(output_root)
     errors = []; counts = Counter(); completed_sources = 0; completed_shards = 0; error_count = 0
@@ -60,13 +86,11 @@ def verify_run(contract, index, queue_root, output_root, full=False):
     if not (broker["completed_chunks"] == len(index["shards"]) and not broker["leases"]):
         add_error({"stage": "broker", "error": "queue not globally complete", "completed_chunks": broker["completed_chunks"], "leases": len(broker["leases"])})
     if completed_sources != index["source_count"]: add_error({"stage": "denominator", "completed": completed_sources, "planned": index["source_count"]})
-    full_count = 0; sidecar_bytes = 0; full_errors = 0; full_decisions = Counter()
+    full_count = 0; sidecar_bytes = 0; full_errors = 0; full_decisions = Counter(); source_storage='not_used'
     if full:
         need(index_path is not None, "full CPU verification requires original index path")
-        # Scratch index is never an authoritative shared queue and never WAL.
-        with tempfile.TemporaryDirectory(prefix="redimnet2-full-sidecar-audit-") as temp:
-            connection = sqlite3.connect(str(Path(temp) / "seen.sqlite"))
-            connection.execute("CREATE TABLE seen(source_id TEXT PRIMARY KEY)")
+        # 有限pilot不创建任何数据库，逐源readback及唯一性检查仍完整。
+        with unique_source_scope(contract,index)as(add_seen,unique_count,commit_seen,source_storage):
             for ordinal, shard in enumerate(index["shards"]):
                 try:
                     source_path = index_path.parent / shard["path"]
@@ -87,7 +111,7 @@ def verify_run(contract, index, queue_root, output_root, full=False):
                     need(sha_file(p) == slot["commit_sha256"] and digest(sorted(receipts)) == slot["source_ids_sha256"], "chunk receipt is not bound to completion map")
                     chunk_decisions = Counter()
                     for source in sources:
-                        connection.execute("INSERT INTO seen VALUES (?)", (source["source_id"],))
+                        add_seen(source["source_id"])
                         receipt = receipts[source["source_id"]]
                         need(receipt["job_key"] == job_key(source, contract_sha), "source job key differs")
                         sidecar = safe_join(tree, source["sidecar_relpath"])
@@ -109,14 +133,13 @@ def verify_run(contract, index, queue_root, output_root, full=False):
                         full_count += 1; sidecar_bytes += len(raw)
                     need(slot["decision_counts"] == {key:chunk_decisions[key] for key in ("candidate","unknown","failed")},
                          "completion aggregate differs from actual source decisions")
-                    connection.commit()
+                    commit_seen()
                 except Exception:
                     full_errors += 1
                     add_error({"stage": "full_sidecars", "shard_id": shard["id"], "traceback": traceback.format_exc()})
                 if full_count and full_count % 10000 < shard["count"]:
                     print(json.dumps({"event": "full_verification_progress", "sources": full_count, "errors": full_errors}), flush=True)
-            unique = connection.execute("SELECT COUNT(*) FROM seen").fetchone()[0]
-            connection.close()
+            unique = unique_count()
             if full_count != index["source_count"] or unique != index["source_count"]:
                 add_error({"stage": "full_denominator", "verified": full_count, "unique": unique, "planned": index["source_count"]})
     return {"schema": "redimnet2-production-verification/v1", "passed": error_count == 0,
@@ -127,6 +150,7 @@ def verify_run(contract, index, queue_root, output_root, full=False):
             "full_sidecar_readback_verified": bool(full and error_count == 0), "sidecars_individually_reopened": full_count,
             "sidecar_bytes_reopened": sidecar_bytes, "input_audio_rehashed_in_this_audit": False,
             "source_ID_global_disjointness_rechecked": bool(full and error_count == 0),
+            "source_disjointness_storage":source_storage,"database_created":source_storage=="legacy_local_sqlite",
             "shard_ownership_union_disjoint_verified": bool(error_count == 0),
             "light_mode_meaning": "immutable input-shard binding and producer publication protocol, not a fresh per-file integrity or boundary-accuracy audit",
             "contract_sha256": contract_sha, "index_sha256": index_sha, "gpu_model_execution": False,

@@ -82,6 +82,20 @@ def validate_output_paths(args, here=HERE):
     return root,locks,paths[0]
 
 
+def selected_uuids(snapshot, target, purpose):
+    """按真实可见卡选择UUID；auto2仅供独立两卡pilot，不扩正式八卡门。"""
+    if target == 'auto2':
+        need(purpose == 'pilot_validation', 'auto2 is reserved for independent pilot_validation')
+        need(len(snapshot['devices']) == 2, 'auto2 pilot must see exactly two physical GPUs')
+        return [d['uuid'] for d in sorted(snapshot['devices'], key=lambda d: d['index'])]
+    if target == 'auto8':
+        need(len(snapshot['devices']) == 8, 'cloud parent must see exactly eight physical GPUs')
+        return [d['uuid'] for d in sorted(snapshot['devices'], key=lambda d: d['index'])]
+    uuids = target.split(',')
+    need(len(uuids) == 2 and len(set(uuids)) == 2, 'two exact development UUIDs required')
+    return uuids
+
+
 def run(args):
     need(int(os.environ.get('WORLD_SIZE', '1')) == 1 and int(os.environ.get('RANK', '0')) == 0
          and 'LOCAL_RANK' not in os.environ, 'parent must execute once, not inside platform rank group')
@@ -93,6 +107,8 @@ def run(args):
     # creating aliases or admitting CUDA resources, not only inside the worker.
     contract = read_contract(args.contract, args.contract_sha)
     need(contract['purpose'] in {'pilot_validation','silver_annotation'}, 'GPU parent requires real offline inference contract')
+    need(args.target_uuids != 'auto2' or contract['purpose'] == 'pilot_validation',
+         'auto2 is reserved for independent pilot_validation')
     root,global_locks,output=validate_output_paths(args)
     ensure_alias()
     t0 = time.monotonic()
@@ -100,12 +116,7 @@ def run(args):
     facts = model_facts(contract, full_hash=True)
     model_guard_seconds = time.monotonic() - t0
     current = G.capture_snapshot()
-    if args.target_uuids == 'auto8':
-        need(len(current['devices']) == 8, 'cloud parent must see exactly eight physical GPUs')
-        uuids = [d['uuid'] for d in sorted(current['devices'], key=lambda d: d['index'])]
-    else:
-        uuids = args.target_uuids.split(',')
-        need(len(uuids) == 2 and len(set(uuids)) == 2, 'two exact development UUIDs required')
+    uuids = selected_uuids(current, args.target_uuids, contract['purpose'])
     selected = []
     for uuid in uuids:
         matched = [d for d in current['devices'] if d['uuid'] == uuid]

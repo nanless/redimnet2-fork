@@ -108,3 +108,15 @@ run/v1启动控制器对最终千万行计划库使用一次全表精确条件�
 旧侧车全量重开可显式`retained_read_backend=process`、`retained_read_workers=2..4`。默认thread/1不变；只并行旧完成片JSON校验，不读媒体、模型或重跑转写。spawn初始化固定producer/contract及11份校验源SHA；部署控制源须额外含`alignment_observer.py`。父进程不许已导入torch/qwen_asr/vLLM，spawn之前隐藏GPU环境并在所有退出路径还原；生产process仅Linux，PR_SET/GET不可忽略SIGKILL并在arm前后及每job核父PID/start。每批最多256个有序小tuple，SQLite仍main；正常、worker错误和父侧异常都先在旧父锁内排空，不能只为map异常处理。
 
 `benchmark_retained_reads.py`需要实际.py入口、固定plan/SHA、显式少量positions/modes，最多8片/2048来源；按mode顺序只保留一池，完整有序证明相同且broker不变才出报告，不取旧执行锁、不授准入。`probe_retained_process_parent_death.py`仅测试自有合成CPU父子进程；实际LinuxTERM父、核精确子PID/start消失或Z，失败清理只走nonce/start和pidfd，不用裸PID信号。Conda缺标准pidfd API时必须核本机头文件434/424及实际fdinfo身份，不悄悄降级。所有旧审计半成品和原失败保留，只有实机更快且证明相同才替换精确自有CPU审计，不能操作PTN。该CPU机制不代表vLLM/EngineCore清理已实现；真实GPU构造仍关闭。
+
+## 2026年10月28日：独立两卡实测与无数据库有界交接
+
+用户明确要求真实验证并接入八卡，旧“GPU先不测”不再适用。当前八卡生产不可旁建context、两卡开发机仍有既有/未知PID时，优先申请独立云两卡pilot；沿实际镜像/挂载、zhounan_名称、P6与关闭重试，当前标注/PTN保持。prepare_bounded_speed_validation显式对比FP32-eager、FP32-SDPA、BF16-SDPA，同维护代码/v2源钟/Ultra与输入，不冒充旧23文件逐字节同软件。gpu_launch的auto2只允许pilot且实际恰两A800，原UUID锁/空闲双快照/context挑战/归还不变。
+
+run_bounded_speed_pilot消费固定30/3000准备收据，核命令/源码与模型身份，逐轨归还并审阅后前进；512恢复用同合同labels和新有限queue，要求旧字节不变、零新ASR/FA。report的有限pilot≤4096 full读回使用set，不能为此创建临时SQLite；旧全量分支不执行。新代码与CPU不能写成真实GPU已通过，实际速度分加载、ASR/FA、源核验/窗口/发布与稳态，不据30小批总耗时外推17天。
+
+实际4.57.6源码包含复合config递归attention setter/from_pretrained二次分派，不能把历史上游风险当本次已证瓶颈；仍须实际forward/SDPA/QKV观测。Qwen0.0.6声明vLLM extra0.14.0而现场0.19.1，接口存在不等于已兼容；真实vLLM构造及清理仍不因本次授权自动变成已验证。
+
+bounded_speed_handoff/queue是显式新schema：已完成片核固定槽、仅最多8在途片逐源核既有结果，未领取片只引用完整父索引元数据，领取才读JSONL。reader必须核父cursor后描述完整闭包及partial保留/缺失守恒，拒绝同步缩小计数造成漏源。portable沿既有内容SHA和前后stat，仅device可变；旧producer/job/字节不重贴，孤儿保留拒绝。旧锁实际FD贯穿GPU和清理，新鲜终态只在启动核，不每领取一片重复要求一小时内观察。祖先语义/旧queue锁仍要在正式父子运行入口继承，不拿helper的最近旧writer锁代替全部祖先门。
+
+禁止为本次接续重开联合全库审查、数据库或千万JSONL复制；旧历史章节仅作记录，不作为当前执行路线。详读仓库《有限同批转写提速准备》《独立云转写提速串行验证》《有界提速交接》。实际资源与实验结果以带日期报告和冻结源SHA为准；CPU通过、准备成功、平台Running、GPU真实执行、质量、恢复和正式八卡接续分别记账。
