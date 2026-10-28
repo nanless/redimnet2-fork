@@ -24,7 +24,7 @@ class DeploymentTests(unittest.TestCase):
         self.control=self.root/'new-control';self.output=self.root/'new-probe';self.protected=[self.root/name for name in ('PTN','old-annotation','old-pilot','existing-native')]
         self.raw=("import json,sys\nCONTROL_DEPENDENCIES="+repr(P.DEPENDENCIES)+"\nif '--execute'in sys.argv:raise RuntimeError('GPU execute must never be sent')\nprint(json.dumps(dict(checked=True,GPU_executed=False,source_count=30,first_group_windows=9,partial_recovery_verified=False)))\n").encode()
         self.approved=hashlib.sha256(self.raw).hexdigest();mock=patch.object(P,'APPROVED_CONTROLLER_SHA',self.approved);mock.start();self.addCleanup(mock.stop)
-    def stage(self):return P.stage(self.source,self.prepared,self.control,self.output,self.protected,'a'*64)
+    def stage(self,**kwargs):return P.stage(self.source,self.prepared,self.control,self.output,self.protected,'a'*64,**kwargs)
     def test_exact_source_copy_and_real_subprocess_default_check_never_execute(self):
         before=P.sources(self.source);stage=self.stage();(self.control/P.CONTROLLER).write_bytes(self.raw)
         value=P.finish(self.control)
@@ -48,6 +48,33 @@ class DeploymentTests(unittest.TestCase):
         self.stage();(self.control/P.CONTROLLER).write_bytes(b'raise RuntimeError("must not run")')
         with self.assertRaisesRegex(ValueError,'approved controller'):P.finish(self.control)
         self.assertFalse((self.control/'control-ready-receipt-v1.json').exists())
+    def add_b8(self):
+        matrix=P.pin(self.prepared);matrix['variants']['native-fp32-sdpa-b8']=dict(matrix['variants']['native-fp32-sdpa-b4'])
+        (Path(self.prepared['path'])).unlink();self.prepared=P.write(Path(self.prepared['path']),matrix)
+    def test_explicit_B8_uses_copied_approved_controller_and_keeps_source_bytes(self):
+        self.add_b8();(self.source/P.CONTROLLER).write_bytes(self.raw);before=P.sources(self.source)
+        stage=self.stage(profile='native-fp32-sdpa-b8');value=P.finish(self.control)
+        self.assertEqual(stage['profile'],value['profile']);self.assertEqual(value['profile'],'native-fp32-sdpa-b8')
+        self.assertEqual(P.pin(value['plan'])['profile'],value['profile']);self.assertEqual(before,P.sources(self.source))
+        self.assertEqual(value['controller_origin'],'copied_unchanged_from_source')
+        self.assertEqual(value['controller_source_ref'],dict(path=str(self.source/P.CONTROLLER),sha256=self.approved))
+        self.assertEqual((self.control/P.CONTROLLER).read_bytes(),self.raw);self.assertFalse(self.output.exists())
+    def test_existing_wrong_controller_refused_before_creating_control(self):
+        (self.source/P.CONTROLLER).write_text('# unreviewed controller')
+        with self.assertRaisesRegex(ValueError,'unapproved recovery controller'):self.stage()
+        self.assertFalse(self.control.exists())
+    def test_profile_cannot_be_undeclared_or_changed_only_in_stage_receipt(self):
+        for profile in ('native-fp32-sdpa-b1',None,True):
+            with self.subTest(profile=profile),self.assertRaisesRegex(ValueError,'B4/B8'):self.stage(profile=profile)
+        self.add_b8();self.stage();(self.control/P.CONTROLLER).write_bytes(self.raw)
+        path=self.control/'control-stage-receipt-v1.json';s=json.loads(path.read_bytes());s['profile']='native-fp32-sdpa-b8';path.write_text(json.dumps(s))
+        with self.assertRaisesRegex(ValueError,'fixed plan/profile'):P.finish(self.control)
+    def test_legacy_B4_stage_receipt_without_new_fields_still_checks(self):
+        self.stage();(self.control/P.CONTROLLER).write_bytes(self.raw)
+        path=self.control/'control-stage-receipt-v1.json';s=json.loads(path.read_bytes())
+        for key in ('profile','controller_origin','controller_source_ref'):s.pop(key)
+        path.write_text(json.dumps(s));value=P.finish(self.control)
+        self.assertEqual(value['profile'],'native-fp32-sdpa-b4');self.assertEqual(value['controller_origin'],'separate_approved_upload_required')
 
 
 if __name__=='__main__':unittest.main()

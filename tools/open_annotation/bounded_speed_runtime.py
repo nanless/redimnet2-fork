@@ -1,4 +1,4 @@
-"""有界新生产者的显式运行准入；只读小控制文件，不扫描全库或建数据库。
+"""有界新生产者的显式运行准入；核控制文件与有限证明，不扫描全库或建数据库。
 
 该模块把原始语义锁、原始队列父锁和最近旧生产者的锁一起保留到
 GPU父子进程生命周期结束。试验、质量复核和当前平台终态缺一不可；
@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -21,11 +22,13 @@ if __package__:
     from . import bounded_speed_queue as Q
     from . import resume_existing_annotation as R
     from .verify_portable_successor_mounts import validate_row
+    from .readonly_progress import strict_json
 else:
     import bounded_speed_handoff as H
     import bounded_speed_queue as Q
     import resume_existing_annotation as R
     from verify_portable_successor_mounts import validate_row
+    from readonly_progress import strict_json
 
 SCHEMA='annotation-bounded-speed-runtime/v1'
 NATIVE_SCHEMA='annotation-bounded-native-runtime/v2'
@@ -33,11 +36,181 @@ NATIVE_ADMISSION_SCHEMA='annotation-native-selected-pilot-admission/v2'
 PLATFORM_SCHEMA='annotation-bounded-speed-platform-observation/v1'
 ADMISSION_SCHEMA='annotation-asr-speed-selected-pilot-admission/v1'
 QUALITY_SCHEMA='annotation-asr-speed-quality-review/v1'
+PROOF_TRANSPORT={'policy':'parent_sealed_memfd/v1'}
+SEALED_PROOF_SCHEMA='annotation-native-parent-selected-proof/v1'
+MEMFD_NAME='redimnet-selected-proof'
+MAX_PROOF_BYTES=32*1024**2
+MAX_PROOF_FILES=100000
+_PROOF_CAPABILITY=object()
 need=H.need
 
 
 def pinned(pin):
     return H.read_pin(pin)[0]
+
+
+def proof_transport_profile(spec):
+    """缺省完全沿用旧验证；普通JSON只能请求传输，不能授复用资格。"""
+    if 'proof_transport'not in spec:return None
+    need(spec.get('schema')==NATIVE_SCHEMA and spec['proof_transport']==PROOF_TRANSPORT
+         and isinstance(spec['proof_transport'],dict), 'explicit native sealed memfd proof transport required')
+    return dict(PROOF_TRANSPORT)
+
+
+def _linux_memfd_required():
+    need(sys.platform.startswith('linux')and hasattr(os,'memfd_create')and hasattr(os,'pread')
+         and all(hasattr(fcntl,k)for k in ('F_ADD_SEALS','F_GET_SEALS','F_SEAL_WRITE','F_SEAL_GROW','F_SEAL_SHRINK','F_SEAL_SEAL')),
+         'sealed parent proof requires actual Linux memfd/seals/pread')
+
+
+def _required_seals():
+    return fcntl.F_SEAL_WRITE|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_SEAL
+
+
+def _assert_memfd_name(fd):
+    need(os.readlink('/proc/self/fd/%d'%fd).lstrip('/')=='memfd:'+MEMFD_NAME+' (deleted)',
+         'proof FD is not the explicit anonymous parent memfd')
+
+
+def _file_stamp(path):
+    s=os.lstat(path)
+    need(stat.S_ISREG(s.st_mode),'proof input must remain a regular nonlinked file')
+    return [s.st_dev,s.st_ino,s.st_mode,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+
+
+def _directory_stamp(path):
+    s=os.lstat(path);need(stat.S_ISDIR(s.st_mode),'proof ancestor must remain a nonlinked directory')
+    # 无关文件的创建不使历史证明失效；目录本身被换掉则必须拒绝。
+    return [s.st_dev,s.st_ino,s.st_mode]
+
+
+def _unique_pins(pins):
+    unique={}
+    for pin in pins:
+        need(isinstance(pin,dict)and set(pin)=={'path','sha256'}and H.is_sha(pin['sha256']), 'explicit proof input pin required')
+        p=Path(pin['path']);need(p.is_absolute()and '..'not in p.parts,'canonical absolute proof input required')
+        need(str(p)not in unique or unique[str(p)]==pin['sha256'],'one proof path has contradictory SHA pins')
+        unique[str(p)]=pin['sha256']
+    need(0<len(unique)<=MAX_PROOF_FILES,'bounded proof input denominator exceeded')
+    return [dict(path=path,sha256=sha)for path,sha in sorted(unique.items())]
+
+
+def _snapshot_verified_pins(pins):
+    """复用首次verify的SHA扫描；before/hash/after把指纹与已验字节绑定。"""
+    pins=_unique_pins(pins);directories=sorted({str(p)for pin in pins for p in Path(pin['path']).parents})
+    before_dirs={p:_directory_stamp(p)for p in directories};files=[]
+    for pin in pins:
+        before=_file_stamp(pin['path']);R.pinned_file(pin);after=_file_stamp(pin['path'])
+        need(before==after,'proof input changed around verified SHA read')
+        files.append(dict(pin=pin,stamp=after))
+    need(all(_directory_stamp(p)==stamp for p,stamp in before_dirs.items()),'proof ancestor changed during verified snapshot')
+    result=dict(files=files,directories=[dict(path=p,stamp=stamp)for p,stamp in before_dirs.items()])
+    _verify_snapshot(result);return result
+
+
+def _verify_snapshot(snapshot):
+    files=snapshot.get('files');directories=snapshot.get('directories')
+    need(isinstance(files,list)and 0<len(files)<=MAX_PROOF_FILES and isinstance(directories,list), 'complete sealed input snapshot required')
+    pins=_unique_pins([v['pin']for v in files])
+    need(len(pins)==len(files)and pins==[v['pin']for v in files], 'sealed snapshot input set/order differs')
+    expected=sorted({str(p)for pin in pins for p in Path(pin['path']).parents})
+    need([v.get('path')for v in directories]==expected,'sealed snapshot ancestor coverage incomplete')
+    for entry in directories:need(_directory_stamp(entry['path'])==entry['stamp'],'sealed proof ancestor identity changed')
+    for entry in files:
+        need(_file_stamp(entry['pin']['path'])==entry['stamp'],'sealed proof input identity/content timestamp changed')
+        # Linux实测可在同tick改字节并回拨mtime，使全部stat字段碰撞。
+        # 指纹只快速拒绝；内容身份每次必须实际SHA，不声称省I/O。
+        R.pinned_file(entry['pin'])
+
+
+def _boot_id():return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+
+
+def _process_start(pid):
+    # legacy25／feature26 CPU外层不带GPU资源源；仅真GPU父子传输分支才加载。
+    if __package__:from .gpu_common import process_start
+    else:from gpu_common import process_start
+    return process_start(pid)
+
+
+def _transport_input_pins(compiled):
+    # 与同CLI scope共用明确的完整输入角色枚举：含所有bundle成员和SDK七源。
+    # 这里只取小bundle映射／源码pin，不重新解析comparison/readback或读权重。
+    if __package__:from .native_batch_admission import _selection_inputs
+    else:from native_batch_admission import _selection_inputs
+    return _unique_pins([*compiled['pins'],*_selection_inputs(compiled['selected'],compiled['new_contract'],
+        compiled['spec']['purpose'],compiled['spec']['selected_pilot_admission'])])
+
+
+class _SealedSelectedProof:
+    """只能由完整父检查或真实继承memfd认证创建的内部能力。"""
+    def __init__(self,fd,payload,ref,role,token):
+        need(token is _PROOF_CAPABILITY,'sealed proof is not a runtime capability')
+        self.fd,self.payload,self.ref,self.role,self._capability=fd,payload,ref,role,token
+
+    def assert_identity(self):
+        _linux_memfd_required();_assert_memfd_name(self.fd);s=os.fstat(self.fd)
+        need(stat.S_ISREG(s.st_mode)and [s.st_dev,s.st_ino,s.st_size]==[self.ref[k]for k in ('device','inode','bytes')]
+             and fcntl.fcntl(self.fd,fcntl.F_GET_SEALS)&_required_seals()==_required_seals(), 'proof FD is not the original immutable sealed memfd')
+        issuer=self.payload['issuer'];pid=os.getpid()if self.role=='parent'else os.getppid()
+        need(type(issuer.get('pid'))is int and issuer['pid']==pid and _process_start(pid)==issuer['start_ticks']
+             and _boot_id()==issuer['boot_id'],'sealed proof actual parent PID/start/boot differs')
+        if self.role=='child':
+            held=os.stat('/proc/%d/fd/%d'%(pid,self.ref['parent_fd']))
+            need((held.st_dev,held.st_ino)==(s.st_dev,s.st_ino),'sealed proof is not still held by the actual parent')
+
+    def verify_files(self):
+        self.assert_identity();_verify_snapshot(self.payload['snapshot'])
+
+    def close(self):
+        if self.fd is not None:os.close(self.fd);self.fd=None
+
+    def export(self):
+        need(self.role=='parent','child cannot issue another parent proof')
+        self.assert_identity();return dict(self.ref,fd=self.fd)
+
+
+def _new_parent_proof(lease):
+    _linux_memfd_required();c=lease.compiled
+    pins=[*_transport_input_pins(c),lease.unique_claim_pin,*[item['script']for item in c['old']['checks']]]
+    # 原lineage为语义比较；同时把它的实际字节纳入本次不可变输入快照。
+    pins.append(dict(path=c['lineage_path'],sha256=R.file_sha(c['lineage_path'])))
+    snapshot=_snapshot_verified_pins(pins)
+    payload=dict(schema=SEALED_PROOF_SCHEMA,transport=PROOF_TRANSPORT,runtime_spec=lease.pin,
+        selected_admission=c['spec']['selected_pilot_admission'],new_contract=c['spec']['new_contract'],new_bundle=c['spec']['new_bundle'],
+        unique_producer_claim=lease.unique_claim_pin,issuer=dict(pid=os.getpid(),start_ticks=_process_start(os.getpid()),boot_id=_boot_id()),
+        selected=c['selected'],synthetic_fixture=c['spec']['purpose']=='cpu_fixture',snapshot=snapshot)
+    raw=H.P.canonical(payload);need(len(raw)<=MAX_PROOF_BYTES,'sealed selected proof exceeds bounded memfd size')
+    fd=os.memfd_create(MEMFD_NAME,os.MFD_CLOEXEC|os.MFD_ALLOW_SEALING)
+    try:
+        os.fchmod(fd,0o600);offset=0
+        while offset<len(raw):
+            written=os.write(fd,raw[offset:]);need(written>0,'memfd proof write made no progress');offset+=written
+        fcntl.fcntl(fd,fcntl.F_ADD_SEALS,_required_seals());s=os.fstat(fd)
+        ref=dict(parent_fd=fd,device=s.st_dev,inode=s.st_ino,bytes=s.st_size,sha256=hashlib.sha256(raw).hexdigest())
+        proof=_SealedSelectedProof(fd,payload,ref,'parent',_PROOF_CAPABILITY);proof.verify_files();return proof
+    except BaseException:os.close(fd);raise
+
+
+def _adopt_parent_proof(runtime_pin,evidence):
+    _linux_memfd_required();ref=evidence.get('selected_proof')
+    need(isinstance(ref,dict)and set(ref)=={'fd','parent_fd','device','inode','bytes','sha256'}
+         and all(type(ref[k])is int for k in ('fd','parent_fd','device','inode','bytes'))
+         and ref['fd']>2 and ref['parent_fd']>2 and 0<ref['bytes']<=MAX_PROOF_BYTES and H.is_sha(ref['sha256']),
+         'explicit inherited sealed selected-proof FD required; ordinary JSON is not proof')
+    fd=os.dup(ref['fd'])
+    try:
+        _assert_memfd_name(fd)
+        s=os.fstat(fd);need(stat.S_ISREG(s.st_mode)and [s.st_dev,s.st_ino,s.st_size]==[ref[k]for k in ('device','inode','bytes')]
+             and fcntl.fcntl(fd,fcntl.F_GET_SEALS)&_required_seals()==_required_seals(),'inherited selected proof is not a fully sealed memfd')
+        raw=os.pread(fd,MAX_PROOF_BYTES+1,0)
+        need(len(raw)==ref['bytes']and hashlib.sha256(raw).hexdigest()==ref['sha256'],'inherited sealed proof byte identity differs')
+        payload=strict_json(raw);need(payload.get('schema')==SEALED_PROOF_SCHEMA and payload.get('transport')==PROOF_TRANSPORT
+             and payload.get('runtime_spec')==runtime_pin and payload.get('unique_producer_claim')==evidence.get('unique_producer_claim'),
+             'sealed proof runtime/producer claim differs')
+        proof=_SealedSelectedProof(fd,payload,{k:v for k,v in ref.items()if k!='fd'},'child',_PROOF_CAPABILITY)
+        proof.verify_files();return proof
+    except BaseException:os.close(fd);raise
 
 
 def index_kind(path, expected_sha):
@@ -202,10 +375,20 @@ def check_platform(pin,index,*,fresh=True):
     return observation
 
 
-def compile_runtime(runtime_pin,*,fresh=True):
+def compile_runtime(runtime_pin,*,fresh=True,selection_scope=None,_selected_proof=None):
     """固定薄索引、前一真实run和原始祖先；不运行旧union或任何数据库查询。"""
     spec=pinned(runtime_pin);purpose=spec.get('purpose')
     need(spec.get('schema')in {SCHEMA,NATIVE_SCHEMA} and purpose in {'production','cpu_fixture'},'explicit bounded runtime schema/purpose required')
+    transport=proof_transport_profile(spec)
+    if _selected_proof is not None:
+        need(isinstance(_selected_proof,_SealedSelectedProof)and _selected_proof._capability is _PROOF_CAPABILITY
+             and _selected_proof.role=='child'and transport is not None and selection_scope is None,
+             'selected reuse requires authenticated inherited memfd capability')
+        _selected_proof.verify_files()
+        payload=_selected_proof.payload
+        need(payload['runtime_spec']==runtime_pin and payload['selected_admission']==spec['selected_pilot_admission']
+             and payload['new_contract']==spec['new_contract']and payload['new_bundle']==spec['new_bundle'],
+             'sealed selected facts do not bind this runtime/contract/bundle')
     need(type(spec.get('model_API_calls_allowed'))is int and spec['model_API_calls_allowed']==0 and
          spec.get('release_training_labels')is False,'offline API0/no automatic label release required')
     need(isinstance(spec.get('task_name'),str)and spec['task_name'].startswith('zhounan_'),'task name must start zhounan_')
@@ -258,7 +441,19 @@ def compile_runtime(runtime_pin,*,fresh=True):
     if spec['schema']==NATIVE_SCHEMA:
         if __package__:from .native_batch_admission import check_native_selected_pilot
         else:from native_batch_admission import check_native_selected_pilot
-        selected=check_native_selected_pilot(spec['selected_pilot_admission'],new,purpose)
+        if _selected_proof is not None:
+            # 只在真parent仍持有封印FD时采用其已验结果，磁盘布尔/普通JSON不可进入。
+            selected=json.loads(json.dumps(_selected_proof.payload['selected']))
+            need(selected.get('schema')==NATIVE_ADMISSION_SCHEMA and selected.get('purpose')==purpose,
+                 'sealed selected fact schema/purpose differs')
+            original_selected=pinned(spec['selected_pilot_admission'])
+            derived={'verified_evidence_pins','verified_native_bundle_sha256','verified_pilot_bundle_sha256'}
+            need(set(selected)==set(original_selected)|derived and
+                 {k:v for k,v in selected.items()if k not in derived}==original_selected,
+                 'sealed selected facts differ from actual pinned admission JSON')
+        elif selection_scope is not None:
+            selected=check_native_selected_pilot(spec['selected_pilot_admission'],new,purpose,selection_scope=selection_scope)
+        else:selected=check_native_selected_pilot(spec['selected_pilot_admission'],new,purpose)
         need(selected['verified_native_bundle_sha256']==spec['new_bundle']['sha256'],'native formal GPU executable bundle must equal actual selected pilot bundle')
     else:
         need(new.get('runtime',{}).get('execution_policy')!='asr_fixed_cohort_fa_single/v1',
@@ -272,11 +467,12 @@ def compile_runtime(runtime_pin,*,fresh=True):
     need(all(run!=p and run not in p.parents and p not in run.parents for p in protected),'new run overlaps old/control/input namespace')
     need(spec['new_bundle']['path']==str(code/'bundle_files.json'),'new bundle location differs')
     terminal=check_platform(spec['current_platform_observation'],index,fresh=fresh)
-    # 所有运行时再核输入都是小控制JSON或冻结源码；旧大证明只保留历史SHA引用。
+    # 当前选型含有限3000/512大证明与原批次，仍实际核SHA；
+    # 祖先全库证明只保留已核历史引用，不重新遍历全库。
     pins=[runtime_pin,spec['index'],spec['previous_runtime_spec'],prior['old_control'],prior['freeze_receipt'],prior['union_spec'],
           old['contract'],old['full_index'],old['admission'],old['original_claim'],index['old_contract'],index['parent_index'],
           spec['new_contract'],spec['new_bundle'],spec['selected_pilot_admission'],spec['current_platform_observation'],terminal,*selected['verified_evidence_pins']]
-    return dict(spec=spec,index=index,reader=reader,old=old,admission=admission,new_contract=new,selected=selected,
+    compiled=dict(spec=spec,index=index,reader=reader,old=old,admission=admission,new_contract=new,selected=selected,
         previous=prior,original_contract=original,ancestor_paths=[str(semantic),str(oldq/'.parent.lock')],
         original_commands=checks,terminal_pin=terminal,pins=pins,lineage_path=str(lineage),lineage_value=lineage_value,
         unique_claim_path=str(semantic.with_name('bounded-speed-'+H.P.digest(dict(old_contract=index['old_contract'],parent_index=index['parent_index'],old_queue_root=index['old_queue_root']))+'.claim.json')),
@@ -285,6 +481,39 @@ def compile_runtime(runtime_pin,*,fresh=True):
             new_contract=spec['new_contract'],new_bundle=spec['new_bundle'],new_code_root=spec['new_code_root'],
             new_run_root=spec['new_run_root'],selected_pilot_admission=spec['selected_pilot_admission'],
             status='claimed_no_implicit_new_producer',synthetic_fixture=purpose=='cpu_fixture'))
+    if _selected_proof is not None:_assert_compiled_proof_binding(_selected_proof,runtime_pin,compiled)
+    return compiled
+
+
+def _assert_compiled_proof_binding(proof,runtime_pin,compiled):
+    """完整finite输入集合不可被一个较小的、看似自洽的快照代替。"""
+    p=proof.payload;c=compiled
+    need(p['runtime_spec']==runtime_pin and p['new_bundle']==c['spec']['new_bundle']and
+         p['new_contract']==c['spec']['new_contract']and p['selected_admission']==c['spec']['selected_pilot_admission']and
+         p['unique_producer_claim']['path']==c['unique_claim_path']and p['selected']==c['selected'],
+         'sealed selected/runtime/permanent producer binding differs')
+    need(p.get('synthetic_fixture')is(c['spec']['purpose']=='cpu_fixture'), 'CPU sealed fixture cannot admit real production')
+    indexed={v['pin']['path']:v['pin']for v in p['snapshot']['files']}
+    need(c['lineage_path']in indexed,'sealed proof omitted original lineage claim')
+    expected=_unique_pins([*_transport_input_pins(c),p['unique_producer_claim'],indexed[c['lineage_path']],
+                          *[item['script']for item in c['old']['checks']]])
+    need(expected==[v['pin']for v in p['snapshot']['files']],'sealed proof omitted or added verified finite inputs')
+    if proof.role=='child'and c['spec']['purpose']=='production':
+        # GPU bootstrap已核真实父票据；这里再把memfd发行者绑定同一固定GPU入口。
+        # 一个自己写普通JSON或-c脚本的父不能借其PPID自称通过完整selected验证。
+        pid=p['issuer']['pid'];raw=Path('/proc/%d/cmdline'%pid).read_bytes()
+        argv=[v.decode()for v in raw.rstrip(b'\0').split(b'\0')]
+        need(len(argv)>=3 and argv[1]=='-B'and argv[2]==str(Path(c['spec']['new_code_root'])/'gpu_launch.py'),
+             'sealed proof issuer is not the fixed GPU parent entry')
+        binary=c['old'].get('python_binary');need(isinstance(binary,dict),'actual parent interpreter pin missing')
+        R.pinned_file(binary)
+        need(os.readlink('/proc/%d/exe'%pid)==binary['path'],'sealed proof issuer interpreter differs from original pinned Python')
+        for key,expected_value in (('--bundle-sha',c['spec']['new_bundle']['sha256']),
+            ('--contract',c['spec']['new_contract']['path']),('--contract-sha',c['spec']['new_contract']['sha256']),
+            ('--shard-index',c['spec']['index']['path']),('--index-sha',c['spec']['index']['sha256']),
+            ('--bounded-runtime-spec',runtime_pin['path']),('--bounded-runtime-sha',runtime_pin['sha256'])):
+            need(argv.count(key)==1 and argv.index(key)+1<len(argv)and argv[argv.index(key)+1]==expected_value,
+                 'sealed proof issuer actual command/runtime arguments differ')
 
 
 def verify_mounts(compiled,*,runner=subprocess.run):
@@ -317,7 +546,33 @@ def verify_mounts(compiled,*,runner=subprocess.run):
 class RuntimeLease:
     """父进程开已有祖先锁；子进程只接收同一FD，绝不另造替代锁。"""
     def __init__(self,runtime_pin):
-        self.pin=runtime_pin;self.compiled=compile_runtime(runtime_pin);self.handles=[];self.current=None;self.held=False;self.unique_claim_pin=None
+        self._initialize(runtime_pin)
+
+    def _initialize(self,runtime_pin,proof=None):
+        self.pin=runtime_pin;self.proof=proof
+        self.compiled=compile_runtime(runtime_pin,_selected_proof=proof)
+        self.handles=[];self.current=None;self.held=False;self.unique_claim_pin=None
+        self.transport=proof_transport_profile(self.compiled['spec'])
+
+    def _small_pins(self):
+        # 不按文件体积猜“小”：仅保留原控制链的明确关键JSON与脚本。
+        # 大finite证明仍逐文件核实际SHA，memfd仅省JSON／映射重构。
+        facts=self.compiled['selected'];selected={p['path']for p in facts['verified_evidence_pins']}
+        common=[p for p in self.compiled['pins']if p['path']not in selected]
+        for key in ('selected_pilot_admission','new_contract','new_bundle','index','current_platform_observation'):
+            common.append(self.compiled['spec'][key])
+        common.extend([self.pin,self.unique_claim_pin,*[v['script']for v in self.compiled['old']['checks']]])
+        for key in ('candidate_contract','baseline_track','main_track','recovery_track','pilot_result','quality_review',
+                    'control_source_review','formal_execution_bundle'):
+            if key in facts:common.append(facts[key])
+        for value in facts.get('resource_evidence',{}).values():common.extend(value.values())
+        # 原完整check已核这些角色；再次读小result/plan只取固定的plan/matrix pin。
+        result=pinned(facts['pilot_result']);common.append(result['plan'])
+        plan=pinned(result['plan']);common.append(plan['main_prepared'])
+        if __package__:from . import native_batch_admission as native_admission
+        else:import native_batch_admission as native_admission
+        common.append(dict(path=str(Path(native_admission.__file__).resolve()),sha256=R.file_sha(native_admission.__file__)))
+        return _unique_pins(common)
 
     def _identity(self,entry,fd):
         path=R.physical(entry['path']);a=os.fstat(fd);b=path.stat()
@@ -328,6 +583,7 @@ class RuntimeLease:
 
     def __enter__(self):
         try:
+            if self.transport is not None:_linux_memfd_required()
             for path in self.compiled['ancestor_paths']:
                 fd=os.open(R.physical(path),os.O_RDONLY|getattr(os,'O_NOFOLLOW',0));s=os.fstat(fd)
                 self.handles.append(dict(path=path,fd=fd,device=s.st_dev,inode=s.st_ino))
@@ -346,11 +602,19 @@ class RuntimeLease:
 
     @classmethod
     def adopt(cls,runtime_pin,evidence):
-        obj=cls(runtime_pin)
         need(isinstance(evidence,dict)and evidence.get('runtime_spec')==runtime_pin,'inherited runtime ticket binding differs')
-        entries=evidence.get('ancestor_locks');need(isinstance(entries,list)and len(entries)==2 and
-            {e['path']for e in entries}==set(obj.compiled['ancestor_paths'])and len({e['fd']for e in entries})==2,'ancestor inherited lock set differs')
+        declaration=proof_transport_profile(pinned(runtime_pin));proof=None
+        if declaration is not None:
+            proof=_adopt_parent_proof(runtime_pin,evidence)
+            try:
+                obj=cls.__new__(cls);obj._initialize(runtime_pin,proof)
+            except BaseException:proof.close();raise
+        else:
+            need('selected_proof'not in evidence,'undeclared sealed proof transport cannot change legacy runtime')
+            obj=cls(runtime_pin)
         try:
+            entries=evidence.get('ancestor_locks');need(isinstance(entries,list)and len(entries)==2 and
+                {e['path']for e in entries}==set(obj.compiled['ancestor_paths'])and len({e['fd']for e in entries})==2,'ancestor inherited lock set differs')
             for entry in entries:
                 fd=entry['fd'];need(type(fd)is int and fd>2,'inherited ancestor FD required');obj._identity(entry,fd)
                 obj.handles.append(dict(entry,fd=os.dup(fd)))
@@ -370,7 +634,13 @@ class RuntimeLease:
 
     def verify(self):
         self.assert_held()
-        for pin in self.compiled['pins']:R.pinned_file(pin)
+        if self.transport is not None:
+            if self.proof is None:self.proof=_new_parent_proof(self)
+            _assert_compiled_proof_binding(self.proof,self.pin,self.compiled)
+            self.proof.verify_files()
+            for pin in self._small_pins():R.pinned_file(pin)
+        else:
+            for pin in self.compiled['pins']:R.pinned_file(pin)
         need(R.ref_unpinned(self.compiled['lineage_path'])==self.compiled['lineage_value'],'previous permanent claim changed')
         for check in self.compiled['old']['checks']:R.pinned_file(check['script'])
         need(self.unique_claim_pin is not None,'unique producer claim not admitted')
@@ -379,11 +649,19 @@ class RuntimeLease:
 
     @property
     def pass_fds(self):
-        self.assert_held();return tuple(h['fd']for h in self.handles)+self.current.pass_fds
+        self.assert_held();fds=tuple(h['fd']for h in self.handles)+self.current.pass_fds
+        if self.transport is not None:
+            need(self.proof is not None,'parent selected proof was not sealed after full validation')
+            self.proof.assert_identity();fds+=(self.proof.fd,)
+        return fds
 
     @property
     def ticket_evidence(self):
-        self.assert_held();return dict(runtime_spec=self.pin,ancestor_locks=[dict(h)for h in self.handles],current_old_locks=self.current.fd_evidence,unique_producer_claim=self.unique_claim_pin)
+        self.assert_held();value=dict(runtime_spec=self.pin,ancestor_locks=[dict(h)for h in self.handles],current_old_locks=self.current.fd_evidence,unique_producer_claim=self.unique_claim_pin)
+        if self.transport is not None:
+            need(self.proof is not None,'parent selected proof was not sealed after full validation')
+            value['selected_proof']=self.proof.export()
+        return value
 
     def gates(self,output,*,runner=subprocess.run):
         """仅GPU父调用；原W2原字节原参数，挂载核同原profile，不读百万侧车。"""
@@ -412,3 +690,4 @@ class RuntimeLease:
         if self.current is not None:self.current.__exit__(None,None,None);self.current=None
         for entry in reversed(self.handles):os.close(entry['fd'])
         self.handles=[]
+        if self.proof is not None:self.proof.close();self.proof=None

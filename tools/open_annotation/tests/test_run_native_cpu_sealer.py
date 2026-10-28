@@ -18,6 +18,7 @@ class CPUSealerTests(unittest.TestCase):
         bundle={}
         for name in ('gpu_launch.py','audit_native_transformers_batch.py','audit_speed_comparison.py'):
             p=self.code/name;p.write_text('# synthetic CPU control source\n');bundle[name]=C.sha_file(p)
+        controller=self.code/'run_native_cpu_sealer.py';controller.write_bytes(Path(C.__file__).read_bytes());bundle[controller.name]=C.sha_file(controller)
         self.bundle=self.put(self.code/'bundle_files.json',bundle)
         self.track=self.put(self.root/'track-input'/'native-track.json',dict(schema='redimnet2-annotation-native-batch-track/v1',queue_root=str(self.root/'producer'/'queue'),output_root=str(self.root/'producer'/'labels'),resources_root=str(self.root/'producer'/'resources')))
         self.sealer=self.helper/'native_batch_readback.py'
@@ -78,6 +79,45 @@ class CPUSealerTests(unittest.TestCase):
         for d in (301,True,0,float('inf')):
             self.plan['deadline_seconds']=d;self.save()
             with self.assertRaisesRegex(ValueError,'deadline'):C.check(self.pin)
+    def timeout_retry(self):
+        self.set_sealer("import time\ntime.sleep(30)\n")
+        self.plan.update(sealer=self.filepin(self.sealer),deadline_seconds=.15);self.save()
+        result=C.execute(self.pin,allow=True)
+        self.assertTrue(result['timeout']);self.assertTrue(result['child_reaped']);self.assertFalse(result['completed'])
+        prior=Path(self.plan['execution_root'])/'receipt.json'
+        retry=dict(self.plan,schema=C.TIMEOUT_RETRY_SCHEMA,deadline_seconds=900,
+                   prior_timeout_receipt=self.filepin(prior),prior_timeout_intent=self.filepin(prior.parent/'intent.json'),
+                   execution_root=str(self.root/'retry-output'))
+        return retry,prior
+    def test_explicit_v2_default_check_keeps_the_real_v1_timeout_and_new_scope_bounded(self):
+        retry,prior=self.timeout_retry();before=prior.read_bytes()
+        ref=self.put(self.root/'retry-plan.json',retry)
+        with patch.object(C.subprocess,'Popen',side_effect=AssertionError('default check may not spawn')):value=C.execute(ref)
+        self.assertTrue(value['checked']);self.assertFalse(value['executed']);self.assertFalse(Path(retry['execution_root']).exists())
+        self.assertEqual(prior.read_bytes(),before)
+    def test_v2_cannot_change_actual_input_or_overwrite_prior_evidence(self):
+        retry,prior=self.timeout_retry()
+        other=self.put(self.root/'other-track.json',json.loads(Path(self.track['path']).read_bytes()))
+        for change in ({'track':other},{'execution_root':str(prior.parent/'nested')}):
+            ref=self.put(self.root/'retry-plan.json',dict(retry,**change))
+            with self.subTest(change=change),self.assertRaises(ValueError):C.check(ref)
+            self.assertTrue(prior.is_file())
+    def test_v2_requires_timeout_reaped_child_and_has_no_recursive_extension(self):
+        retry,prior=self.timeout_retry();original=json.loads(prior.read_bytes())
+        for change in ({'timeout':False},{'completed':True},{'child_reaped':False},{'GPU_started_by_controller':True},
+                       {'child_started':False},{'returncode':0},{'returncode':-15.0},{'elapsed_seconds':0}):
+            # 保留路径绑定，内容变化仍以新SHA显式输入；原件副本另存。
+            receipt=self.put(prior,dict(original,**change))
+            ref=self.put(self.root/'retry-plan.json',dict(retry,prior_timeout_receipt=receipt))
+            with self.subTest(change=change),self.assertRaises(ValueError):C.check(ref)
+        self.put(prior,original)
+        ref=self.put(self.root/'retry-plan.json',retry)
+        receipt=self.put(self.root/'second-extension.json',dict(original,plan=ref))
+        second=self.put(self.root/'retry-twice.json',dict(retry,prior_timeout_receipt=receipt,execution_root=str(self.root/'retry-twice')))
+        with self.assertRaisesRegex(ValueError,'only one'):C.check(second)
+        for deadline in (300,901,True,float('inf')):
+            ref=self.put(self.root/'retry-plan.json',dict(retry,deadline_seconds=deadline))
+            with self.subTest(deadline=deadline),self.assertRaises(ValueError):C.check(ref)
     def test_hash_change_and_arbitrary_entry_refused(self):
         self.sealer.write_text('# changed')
         with self.assertRaisesRegex(ValueError,'SHA differs'):C.check(self.pin)
@@ -91,7 +131,20 @@ class CPUSealerTests(unittest.TestCase):
             root.parent.mkdir(parents=True,exist_ok=True);self.plan['execution_root']=str(root);self.save()
             with self.assertRaisesRegex(ValueError,'overlaps'):C.check(self.pin)
     def test_faulthandler_and_runpy_fixed_instead_of_shell(self):
-        self.assertIn('dump_traceback_later(60,repeat=True)',C.CHILD_CODE);self.assertIn("runpy.run_path(sys.argv[0],run_name='__main__')",C.CHILD_CODE)
+        self.assertNotIn('dump_traceback_later(',C.CHILD_CODE)
+        self.assertIn('stop_stack_dump.wait(60)',C.CHILD_CODE)
+        self.assertIn('faulthandler.dump_traceback(all_threads=True)',C.CHILD_CODE)
+        self.assertIn("runpy.run_path(sys.argv[0],run_name='__main__')",C.CHILD_CODE)
         self.assertNotIn('subprocess',C.CHILD_CODE)
+    def test_periodic_dump_keeps_logging_and_stops_with_successful_child(self):
+        self.set_sealer("import sys,time\nfrom pathlib import Path\ntime.sleep(.12)\nPath(sys.argv[-1]).write_text('{}')\n")
+        self.plan['sealer']=self.filepin(self.sealer);self.save()
+        # 只缩短合成测试的日志周期，不更改真实控制器固定60秒的入口。
+        with patch.object(C,'CHILD_CODE',C.CHILD_CODE.replace('stop_stack_dump.wait(60)','stop_stack_dump.wait(.01)')):
+            value=C.execute(self.pin,allow=True)
+        self.assertTrue(value['completed']);self.assertTrue(value['child_reaped'])
+        log=(Path(self.plan['execution_root'])/'stderr.log').read_text()
+        self.assertIn('CPU stack checkpoint',log);self.assertIn('dump_periodically',log)
+        self.assertNotIn('Fatal Python error',log)
 
 if __name__=='__main__':unittest.main()

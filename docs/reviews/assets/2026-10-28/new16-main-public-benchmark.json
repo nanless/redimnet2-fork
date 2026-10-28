@@ -1,0 +1,45 @@
+{
+  "schema": "annotation-native-feature-public-benchmark/v1",
+  "source_count": 3000,
+  "window_count": 3067,
+  "effective_input_text_boundary_decision_changes": 0,
+  "steady_definition": "两worker首个真实ASR提交chunk的较晚时刻，到两worker最终提交的较早时刻；样本算术平均，排除加载、首chunk与尾部不均衡。",
+  "profiles": [
+    {
+      "profile": "B1",
+      "cold_wall_seconds": 1748.643634756998,
+      "steady_gpu_mean_percent": [
+        40.488990129081245,
+        40.68716780561883
+      ],
+      "steady_seconds": 1467.515198,
+      "steady_sample_count": 1317
+    },
+    {
+      "profile": "B4",
+      "cold_wall_seconds": 1063.6114681629988,
+      "steady_gpu_mean_percent": [
+        51.39894319682959,
+        49.44914134742404
+      ],
+      "steady_seconds": 842.538848,
+      "steady_sample_count": 757
+    },
+    {
+      "profile": "B8",
+      "cold_wall_seconds": 900.046193340997,
+      "steady_gpu_mean_percent": [
+        55.89297124600639,
+        55.86900958466454
+      ],
+      "steady_seconds": 697.430853,
+      "steady_sample_count": 626
+    }
+  ],
+  "human_word_truth_certified": false,
+  "formal_admission": false,
+  "original_main_comparison_sha256": {
+    "B4": "d6658bbe7a49e6b463cbcf67d7cace880687788f749d88cc3d5849530ff2f2e1",
+    "B8": "00e88b310efd47be6b90713de9ce4b900d4bbd79136ec901f3dd9ee29228008a"
+  }
+}

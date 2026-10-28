@@ -7,6 +7,9 @@ import json
 import os
 from pathlib import Path
 import signal
+import subprocess
+import shutil
+import tempfile
 import sys
 import time
 import unittest
@@ -79,6 +82,46 @@ class QueueFixture(unittest.TestCase):
                 v=M.wait(self.pin)
             self.assertTrue(set(calls)<={'native-main','native-recovery'})
         self.assertTrue(v['passed']);self.assertFalse(Path(self.value['handoff_root']).exists());self.assertFalse(Path(self.value['final_handoff_root']).exists())
+
+    def test_explicit_same_CLI_publish_reuses_only_actual_full_selection(self):
+        import native_batch_admission as A
+        pin,request=self.request();observation=self.observed(request);full=A._full_check_native_selected_pilot
+        with patch.object(A,'_full_check_native_selected_pilot',wraps=full)as check:
+            result=M.publish(self.pin,pin,observation,clock=self.clock.now,reuse_verified_selection=True)
+        self.assertEqual(check.call_count,1);facts=result['selection_reuse_scope'];self.assertEqual(facts['full_checks'],1);self.assertGreaterEqual(facts['reuses'],2);self.assertTrue(facts['closed']);self.assertFalse(result['GPU_started'])
+
+    def test_explicit_same_CLI_wait_rechecks_fingerprints_through_exec(self):
+        result=M.wait(self.pin,execute=True,runner=lambda argv,env:{'synthetic_CPU_exec':True},clock=self.clock.now,monotonic=self.clock.monotonic,sleeper=self.on_sleep(),identity_provider=lambda:self.identity,resource_provider=self.resources,reuse_verified_selection=True)
+        self.assertTrue(result['synthetic_CPU_exec']);self.assertEqual(result['selection_reuse_scope']['full_checks'],1);self.assertGreaterEqual(result['selection_reuse_scope']['reuses'],4)
+        intent=F.ref(F.file_pin(Path(self.value['handoff_root'])/'request-v1/exec-intent.json'));self.assertEqual(intent['selection_reuse_scope']['full_checks'],1)
+
+    def test_same_CLI_proof_file_touch_before_exec_refuses(self):
+        def touch(request):
+            path=Path(self.native.selected['quality_review']['path']);st=path.stat();os.utime(path,ns=(st.st_atime_ns,st.st_mtime_ns+1000000))
+        with self.assertRaisesRegex(ValueError,'fingerprint changed'):
+            M.wait(self.pin,execute=True,runner=lambda *args:self.fail('must refuse before GPU exec'),clock=self.clock.now,monotonic=self.clock.monotonic,sleeper=self.on_sleep(touch),identity_provider=lambda:self.identity,resource_provider=self.resources,reuse_verified_selection=True)
+
+    def test_transport_optional_exact_declaration_only_and_forwarded_unchanged(self):
+        self.assertNotIn('proof_transport',self.base)
+        self.value['runtime_base']['proof_transport']={'policy':'parent_sealed_memfd/v1'};self.save();context=M.check(self.pin)
+        runtime=M._expected_runtime(context,self.parent.runtime['index'],self.parent.runtime['current_platform_observation'])
+        self.assertEqual(runtime['proof_transport'],{'policy':'parent_sealed_memfd/v1'})
+        self.value['runtime_base']['proof_transport']=None;self.save()
+        with self.assertRaisesRegex(ValueError,'sealed memfd'):M.check(self.pin)
+        self.value['runtime_base']['proof_transport']={'policy':'parent_sealed_memfd/v1','silently_skip':True};self.save()
+        with self.assertRaisesRegex(ValueError,'sealed memfd'):M.check(self.pin)
+        self.value['runtime_base'].pop('proof_transport');self.value['runtime_base']['other_unknown_key']=False;self.save()
+        with self.assertRaisesRegex(ValueError,'fixed runtime base'):M.check(self.pin)
+
+    def test_explicit_transport_publish_reply_wait_closed_loop_preserves_policy(self):
+        self.value['runtime_base']['proof_transport']={'policy':'parent_sealed_memfd/v1'};self.save()
+        with patch('sqlite3.connect',side_effect=AssertionError('no DB')):
+            result=M.wait(self.pin,execute=True,runner=lambda argv,env:self.calls.append((argv,env))or{'synthetic_CPU_exec':True},clock=self.clock.now,monotonic=self.clock.monotonic,sleeper=self.on_sleep(),identity_provider=lambda:self.identity,resource_provider=self.resources,reuse_verified_selection=True)
+        self.assertTrue(result['synthetic_CPU_exec']);self.assertEqual(len(self.calls),1)
+        argv,_=self.calls[0];runtime=F.ref(F.file_pin(argv[argv.index('--bounded-runtime-spec')+1],private=True))
+        self.assertEqual(runtime['proof_transport'],{'policy':'parent_sealed_memfd/v1'})
+        self.assertEqual(result['selection_reuse_scope']['full_checks'],1)
+        self.assertGreaterEqual(result['selection_reuse_scope']['reuses'],4)
 
     def test_wait_then_actual_bounded_publish_routes_fixed_auto8(self):
         before=self.f.snapshot();calls=[];real=H.P.read_shard
@@ -210,5 +253,54 @@ class QueueFixture(unittest.TestCase):
     def test_old_single_window_blueprint_cannot_be_used_for_native(self):
         self.value['schema']='annotation-bounded-speed-queue-blueprint/v1';self.save()
         with self.assertRaisesRegex(ValueError,'blueprint required'):M.wait(self.pin)
+
+class FeatureOuterClosure(unittest.TestCase):
+    """真实维护源build后，在隔离Python中核新核心导入，不建模型或GPU。"""
+    def setUp(self):
+        import contracts as C
+        from test_native_b1_feature_padding import declared,fixture_sources
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name).resolve();self.code=self.root/'gpu-code';self.code.mkdir()
+        self.c=declared();self.c['purpose']='pilot_validation';self.c['asr_preprocessing_sources']=fixture_sources(self.root/'bindings',self.c)
+        names=set(M.REQUIRED_SOURCE)|set(C.engine_modules_for_contract(self.c))
+        for name in names:
+            target=self.code/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(HERE/name,target)
+        self.members={name:C.sha_file(self.code/name)for name in names};self.c['engine_source_files']={name:self.members[name]for name in C.engine_modules_for_contract(self.c)}
+        self.bundle=self.put(self.code/'bundle_files.json',self.members);self.cp=self.put(self.root/'feature-contract.json',self.c)
+    def put(self,path,value):path.write_bytes(F.canonical(value));return F.file_pin(path)
+    def build(self,**kwargs):return M.build_controller(self.code,self.bundle,self.root/'outer',**kwargs)
+    def child_check(self,controller,contract_pin):
+        code="import sys,json;sys.path.insert(0,sys.argv[1]);import native_batch_queue_handoff as Q;import contracts as C;c=json.load(open(sys.argv[2]));m=json.load(open(sys.argv[3]));controller=json.loads(sys.argv[4]);bundle=json.loads(sys.argv[5]);Q.verify_outer(controller,m,production=False,contract=c,gpu_bundle_pin=bundle);print(json.dumps({'feature_profile':C.asr_feature_profile(c),'torch_imported':'torch' in sys.modules}))"
+        return subprocess.run([sys.executable,'-I','-B','-c',code,controller['root'],contract_pin['path'],self.bundle['path'],json.dumps(controller),json.dumps(self.bundle)],capture_output=True,text=True)
+    def test_explicit16_build_then_real_subprocess_check_imports_core(self):
+        outer=self.build(feature_contract_pin=self.cp);members=F.ref(outer['manifest']);self.assertEqual(len(members),26);self.assertEqual(members[M.FEATURE_CORE],self.members[M.FEATURE_CORE])
+        result=self.child_check(outer,self.cp);self.assertEqual(result.returncode,0,result.stderr);value=json.loads(result.stdout);self.assertEqual(value['feature_profile'],{'policy':M.FEATURE_POLICY});self.assertFalse(value['torch_imported'])
+    def test_old15_has_exact25_and_never_requires_absent_core(self):
+        c=copy.deepcopy(self.c);c['runtime'].pop('asr_preprocessing');c.pop('asr_preprocessing_sources');c['engine_source_files'].pop(M.FEATURE_CORE)
+        (self.code/M.FEATURE_CORE).unlink();self.members.pop(M.FEATURE_CORE);self.bundle=self.put(self.code/'bundle_files.json',self.members);cp=self.put(self.root/'old-contract.json',c)
+        outer=self.build();self.assertEqual(set(F.ref(outer['manifest'])),M.OUTER_NAMES);self.assertFalse((Path(outer['root'])/M.FEATURE_CORE).exists())
+        result=self.child_check(outer,cp);self.assertEqual(result.returncode,0,result.stderr);self.assertIsNone(json.loads(result.stdout)['feature_profile'])
+    def test_implicit_old_outer_refuses_new_feature_in_subprocess_before_import(self):
+        outer=self.build();result=self.child_check(outer,self.cp);self.assertNotEqual(result.returncode,0);self.assertIn('requires core16 closure',result.stderr);self.assertNotIn('ModuleNotFoundError',result.stderr)
+    def test_wrong_or_missing_GPU_math_core_SHA_refuses_before_output(self):
+        bad=copy.deepcopy(self.c);bad['engine_source_files'][M.FEATURE_CORE]='0'*64;cp=self.put(self.root/'bad-core-contract.json',bad)
+        with self.assertRaisesRegex(ValueError,'ENGINE16'):self.build(feature_contract_pin=cp)
+        self.assertFalse((self.root/'outer').exists())
+        self.members.pop(M.FEATURE_CORE);self.bundle=self.put(self.code/'bundle_files.json',self.members)
+        with self.assertRaisesRegex(ValueError,'ENGINE16'):self.build(feature_contract_pin=self.cp)
+    def test_core_bytes_even_with_resigned_manifest_must_equal_GPU_bundle(self):
+        outer=self.build(feature_contract_pin=self.cp);root=Path(outer['root']);core=root/M.FEATURE_CORE;core.write_text('# forged core CPU source')
+        mapping=F.ref(outer['manifest']);mapping[M.FEATURE_CORE]=F.file_pin(core)['sha256'];outer['manifest']=self.put(root/'controller-files.json',mapping)
+        with self.assertRaisesRegex(ValueError,'differs from frozen GPU'):M.verify_outer(outer,self.members,production=False,contract=self.c,gpu_bundle_pin=self.bundle)
+    def test_explicit_feature_option_refuses_old_contract(self):
+        old=copy.deepcopy(self.c);old['runtime'].pop('asr_preprocessing');old.pop('asr_preprocessing_sources');cp=self.put(self.root/'old-cp.json',old)
+        with self.assertRaisesRegex(ValueError,'refuses old15'):self.build(feature_contract_pin=cp)
+    def test_feature_receipt_decl_and_actual_bundle_pin_both_bound(self):
+        outer=self.build(feature_contract_pin=self.cp);root=Path(outer['root']);receipt=F.ref(F.file_pin(root/'build-receipt.json'));receipt['feature_dependency']['core_sha256']='0'*64;self.put(root/'build-receipt.json',receipt)
+        mapping=F.ref(outer['manifest']);mapping['build-receipt.json']=F.file_pin(root/'build-receipt.json')['sha256'];outer['manifest']=self.put(root/'controller-files.json',mapping)
+        with self.assertRaisesRegex(ValueError,'build receipt differs'):M.verify_outer(outer,self.members,production=False,contract=self.c,gpu_bundle_pin=self.bundle)
+    def test_alternate_GPU_bundle_pin_cannot_replace_actual_pin(self):
+        outer=self.build(feature_contract_pin=self.cp);other=self.put(self.root/'same-mapping-other-bundle.json',self.members)
+        with self.assertRaisesRegex(ValueError,'actual GPU bundle pin differs'):M.verify_outer(outer,self.members,production=False,contract=self.c,gpu_bundle_pin=other)
+
 
 if __name__=='__main__':unittest.main()

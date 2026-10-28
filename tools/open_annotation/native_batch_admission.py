@@ -9,6 +9,10 @@ import math
 import argparse
 import json
 import shutil
+import os
+import stat
+import weakref
+import re
 from pathlib import Path
 
 if __package__:
@@ -98,7 +102,82 @@ def _metadata_only(row):
     return True
 
 
-def check_quality(pin,comparison,candidate_pin,purpose):
+TRACEBACK_CLASS='frozen_traceback_root_only_verified'
+
+
+def _traceback_roots(matrix,profile,bundle_sha256):
+    """仅从已绑定实际result/plan/main矩阵派生，不能用质量表自行填写路径。"""
+    context={};refs=[]
+    for label,name in (('baseline','native-fp32-sdpa-b1'),('candidate',profile)):
+        freeze=matrix['variants'][name]['freeze'];root=R.physical(freeze['frozen_copy'])
+        need(root.is_dir()and freeze['bundle_sha256']==bundle_sha256,'actual frozen traceback code root/bundle differs')
+        pin=dict(path=str(root/'bundle_files.json'),sha256=bundle_sha256);members=pinned(pin)
+        need(isinstance(members,dict)and members and all(isinstance(k,str)and H.is_sha(v)for k,v in members.items()),'actual frozen traceback bundle members required')
+        R.frozen_bundle(dict(code_root=str(root),bundle=pin))
+        context[label]=dict(root=str(root),members=members);refs.append(pin)
+        refs.extend(dict(path=str(root/name),sha256=digest)for name,digest in members.items())
+    return context,refs
+
+
+def _normalize_frozen_traceback_observation(original,info):
+    """只规范化原source的两处已知VAD traceback副本，完整其他异常/原因不变。"""
+    need(isinstance(original,dict)and set(original)=={'errors','units','decision','quality_axes','vad'},'complete source observation fields required')
+    value=json.loads(H.P.canonical(original));decision=value.get('decision',{});vad=value.get('vad',{})
+    need(isinstance(decision,dict)and decision.get('state')=='unknown'and decision.get('usable_for_training')is False and
+         decision.get('usable_for_evaluation')is False and decision.get('human_review')is None and
+         isinstance(decision.get('reasons'),list)and decision['reasons'].count('processing_errors_preserved')==1 and isinstance(vad,dict)and
+         vad.get('status')=='identity_mismatch_or_invalid'and vad.get('reused')is False and vad.get('segments')==[],
+         'original unknown/error VAD decision must remain unreleased')
+    errors=value.get('errors');verrors=vad.get('errors')
+    need(isinstance(errors,list)and errors and isinstance(verrors,list)and len(verrors)==1 and
+         [i for i,error in enumerate(errors)if isinstance(error,dict)and error.get('stage')=='reuse_vad']==[0],
+         'exact original reuse_vad leaf and VAD traceback required')
+    need(H.P.canonical(errors[0])==H.P.canonical(verrors[0]),'source/VAD original reuse_vad errors must correspond')
+    root=info['root'];members=info['members'];counts=[]
+    pattern=re.compile(r'(?m)^(?P<prefix>[ \t]*File ")'+re.escape(root)+r'/(?P<member>[^"\r\n]+)(?P<suffix>", line [1-9][0-9]*, in [^\r\n]+)$')
+    for error in (errors[0],verrors[0]):
+        need(isinstance(error,dict)and set(error)=={'stage','traceback'}and error['stage']=='reuse_vad'and isinstance(error['traceback'],str),'original reuse_vad traceback required')
+        need(error['traceback'].startswith('Traceback (most recent call last):\n')and
+             error['traceback'].endswith('\ncontracts.Refused: invalid old VAD interval\n')and
+             '\r'not in error['traceback']and '\x00'not in error['traceback'],
+             'original invalid old VAD traceback structure required')
+        def replace(match):
+            member=match['member'];rel=Path(member)
+            need(not rel.is_absolute()and '..'not in rel.parts and rel.suffix=='.py'and member in members,'traceback frame outside actual frozen Python bundle')
+            return match['prefix']+'<actual-native-frozen-code>/'+member+match['suffix']
+        error['traceback'],count=pattern.subn(replace,error['traceback']);need(count>0,'actual frozen traceback root replacement must occur in both leaves')
+        counts.append(count)
+    return value,counts
+
+
+def _frozen_traceback_only(row,context):
+    """只认证旧VAD失败的冻结入口目录差异；保留unknown及原异常，不认证标签正确性。"""
+    need(context is not None and set(context)=={'baseline','candidate'},'actual result/matrix traceback roots required')
+    need(context['baseline']['root']!=context['candidate']['root'],'traceback class requires distinct actual frozen roots')
+    need(isinstance(row.get('changed_fields'),list)and len(row['changed_fields'])==2 and set(row['changed_fields'])=={'errors','vad'}and
+         row.get('baseline_state')==row.get('candidate_state')=='unknown'and row.get('source_identity_equal')is True,
+         'traceback class only preserves identical-input unknown VAD failures')
+    need(type(row.get('baseline_window_count'))is int and type(row.get('candidate_window_count'))is int and row['baseline_window_count']>=0 and
+         row['baseline_window_count']==row.get('candidate_window_count')==len(row.get('windows',[]))and
+         all(window.get('both_present')is True and window.get('input_identity_equal')is True for window in row.get('windows',[]))and
+         _metadata_only(dict(row,changed_fields=[])),'traceback metadata cannot hide text/input/token/boundary differences')
+    padding_flags={'generated_token_ids_equal','post_eos_token_ids_equal','raw_returned_token_count_equal'}
+    need(all(window.get('ASR',{}).get('first_eos_index_equal')is True and window.get('ASR',{}).get('max_new_tokens_equal')is True and
+             all(value is True for key,value in window.get('ASR',{}).items()if key.endswith('_equal')and key not in padding_flags)
+             for window in row['windows']),'traceback metadata only permits explicit rectangular post-EOS padding differences')
+    alignment_keys=('status','target_text','encoded_target_words','native_timestamps_ms','fixed_timestamps_ms','repair_changed','author_final_items','items')
+    need(all(all(window.get('alignment',{}).get(key+'_equal')is True for key in alignment_keys)for window in row['windows']),
+         'traceback metadata requires complete unchanged alignment geometry')
+    observations=row.get('complete_source_observations');need(isinstance(observations,dict)and set(observations)=={'baseline','candidate'},'complete original source observations required')
+    normalized={};counts={}
+    for label in ('baseline','candidate'):
+        normalized[label],counts[label]=_normalize_frozen_traceback_observation(observations[label],context[label])
+    need(counts['baseline']==counts['candidate']and H.P.canonical(normalized['baseline'])==H.P.canonical(normalized['candidate']),
+         'source/error/VAD observations differ beyond exact frozen traceback code roots')
+    return True
+
+
+def check_quality(pin,comparison,candidate_pin,purpose,*,traceback_context=None):
     q=pinned(pin);need(q.get('schema')==QUALITY_SCHEMA and q.get('purpose')==purpose and q.get('candidate_contract')==candidate_pin and
         q.get('review_complete')is True and q.get('all_changed_rows_dispositioned')is True and q.get('text_quality_accepted')is True and
         q.get('complete_word_boundary_quality_accepted')is True and q.get('candidate_labels_released')is False,'native text/boundary review incomplete')
@@ -114,8 +193,9 @@ def check_quality(pin,comparison,candidate_pin,purpose):
     refs=[]
     for d in dispositions:
         row=changed[d['source_id']];need(set(d.get('window_ids',[]))==_changed_windows(row)and len(d['window_ids'])==len(set(d['window_ids'])),'native changed-window review coverage differs')
-        cls=d.get('classification');need(cls in {'metadata_only_verified','text_and_boundary_reviewed'},'explicit native difference class required')
+        cls=d.get('classification');need(cls in {'metadata_only_verified','text_and_boundary_reviewed',TRACEBACK_CLASS},'explicit native difference class required')
         if cls=='metadata_only_verified':need(_metadata_only(row),'text or boundary differences cannot be called padding-only metadata')
+        elif cls==TRACEBACK_CLASS:_frozen_traceback_only(row,traceback_context)
         else:need(d.get('text_checked')is True and d.get('leading_trailing_neighbor_checked')is True,'native text/cut-head/cut-tail/neighbor review required')
         evidence=d.get('review_evidence');need(isinstance(evidence,list)and evidence,'actual per-difference review evidence required');refs.extend(evidence)
     evidence=q.get('review_evidence');need(isinstance(evidence,list)and evidence,'actual native quality evidence required');refs.extend(evidence)
@@ -151,7 +231,7 @@ def check_formal_bundle(selected,pilot_bundle_pin,new_contract,purpose):
     return formal_pin,refs
 
 
-def check_native_selected_pilot(pin,new_contract,purpose):
+def _full_check_native_selected_pilot(pin,new_contract,purpose):
     """严格新schema；缺实际3000/512或完整packet/readback时永不授正式。"""
     selected=pinned(pin);need(selected.get('schema')==SCHEMA and selected.get('purpose')==purpose,'explicit native selected-admission v2 required; old single-window evidence refused')
     candidate=pinned(selected['candidate_contract']);profile=formal_equivalent(candidate,new_contract,purpose)
@@ -201,8 +281,11 @@ def check_native_selected_pilot(pin,new_contract,purpose):
     chosen=matrix['variants'][name]['freeze']
     pilot_bundle_pin=dict(path=str(Path(chosen['frozen_copy'])/'bundle_files.json'),sha256=bundles['main'])
     formal_bundle,extra=check_formal_bundle(selected,pilot_bundle_pin,new_contract,purpose);refs.extend(extra)
-    need(pinned(selected['quality_review']).get('comparison')==selected['comparison'],'native quality review does not bind actual comparison')
-    refs.extend(check_quality(selected['quality_review'],speed,selected['candidate_contract'],purpose))
+    quality_doc=pinned(selected['quality_review']);need(quality_doc.get('comparison')==selected['comparison'],'native quality review does not bind actual comparison')
+    traceback_context=None
+    if any(item.get('classification')==TRACEBACK_CLASS for item in quality_doc.get('dispositions',[])):
+        traceback_context,traceback_refs=_traceback_roots(matrix,name,bundles['main']);refs.extend(traceback_refs)
+    refs.extend(check_quality(selected['quality_review'],speed,selected['candidate_contract'],purpose,traceback_context=traceback_context))
     # 收据由有限native auditor已核的原件生成；逐包/plan/行映射本身仍要核，不信布尔口号。
     if __package__:from .native_batch_readback import verify_readback_receipt,verify_comparison_maps
     else:from native_batch_readback import verify_readback_receipt,verify_comparison_maps
@@ -222,6 +305,128 @@ def check_native_selected_pilot(pin,new_contract,purpose):
     selected['verified_native_bundle_sha256']=formal_bundle['sha256']
     selected['verified_pilot_bundle_sha256']=bundles['main']
     return selected
+
+
+
+_SELECTION_SCOPES=weakref.WeakKeyDictionary()
+
+
+class NativeSelectionScope:
+    """默认关闭、单PID/单CLI/单候选的证明复用；不是GPU或锁的资格。"""
+    __slots__=('__weakref__',)
+    def __init__(self,*,enabled=False):
+        need(type(enabled)is bool,'selection reuse needs explicit boolean opt-in')
+        _SELECTION_SCOPES[self]=dict(enabled=enabled,pid=os.getpid(),closed=False,binding=None,selected=None,fingerprints=None,directories=None,full_checks=0,reuses=0)
+    def __enter__(self):_selection_state(self);return self
+    def __exit__(self,*args):self.close()
+    def close(self):
+        state=_SELECTION_SCOPES.get(self)
+        if state is not None:state.update(closed=True,selected=None,fingerprints=None,directories=None)
+    def facts(self):
+        state=_SELECTION_SCOPES.get(self);need(state is not None,'unissued selection scope refused')
+        return dict({key:state[key]for key in ('enabled','pid','closed','full_checks','reuses')},fingerprint_file_count=len(state['fingerprints']or[]),fingerprint_directory_count=len(state['directories']or[]))
+    def __reduce__(self):raise TypeError('CLI selection scope cannot be serialized or transferred')
+
+
+def _selection_state(scope):
+    need(type(scope)is NativeSelectionScope and scope in _SELECTION_SCOPES,'only actually issued in-memory selection scope accepted')
+    state=_SELECTION_SCOPES[scope]
+    need(not state['closed']and state['pid']==os.getpid(),'selection scope closed or belongs to another process')
+    return state
+
+
+def _selection_fingerprint(pin,*,verify_sha):
+    path=R.physical(pin['path'])if verify_sha else Path(pin['path']);before=path.lstat();need(stat.S_ISREG(before.st_mode),'selection proof must remain a regular file')
+    stamp=lambda s:(s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode)
+    if verify_sha:R.pinned_file(pin)
+    after=path.lstat();need(stamp(before)==stamp(after),'selection proof changed while capturing fingerprint')
+    return stamp(after)
+
+
+
+def _selection_directories(refs):
+    paths=set()
+    for ref in refs:
+        path=Path(ref['path']);need(path.is_absolute()and '..'not in path.parts,'physical selection path required')
+        paths.update(path.parents)
+    result=[]
+    for path in sorted(paths,key=lambda p:(len(p.parts),str(p))):
+        stamp=path.lstat();need(stat.S_ISDIR(stamp.st_mode),'selection ancestor must remain directory without symlinks')
+        result.append((str(path),(stamp.st_dev,stamp.st_ino,stamp.st_mode)))
+    return result
+
+
+def _verify_selection_directories(directories):
+    # 目录mtime/ctime会随无关新文件变化，只固定实际目录身份、模式和无软链。
+    for name,expected in directories:
+        stamp=Path(name).lstat();need(stat.S_ISDIR(stamp.st_mode)and(stamp.st_dev,stamp.st_ino,stamp.st_mode)==expected,
+            'selection ancestor directory identity/mode changed; no reuse permitted')
+
+
+def _verify_selection_fingerprints(fingerprints):
+    for ref,expected in fingerprints:
+        need(_selection_fingerprint(ref,verify_sha=False)==expected,
+             'selection proof input fingerprint changed; no reuse permitted')
+        # 共享盘metadata可碰撞；每个输入仍实际读字节核SHA，绝不以ctime代替内容证明。
+        need(_selection_fingerprint(ref,verify_sha=True)==expected,
+             'selection proof input fingerprint changed during content verification')
+
+
+def _selection_inputs(selected,new_contract,purpose,selected_pin):
+    refs=[selected_pin,*selected['verified_evidence_pins']];refs.append(dict(path=str(Path(__file__).resolve()),sha256=R.file_sha(__file__)))
+    # 只沿已核实际角色找GPU包；同名质量材料不能冒充bundle，也不能漏掉包成员。
+    result=pinned(selected['pilot_result']);plan=pinned(result['plan']);matrix=pinned(plan['main_prepared'])
+    chosen=matrix['variants'][selected['selected_profile_name']]['freeze']
+    pilot_bundle=dict(path=str(Path(chosen['frozen_copy'])/'bundle_files.json'),sha256=selected['verified_pilot_bundle_sha256'])
+    bundles=[pilot_bundle,selected.get('formal_execution_bundle',pilot_bundle)]
+    for ref in bundles:
+        refs.append(ref);members=pinned(ref)
+        for name,digest in members.items():
+            rel=Path(name);need(rel.parts and not rel.is_absolute()and '..'not in rel.parts,'unsafe selection bundle member')
+            refs.append(dict(path=str(Path(ref['path']).parent/rel),sha256=digest))
+    # 新协议七个SDK/配置源也是声明输入；只涉及明确源码/配置，不读取模型权重。
+    if purpose=='production':
+        refs.extend(dict(path=path,sha256=digest)for path,digest in new_contract.get('source_files',{}).items())
+        feature=new_contract.get('asr_preprocessing_sources')
+        if feature:refs.extend([*feature['files'].values(),feature['processor_config']])
+    unique={}
+    for ref in refs:
+        value={key:ref[key]for key in ('path','sha256')}
+        need(value['path']not in unique or unique[value['path']]==value,'same selection input path has conflicting SHA pins')
+        unique[value['path']]=value
+    return [unique[key]for key in sorted(unique)]
+
+
+def check_native_selected_pilot(pin,new_contract,purpose,*,selection_scope=None):
+    """原默认全核；仅显式同CLI scope允许复用实际全核结果与文件指纹。"""
+    if selection_scope is None:return _full_check_native_selected_pilot(pin,new_contract,purpose)
+    state=_selection_state(selection_scope)
+    if not state['enabled']:
+        value=_full_check_native_selected_pilot(pin,new_contract,purpose);state['full_checks']+=1;return value
+    binding=H.P.digest(dict(pin=pin,new_contract=new_contract,purpose=purpose))
+    if state['binding']is not None:
+        try:
+            need(state['binding']==binding,'selection scope input pin/contract/purpose binding changed')
+            _verify_selection_directories(state['directories'])
+            _verify_selection_fingerprints(state['fingerprints'])
+            _verify_selection_directories(state['directories'])
+        except BaseException:
+            selection_scope.close();raise
+        state['reuses']+=1
+        return json.loads(state['selected'])
+    # 只有实际完成全检查才产生内部证明；不接受调用者提供的普通dict或布尔收据。
+    value=_full_check_native_selected_pilot(pin,new_contract,purpose);state['full_checks']+=1
+    try:
+        refs=_selection_inputs(value,new_contract,purpose,pin);directories=_selection_directories(refs)
+        fingerprints=[(ref,_selection_fingerprint(ref,verify_sha=True))for ref in refs]
+        _verify_selection_directories(directories)
+        # 后面的pin读取可能与前面的文件变更交错；签发前统一再核全部文件。
+        _verify_selection_fingerprints(fingerprints)
+        _verify_selection_directories(directories)
+    except BaseException:
+        selection_scope.close();raise
+    state.update(binding=binding,selected=H.P.canonical(value).decode(),fingerprints=fingerprints,directories=directories)
+    return json.loads(state['selected'])
 
 
 def prepare_formal_code(pilot_code,pilot_bundle_pin,candidate_pin,output,*,overlay_pin=None):
