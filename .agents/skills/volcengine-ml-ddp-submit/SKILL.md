@@ -18,6 +18,7 @@ description: 检查、准备、提交、修复和诊断火山引擎机器学习�
 | 场景 | 必读资料或工具 |
 | --- | --- |
 | 登录、开发机检查、镜像、资源、队列、挂载、表单、提交、排队诊断 | [平台 DDP 任务工作流](references/platform-ddp-workflow.md) |
+| 在控制台**复制既有任务**提交（当前唯一可用通道）、AX 自动化注意点、首屏自检 | [控制台复制任务提交](references/console-clone-submission-20261106.md) |
 | PSE TOML 继承、完整预加载、checkpoint 兼容性 | [PSE 配置与预加载](references/pse-preload-and-config.md) |
 | PSE 2×8 launcher、平台变量、专项挂载、远程 Git | [PSE DDP 与仓库操作](references/pse-ddp-and-repository.md)；提交任务时还要读取平台工作流 |
 | PSE 首批 `sv_ce`、ArcFace、重建指标、AMP/NaN 判断 | [PSE 启动日志诊断](references/pse-log-diagnosis.md) |
@@ -31,6 +32,14 @@ description: 检查、准备、提交、修复和诊断火山引擎机器学习�
 | MMS-LLaMA 的 LRS3-only 或 LRS3+Vox2 AVSR 训练 | 使用 `$avsr-reproduction-ops` 对应的 `references/mms-lrs3-training.md` 或 `references/mms-lrs3-vox2-training.md` 确定数据、模型和 batch 合同；表单、挂载、队列及状态仍读[平台 DDP 任务工作流](references/platform-ddp-workflow.md) |
 
 混合任务应读取所有对应资料。涉及提交平台任务时，必须读取平台工作流。
+
+## 提交通道的现实约束（2026-11-06 核实）
+
+- **服务器上有官方 CLI，但当前不可用于查询或提交**：`/root/.volc/bin/volc`（v1.2.55）与同目录 `mlp`（70.7 MB）。两者**都不在 `PATH`**，必须先 `export PATH=/root/.volc/bin:$PATH`，否则 `volc ml_task` 会报 `exec: "mlp": executable file not found in $PATH`（`volc` 只是外壳，真正干活的是 `mlp`）。
+- **缺 AK/SK，CLI 认证失败**：`~/.volc/credentials` **不存在**，该目录下只有 `access_token`（CLI 不认这种凭据）。实测 `volc ml_task get -i <task_id>` 与 `mlp job list` 均报 `AccessKeyId or SecretAccessKey is empty`。不要以为有 `access_token` 就能调用，也**不要读取或复制**该文件来"绕过"。
+- **因此：控制台"复制任务"是当前唯一可用通道**。逐字段照做手册见 [控制台复制任务提交](references/console-clone-submission-20261106.md)。
+- **`ml_task list` 只列非终态任务**：任务一旦完成/失败/停止就不再出现在 `list` 里。**查历史状态必须 `get -i <task_id>`**（且要先解决上面的凭据问题）。不要因为 `list` 里看不到就断言"任务不存在"或"记录已删除"；应改从控制台任务列表/详情页核对。
+- 以上是**通道现状**，不改变证据要求：平台任务状态、详情页字段与持久日志仍是三种独立证据（见"统一工作流"第 9、11 条）。CLI 不可用不等于可以降低核验标准。
 
 ## 操作原则
 

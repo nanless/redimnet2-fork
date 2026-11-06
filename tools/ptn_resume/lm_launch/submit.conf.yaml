@@ -1,0 +1,97 @@
+# =============================================================================
+# 火山引擎机器学习平台「自定义训练」任务配置 —— LM 大间隔微调（真实值版）
+# =============================================================================
+# 字段名依据：https://www.volcengine.com/docs/6459/72394（2026-11-06 抓取）
+#            与 `volc ml_task submit --help`（v1.2.55，只读 help，无认证、无提交）。
+# 镜像 / 队列 / 规格 / 挂载 / 框架 / 优先级 来自用户在控制台对 PTN 任务
+# `t-20261026074833-ctjsk` 的「基本信息 / 挂载的共享文件系统 / 实例信息」抄录
+# （2026-11-06，非 CLI 复核）。
+#
+# 这份文件**没有提交过**。包版本：package-r3（r2 已被 review 条件替换）。
+# =============================================================================
+
+TaskName: "zhounan_redimnet2_lm_from115_8a800_20261106_v1"
+Description: "B6 三语料 LM：从 PTN model_115.pt 冷启动微调 1 轮；5,021,010 句 / 每卡48 / 13,075 步 / margin 0.3 / lr 峰值 4.5471497e-4"
+
+# 入口命令（控制台「入口命令」字段，单行粘贴版）。
+# 两个 sha 同时写进 Envs 与本行，行内值优先；`set -euo pipefail` 保证任一步失败即退出。
+Entrypoint: >-
+  set -euo pipefail; export LM_PACKAGE_SHA=08a34b68ec26515bbb424f258498b2bc8a3bc0451ce1601f99fade79b99aa003 LM_CONTRACT_SHA=bf437dc8fffe69822401c2f3f6b70205fec569a32d0a4d1bba3ec0bbd69230d0; exec bash /root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/package-r3/runtime/lm_launch.sh
+Args: ""
+
+# ---- 运行环境 -----------------------------------------------------------
+Envs:
+  - Name: "LM_PACKAGE_SHA"
+    Value: "08a34b68ec26515bbb424f258498b2bc8a3bc0451ce1601f99fade79b99aa003"
+  - Name: "LM_CONTRACT_SHA"
+    Value: "bf437dc8fffe69822401c2f3f6b70205fec569a32d0a4d1bba3ec0bbd69230d0"
+  - Name: "DATA_ROOT"
+    Value: "/root/group-shared/voiceprint/data/wespeaker_data"
+  - Name: "PTN_EXP_DIR"
+    Value: "/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn"
+  - Name: "EXP_DIR"
+    Value: "/root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm"
+  - Name: "MODEL_CKPT"
+    Value: "/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn/models/model_115.pt"
+  - Name: "PYTHON_BIN"
+    Value: "/root/miniforge3/envs/redimnet2/bin/python"
+  - Name: "NUM_GPUS"
+    Value: "8"
+
+# ---- 镜像 / 队列 / 框架（沿用 PTN 任务 t-20261026074833-ctjsk） -------------
+ImageUrl: "prod-cn-beijing.cr.volces.com/aiplatform/dev_zhounan:4.0"
+ResourceQueueName: "aiplatform-SPEECH"
+Framework: "PyTorchDDP"
+
+# ---- 实例规格（沿用 PTN：GPU 型 112 vCPU 8 卡） ---------------------------
+TaskRoleSpecs:
+  - RoleName: "worker"
+    RoleReplicas: 1
+    Flavor: "ml.pni2l.28xlarge"
+
+# ---- 时限与重试 ---------------------------------------------------------
+# 刻意与 PTN 不同：PTN 用 720h（长跑 120 轮），LM 只跑 1 轮，估 2h52m，
+# 给 6h 上限（1.7× 余量）。卡住就让它失败、换新目录重来，而不是挂着占卡。
+ActiveDeadlineSeconds: 21600
+DelayExitTimeSeconds: 0
+
+# 自动重试必须关闭：LM 只有 1 轮，中途失败时目录里没有可续训检查点，
+# 平台重试会在**同一个 new_run_root** 里二次冷启动，同时违反"唯一新输出"
+# 与冷启动合同。（gate 也会因 new_run_root 已存在直接 code=2 拒绝。）
+RetryOptions:
+  EnableRetry: false
+  EnableReserveResourceOnRetry: false
+  MaxRetryTimes: 0
+  IntervalSeconds: 120
+  PolicySets:
+    - "Failed"
+
+# ---- 优先级 -------------------------------------------------------------
+Priority: 6
+Preemptible: false
+
+# ---- 诊断 ---------------------------------------------------------------
+DiagOptions:
+  - Name: "EnvironmentalDiagnosis"
+    Enable: false
+  - Name: "PythonDetection"
+    Enable: true
+    PythonDetectionInterval: 3600
+  - Name: "LogDetection"
+    Enable: true
+    LogDetectionInterval: 1800
+
+# ---- 存储挂载（沿用 PTN 的两块 vePFS） ------------------------------------
+# ① 共享数据盘只读挂到 /shared/group-shared：
+#    data.list 里同时存在 /root/group-shared/... 与 /shared/group-shared/... 两个前缀，
+#    而 /root/group-shared 本身就是指向 /shared/group-shared 的软链，缺一不可。
+# ② 用户盘读写挂到 /root：包、PTN 权重、新输出都在 /root/experiments 下。
+# 两块盘同属 vePFS 实例 `aiplatform-speech`。
+Storages:
+  - Type: "Vepfs"
+    MountPath: "/shared/group-shared"
+    SubPath: "/aiplatform-speech/group-shared"
+    ReadOnly: true
+  - Type: "Vepfs"
+    MountPath: "/root"
+    SubPath: "/aiplatform-speech/users/zhounan"

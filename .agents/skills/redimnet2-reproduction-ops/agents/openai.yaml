@@ -1,0 +1,4 @@
+interface:
+  display_name: "ReDimNet2 复现运维"
+  short_description: "核对 ReDimNet2 八卡复现、训练进度、检查点与阶段接续"
+  default_prompt: "使用 $redimnet2-reproduction-ops 检查当前复现任务与后续阶段依赖，并按证据更新实验文档。"

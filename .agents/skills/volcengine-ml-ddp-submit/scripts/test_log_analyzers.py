@@ -54,6 +54,17 @@ Starting new training run
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("请提供 --epoch-start-step", result.stdout)
 
+    def test_latest_short_run_does_not_reuse_old_speed(self):
+        result = run_script("analyze_pse_log.py", "[2026-08-30 10:00:00] [TrainState] step=100\n[2026-08-30 10:10:00] [TrainState] step=200\nStarting new training run\n[2026-08-31 10:00:00] [TrainState] step=1\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("最新连续 run 不足两个样本", result.stderr)
+
+    def test_small_global_step_still_needs_epoch_baseline(self):
+        result = run_script("analyze_pse_log.py", "[2026-08-31 10:00:00] [TrainState] step=100\n[2026-08-31 10:10:00] [TrainState] step=200\n", "--steps-per-epoch", "1000")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("请提供 --epoch-start-step", result.stdout)
+        self.assertNotIn("中心 ETA:", result.stdout)
+
 
 class VadAnalyzerTests(unittest.TestCase):
     def test_latest_run_inner_timestamp_and_zero_based_remaining(self):
@@ -70,6 +81,11 @@ Starting new training run
         self.assertIn("Epoch 1", result.stdout)
         self.assertIn("10.000 秒/batch", result.stdout)
         self.assertIn("剩余 0 batch", result.stdout)
+
+    def test_zero_based_out_of_range_batch_rejected(self):
+        result = run_script("analyze_vad_log.py", "[2026-08-31 10:00:00] Epoch 1, Batch 0/5, Loss: 1\n[2026-08-31 10:00:40] Epoch 1, Batch 5/5, Loss: 1\n", "--batch-index-base", "0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("剩余 0 batch", result.stdout)
 
 
 if __name__ == "__main__":

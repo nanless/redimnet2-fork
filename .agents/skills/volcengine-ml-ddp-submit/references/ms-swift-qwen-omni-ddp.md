@@ -14,7 +14,7 @@
 
 - `tuner_type/train_type=full`只说明所选可训练参数采用全参更新，不能证明音频塔实际可训练。纯音频SFT通常应把音频塔、音频投影/aligner、Thinker LLM和`lm_head`纳入训练，并冻结视觉、`talker`和`token2wav`；最终范围以具体模型合同和用户要求为准。
 - MS-SWIFT的开关可能先冻结一组参数，再通过`trainable_parameters`重新启用子模块；学习率字段名也可能沿用多模态抽象，例如`vit_lr`实际控制当前模型的音频塔参数组。不要从`freeze_aligner`、`freeze_vit`或字段名孤立推断训练范围。
-- 启动前和线上都保存scope attestation，至少列出每个语义参数组的tensor数、参数量、`requires_grad`状态和必冻前缀。用日志中的总可训练参数做算术交叉验证。审计历史checkpoint时，再抽查base与checkpoint的音频塔、projector、LLM和`lm_head`代表张量；完全相同的音频张量可证明该历史run没有更新音频部分。
+- 启动前和线上都保存scope attestation，至少列出每个语义参数组的tensor数、参数量、`requires_grad`状态和必冻前缀。用日志中的总可训练参数做算术交叉验证。审计历史checkpoint时，再抽查base与checkpoint的音频塔、projector、LLM和`lm_head`代表张量；抽查张量相同只证明这些张量在两个快照中相同，不能证明整个音频塔从未更新。是否纳入优化器需结合该run的scope attestation、冻结配置与参数组证据。
 - ZeRO-2归约后的`parameter.grad`不是可靠的线上逐组合同。真实单卡smoke可检查逐组有限非零梯度；线上使用scope attestation、有限loss、Trainer归约后的grad norm和真实optimizer step共同证明训练已启动。
 
 ## 跨模型严格对齐
@@ -36,8 +36,8 @@
 
 一个可评测或续训的 safetensors checkpoint 至少满足：
 
-1. `model.safetensors.index.json` 可解析；
-2. `weight_map` 引用的每个分片都存在且非空；
+1. 分片模型的 `model.safetensors.index.json` 可解析；单文件模型则按实际加载器核对 `model.safetensors`，不强制制造索引；
+2. 分片模型的 `weight_map` 引用文件全部存在且非空；单文件模型可完整读取，并与所选加载配置匹配；
 3. `config.json`、tokenizer/processor配置和必要的模型附属文件存在；
 4. `trainer_state.json` 存在时能够解析；
 5. 没有临时文件，且分片、索引和 trainer state 在保守稳定窗口内不再变化；

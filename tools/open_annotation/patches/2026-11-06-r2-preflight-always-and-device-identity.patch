@@ -1,0 +1,119 @@
+--- a/gpu_launch.py
++++ b/gpu_launch.py
+@@ -359,12 +359,11 @@
+     p.add_argument('--bounded-runtime-sha')
+     args = p.parse_args()
+     # 只读预检，必须早于 run()：run() 会做 bundle 校验、开锁、建输出目录、spawn worker。
+-    if args.target_uuids == 'auto8':
+-        code = device_preflight.check()
+-        if code:
+-            sys.exit(code)
+-    else:
+-        print('PREFLIGHT_DEVICE_CHECK_SKIPPED reason=non_auto8_target', flush=True)
++    # W2 pilot 也打印（non-fatal），好让 pilot 顺手把真实 st_dev 记进日志；只有 auto8 是硬门。
++    strict = args.target_uuids == 'auto8'
++    code = device_preflight.check(strict=strict)
++    if code:
++        sys.exit(code)
+     run(args)
+ 
+ 
+--- a/device_preflight.py
++++ b/device_preflight.py
+@@ -27,6 +27,7 @@
+ EXPECTED_DEVICE = 2097190
+ EXIT_MISMATCH = 21
+ MISMATCH_MARKER = 'PREFLIGHT_DEVICE_MISMATCH'
++NONFATAL_MARKER = 'PREFLIGHT_DEVICE_MISMATCH_NONFATAL'
+ 
+ # 三个已知源：两个音频（分别被"孤儿侧车"和"已提交分片"覆盖）+ 一个同 GPFS 上的
+ # 只读文件（验证模型挂载与数据挂载的 st_dev 一致，且路径前缀不同也仍然成立）。
+@@ -65,8 +66,14 @@
+     return rows
+ 
+ 
+-def check(samples=SAMPLES, *, stat=None, out=None):
+-    """打印一行 JSON + 必要时一行 mismatch；返回 0 或 21。除了 stdout 不写任何东西。"""
++def check(samples=SAMPLES, *, stat=None, out=None, strict=True):
++    """总是打印一行 JSON；返回 0 或 21。
++
++    strict=True（auto8 / 生产）：device 不符即返回 21，调用方据此退出。
++    strict=False（W2 pilot / 调试）：只打印 ``PREFLIGHT_DEVICE_MISMATCH_NONFATAL`` 并返回 0，
++    这样 pilot 也能把真实 st_dev 打进日志，供正式任务判断是否需要 device 容差。
++    除 stdout 外不写任何东西。
++    """
+     out = out or sys.stdout
+     rows = probe(samples, stat=stat)
+     out.write(json.dumps({'schema': SCHEMA, 'expected_device': EXPECTED_DEVICE,
+@@ -77,6 +84,7 @@
+         return 0
+     actual = ','.join('%s:%s' % (row['role'], 'missing' if row['st_dev'] is None else row['st_dev'])
+                       for row in bad)
+-    out.write('%s expected=%d actual=%s\n' % (MISMATCH_MARKER, EXPECTED_DEVICE, actual))
++    out.write('%s expected=%d actual=%s\n'
++              % (MISMATCH_MARKER if strict else NONFATAL_MARKER, EXPECTED_DEVICE, actual))
+     out.flush()
+-    return EXIT_MISMATCH
++    return EXIT_MISMATCH if strict else 0
+--- a/sidecar.py
++++ b/sidecar.py
+@@ -2,11 +2,25 @@
+ from __future__ import annotations
+ import json
+ import os
++import sys
+ from pathlib import Path
+ from contracts import Refused, atomic_new, canonical_bytes, digest, job_key, need, safe_join, sha_file, stat_identity, utcnow
+ from schema import assert_valid_record
+ 
+ 
++def identity_matches(now, recorded):
++    """内容身份等式：**排除 st_dev**（挂载命名空间决定，不反映内容变化）。
++
++    inode/bytes/mtime_ns/ctime_ns 逐项严格相等，任一不同即拒；device 不同只记为
++    device_relaxed=True 并留日志。返回是否发生了 device 漂移。
++    """
++    need(isinstance(recorded, dict), 'recorded stat identity missing')
++    for key in ('inode', 'bytes', 'mtime_ns', 'ctime_ns'):
++        need(now.get(key) == recorded.get(key), 'source changed since sidecar publication: ' + key)
++    return now.get('device') != recorded.get('device')
++
++
++
+ class SidecarStore:
+     def __init__(self, output_root, contract, contract_sha):
+         self.contract, self.contract_sha = contract, contract_sha
+@@ -40,8 +54,12 @@
+              "existing sidecar belongs to another source version/contract")
+         need(record["execution"]["job_key"] == job_key(source, self.contract_sha), "existing sidecar job key differs")
+         identity = record["source_identity"]
++        device_relaxed = False
++        consumer = None
+         if check_current_source and identity["decode_status"] == "decoded_complete":
+-            need(source.get("audio_path") and stat_identity(source["audio_path"]) == identity["stat_after"], "source changed since sidecar publication")
++            need(source.get("audio_path"), "source audio path missing")
++            consumer = stat_identity(source["audio_path"])
++            device_relaxed = identity_matches(consumer, identity["stat_after"])
+         descriptor = {"schema": "redimnet2-sidecar-commit/v1", "source_id": source["source_id"],
+                       "job_key": job_key(source, self.contract_sha), "contract_sha256": self.contract_sha,
+                       "source_record_sha256": digest(source), "sidecar_sha256": digest_bytes(raw),
+@@ -51,7 +69,18 @@
+             # Crash after sidecar publication but before commit: semantic readback
+             # above is mandatory before the missing marker can be repaired.
+             atomic_new(commit, descriptor)
+-        return self._receipt(source, path, raw, commit)
++        receipt = self._receipt(source, path, raw, commit)
++        if device_relaxed:
++            # 侧车记录的是 producer 侧 device；consumer 侧 device 只能在这里补记。
++            receipt.update(device_relaxed=True,
++                           producer_device=identity["stat_after"].get("device"),
++                           consumer_device=consumer.get("device"))
++            sys.stderr.write(json.dumps({"event": "device_relaxed", "source_id": source["source_id"],
++                                         "producer_device": receipt["producer_device"],
++                                         "consumer_device": receipt["consumer_device"]},
++                                        ensure_ascii=False, sort_keys=True) + "\n")
++            sys.stderr.flush()
++        return receipt
+ 
+     def publish(self, source, record, claim, fault=None):
+         claim.assert_current(); claim.assert_member(source); assert_valid_record(record)

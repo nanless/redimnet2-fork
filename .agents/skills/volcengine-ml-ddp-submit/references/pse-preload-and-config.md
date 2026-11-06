@@ -35,6 +35,8 @@ PY
 
 ## checkpoint 证据
 
+下面的 `weights_only=False` 仅用于身份与来源已核实的自有训练checkpoint；它可能执行pickle对象。来源未知时不加载，也不为查看形状关闭安全限制。解释器以当前训练环境为准，代码中的历史绝对路径不是所有任务的默认入口。
+
 ```python
 ckpt = torch.load(path, map_location="cpu", weights_only=False)
 embedding = ckpt["embedding_model"]

@@ -75,7 +75,7 @@ def load_segments(path: Path) -> list[list[tuple[int, dt.datetime]]]:
                     continue
             current.append(sample)
     finish()
-    return [segment for segment in segments if len(segment) >= 2]
+    return segments
 
 
 def interval_stats(samples: list[tuple[int, dt.datetime]]):
@@ -115,6 +115,10 @@ def main() -> int:
     if not segments:
         raise SystemExit("没有找到至少含两个单调 [TrainState] 样本的连续 run")
     samples = segments[-1]
+    if len(samples) < 2:
+        raise SystemExit("最新连续 run 不足两个样本；不使用旧 run 估算当前 ETA")
+    if args.window_steps <= 0:
+        raise SystemExit("--window-steps 必须为正整数")
     intervals = interval_stats(samples)
     if not intervals:
         raise SystemExit("最新 run 没有单调递增的 step 区间")
@@ -157,12 +161,10 @@ def main() -> int:
 
     epoch_start = args.epoch_start_step
     if epoch_start is None:
-        if last_step <= args.steps_per_epoch:
-            epoch_start = 0
-            print("ETA baseline: 假定当前为从 global step 0 开始的第一轮")
-        else:
-            print("ETA: TrainState.step 是 global step；请提供 --epoch-start-step，拒绝用取模猜测")
-            return 0
+        print("ETA: 请提供 --epoch-start-step；当前global step较小也不能证明这是从0开始的第一轮")
+        return 0
+    if epoch_start < 0:
+        raise SystemExit("--epoch-start-step 不能为负")
     progress = last_step - epoch_start
     if progress < 0 or progress > args.steps_per_epoch:
         print(

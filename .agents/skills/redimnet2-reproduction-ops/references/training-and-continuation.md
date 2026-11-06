@@ -1,6 +1,6 @@
 # 主训练和大间隔微调
 
-查询实时进度先读[任务状态与只读巡检](task-status-and-readonly-progress.md)。2026年10月28日22:28已核ctjsk推进到第71轮并有稳定model70；本页较早“尚无完整48轮”的文字描述当时观察，不代表现在仍无新检查点。原NaN根因未确定、恢复演练和后续LM资格仍分别处理。
+查询实时进度先读[任务状态与只读巡检](task-status-and-readonly-progress.md)。**2026-11-06 现状**：PTN 已完成 120/120（止 11-03 10:12，北京），LM 已提交 `t-20261106195855-rq2b7`（11-06 19:58，排队中）。本页 10月28日"第71轮/model70"及更早"尚无完整48轮"都是当时的观察，不能当现在状态；原 NaN 根因仍未确定（`historical_numeric_root_cause_proven:false`），恢复演练与 LM 资格分别处理。
 
 训练入口在 `applications/speaker_rec/`；旧两段准备工具在 `tools/lm_continuation/`；本次47→48的新包、状态比较、双卡工程与运行包装在 `tools/ptn_resume/`。先读相应目录说明，再执行仓库测试；不能从旧实验目录导入仓库中没有的唯一依赖。
 
@@ -64,5 +64,17 @@ CPU入口是`tools/ptn_diagnostics/inspect_numeric_cpu.py`，只读取SHA固定�
 父持八GPU独占锁，在统一准入独占锁保护下转共享并传FD；每个rank还独立持本卡共享锁，原逻辑链和旧四把稳定共享锁保留。不能只依赖父进程存活。清理覆盖已证launcher和独立rank组；先按已知PG或真实PPID关系筛选，不能遍历无关进程环境来猜归属。nonce/权限未知只保持锁并查询原组是否消失，不能重复同一异常后逃出锁上下文或猜杀。清理和归还期间防TERM/INT重入，完成后恢复处理器；SIGKILL无法屏蔽。只在新鲜双快照确认资源归还后释放，本轮执行预算不代表保守清理一定按时结束。
 
 每轮须在验证/保存前核实际八rank各15001批；日志轮次和最终checkpoint轮次不允许截断小数冒充整数。第一迭代705047与第一实际SGD更新分开记录，AMP跳步不能把后者伪写成第一迭代。未来LM三段协议读取仓库内 `tools/ptn_resume/三段LM准备协议.md`，115/120必须来自真实新第三段，LM优化器/scaler冷启动。
+
+## LM 受控包（2026-11-06，已提交）
+
+PTN 完成后 LM 走"冻结包 + 合同"，不再走 `run_b6_mix_reproduction.sh`：那条 formal 分支会**先重训 PTN 120 轮**，并要求同源码的八卡 smoke 成功件。
+
+- 包目录 `/root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/package-r3/`，208 成员：190 成员冻结源码树 + 14 个 runtime（12 个从 PTN 包原样继承、2 个新增）。
+- 两个身份必须**外部注入**，包里不自证：`LM_PACKAGE_SHA=08a34b68ec26515bbb424f258498b2bc8a3bc0451ce1601f99fade79b99aa003`（`bundle_files.json`）、`LM_CONTRACT_SHA=bf437dc8fffe69822401c2f3f6b70205fec569a32d0a4d1bba3ec0bbd69230d0`（`resume-contract.json`）。
+- 入口 `runtime/lm_launch.sh`（`7fc15817…`）先 `sha256sum -c` 验包与合同，再交 `runtime/lm_stage_gate.py`；gate 只做校验、委托与事后回读，**训练逻辑一行没重写**——它调包内 `source/…/train_b6_mix_cloud_8gpu.sh`（`STAGE=lm REPRO=1 NUM_GPUS=8`）。
+- 合同语义：`runtime_admission:false`、`LM_started:false`；`clock` 固定 `stage=lm, start_epoch=1, target_epoch=1, epoch_iter=13075, batch_size_per_gpu=48, margin=0.3, optimizer:"new", scaler:"new", rng_restored:false`；`checkpoint=model_115.pt`（`65497b6a…`）。**冷启动**指只载模型参数、SGD 动量与 GradScaler 全新，不能恢复 PTN 的同阶段状态。
+- 三条硬约束：`new_run_root` 提交前必须**不存在**（gate 拒绝覆盖）；自动重试必须**关闭**（否则平台会在同一目录二次冷启动，同时违反唯一输出与冷启动合同）；`NUM_EPOCHS/BATCH_SIZE/SAMPLE_NUM_PER_EPOCH/SAVE_EPOCH_INTERVAL/RECIPE` 不许外部覆盖（gate 直接拒）。
+- **入口参数必须与 gate 的 argparse 对齐**。r3 包内 gate 只认 `--package-root/--contract/--contract-sha/--package-sha/--verify-only`；多一个未知参数会以 `unrecognized arguments` 退出(2)，排到卡上时一条 gate 日志都没有，看起来像包坏了——2026-11-06 就因入口末尾多了从 PTN `entry.py` 抄来的 `--execute` 发生了这一次。修法：停掉排队任务、复制任务重提并去掉该参数（包不重建）。仓库源码此后把 `--execute` 改成 no-op 兼容并加了单测，但**要重新打包才生效**，r3 包内仍是严格版。提交前用 `python -B runtime/lm_stage_gate.py --help` 对一遍。
+- 首屏与失败特征见[LM 受控启动](lm-launch-20261106.md)。
 
 10月28日标注提速交接后的保护性只读检查：19:33:48 ctjsk为第70轮7136/15001批，7125批八rank齐且loss有限；已知model69两次lstat与前次身份稳定。仅64KiB日志尾及固定检查点stat，未读大权重／GPU／进程或改远端；结果在仓库10月28日实测报告第17节。它证明该时刻PTN继续推进，不是后续任意时刻的实时状态或恢复演练。

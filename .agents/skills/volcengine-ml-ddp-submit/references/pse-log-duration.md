@@ -15,7 +15,7 @@ find "$base" -type f -path '*/logs/log-*.txt' -printf '%TY-%Tm-%Td %TH:%TM:%TS %
 
 ## 解析正确时间戳
 
-使用 `[TrainState] step=N` 行。它们按固定间隔写入并代表 global optimizer step。不要把同一步的 `grad norm` 行作为第二个样本；动态 batch sampler 和 resume offset 可能使 `Batch` 与 `Step` 不一致，因此不要用 `Batch` 推断吞吐。按文件顺序切分 restart/run，只分析最后一个具有至少两个单调样本的连续段，绝不能按 step 全局排序后拼接多个 run。
+使用 `[TrainState] step=N` 行。它们按固定间隔写入并代表 global optimizer step。不要把同一步的 `grad norm` 行作为第二个样本；动态 batch sampler 和 resume offset 可能使 `Batch` 与 `Step` 不一致，因此不要用 `Batch` 推断吞吐。按文件顺序切分 restart/run，只分析最后一个连续段；该段不足两个单调样本时报告不足，不退回旧run冒充当前进度，绝不能按 step 全局排序后拼接多个 run。
 
 至少报告：
 
@@ -42,8 +42,10 @@ PSE logger 文件可能包含模型参数和训练指标，但没有 Python 启�
 当前动态 sampler 在 `gradient_accumulation_steps=1` 时，optimizer step 约等于 dataloader batch 数。梯度累积大于 1 时使用：
 
 ```text
-optimizer_steps_per_epoch = ceil(batches_per_epoch / gradient_accumulation_steps)
+optimizer_steps_per_epoch = ceil(batches_per_epoch / gradient_accumulation_steps)  # 仅当trainer安全处理尾组时
 ```
+
+如果trainer直接丢弃尾组、恢复了半组或存在跳过更新，按实际实现与日志修正，不仅凭这个除法认定训练等价。
 
 ## 估算完成时间
 

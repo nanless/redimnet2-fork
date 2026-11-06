@@ -71,6 +71,8 @@ def parse_runs(path: Path, source: str, line_filter: Optional[str]) -> list[list
         except (ValueError, IndexError) as exc:
             raise SystemExit(str(exc)) from exc
         epoch, batch, total = map(int, batch_match.groups())
+        if total <= 0 or epoch <= 0 or not 0 <= batch <= total:
+            raise ValueError("日志中的epoch、batch或总batch无效")
         point = Point(parse_timestamp(timestamps[index]), epoch, batch, total, len(timestamps))
         if current:
             previous = current[-1]
@@ -125,6 +127,12 @@ def recent_rate(points: list[Point], recent_batches: int) -> float:
     return seconds_per_batch(candidates[-1] if candidates else points[0], last)
 
 
+def remaining_batch_count(point: Point, base: int) -> int:
+    if base not in (0, 1) or not base <= point.batch < point.total_batches + base:
+        raise ValueError("batch超出声明的0/1-based范围")
+    return point.total_batches - (point.batch - base + 1)
+
+
 def format_hours(hours: float) -> str:
     total_minutes = round(hours * 60)
     return f"{total_minutes // 60}小时{total_minutes % 60:02d}分"
@@ -151,6 +159,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.window <= 0 or args.recent_batches <= 0:
+        parser.error("--window 和 --recent-batches 必须为正整数")
     if not args.log.is_file():
         raise SystemExit(f"日志不存在: {args.log}")
     runs = parse_runs(args.log, args.timestamp_source, args.line_filter)
@@ -185,8 +195,12 @@ def main() -> int:
         base = 0
     if args.batch_index_base == "auto" and not any(point.batch == 0 for point in run):
         print("batch index auto: 未观察到 batch0；按当前 VAD trainer 的 0-based 合同计算")
-    processed = last.batch - base + 1
-    remaining_batches = max(last.total_batches - processed, 0)
+    try:
+        for point in points:
+            remaining_batch_count(point, base)
+        remaining_batches = remaining_batch_count(last, base)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     epoch_hours = last.total_batches * center / 3600
     epoch_lower = last.total_batches * lower / 3600
@@ -214,7 +228,7 @@ def main() -> int:
     )
     eta_lower = last.timestamp + timedelta(hours=remaining_lower)
     eta_upper = last.timestamp + timedelta(hours=remaining_upper)
-    print(f"纯训练预计完成: {eta_lower} ～ {eta_upper}")
+    print(f"纯训练预计完成: {eta_lower} ～ {eta_upper}（沿用日志时钟，时区未另核实）")
     print("提示: 未包含轮末 validation、checkpoint 和平台调度开销；聚合日志应使用 --line-filter 固定 rank。")
     return 0
 

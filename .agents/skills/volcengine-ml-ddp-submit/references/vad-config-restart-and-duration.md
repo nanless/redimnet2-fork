@@ -21,7 +21,7 @@
 4. 更新 TOML 内的实验描述，使 workers/prefetch 与实际值一致。
 5. 解析 TOML 并对 train/valid/test 三组目标字段做显式断言；不要添加配置内容哈希、`asset_contract` 或通用 preflight。
 6. 运行聚焦合同测试和 `git diff --check`。若测试只因硬编码旧配置值失败，明确区分“陈旧字面值断言”和功能失败；未经授权不要顺带修改测试。
-7. 只暂存目标 TOML，使用中文 commit message，推送后证明 `HEAD == upstream` 且工作区干净。
+7. 授权包含提交/推送时，只暂存目标TOML及必要支持文件，使用中文commit message并核对远端SHA；用户无关改动保留，不为了工作区全干净而处理它们。GitHub写入必须在获准服务器实际执行，本机永不上传。
 
 运行任务已经引用的 TOML 不可原地修改。用户要求“调参数并重启同一任务”授权的是任务操作，不自动授权破坏实验身份；应新建 successor TOML 和独立 `root_dir`，让重试/重新运行的任务显式指向新配置。训练进程启动后通常已将 TOML 读入内存，文件变化本来也不会安全改变当前进程。
 
@@ -53,7 +53,7 @@
 
 ## 4. 全量 VAD 基模从 1×8/accu2 到 2×8/accu1
 
-当前全量双伪标签基模的迁移保持每卡 batch 48：
+2026-09-08全量双伪标签基模的迁移保持每卡 batch 48：
 
 `8 × 48 × 2 = 16 × 48 × 1 = global batch 768`。
 
@@ -118,7 +118,7 @@ Epoch 1, Batch 460/5395, Loss: ..., LR: ..., GradNorm: ..., Acc: ...
 
 ```text
 epoch_seconds = total_batches × seconds_per_batch
-remaining_seconds = (total_batches - current_batch) × seconds_per_batch
+remaining_seconds = (total_batches - 1 - current_batch) × seconds_per_batch  # 已处理0-based batch b后
 ```
 
 当 `gradient_accumulation_steps=1` 时 batch 与 optimizer step 一一对应；即使梯度累积大于 1，wall-clock epoch 仍按 dataloader batch 数估算，但学习率/保存频率要另按 optimizer step 解释。
