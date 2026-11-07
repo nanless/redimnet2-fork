@@ -13,7 +13,7 @@ from pathlib import Path
 import time
 import traceback
 from audio_windows import inspect_source, plan_windows, read_window, reuse_vad, units_from_windows, verify_decoder
-from contracts import atomic_new, digest, job_key, model_provenance, native_json, need, read_contract, sha_file, stat_identity, utcnow, asr_batch_profile, safe_join
+from contracts import Refused, atomic_new, digest, job_key, model_provenance, native_json, need, read_contract, sha_file, stat_identity, utcnow, asr_batch_profile, safe_join
 from schema import build_record
 from sidecar import SidecarStore, StageCache
 from work_queue import WorkQueue
@@ -143,31 +143,44 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
     contexts = []; receipts = []
     for source in sources:
         claim.assert_member(source); counters["assigned_source_rows"] += 1
-        previous = None
-        if hasattr(getattr(claim, 'queue', None), 'previous_receipt'):
-            previous = timed_call(counters, 'source_lookup', claim.queue.previous_receipt, claim, source)
-        old = timed_call(counters, 'source_lookup', store.lookup, source)
-        need(previous is None or old is None, 'ambiguous source has both old and new producer results; preserve and inspect')
-        if previous is not None:
-            receipts.append(previous)
-            counters['retained_previous_producer_hits'] += 1
-            counters['retained_previous_decision_counts'][previous['decision']] += 1
-            counters['decision_counts'][previous['decision']] += 1
-            timed_call(counters, 'journal', claim.journal, {'source_id':source['source_id'],
-                       'status':'verified_previous_producer_retained', 'receipt':previous})
+        try:
+            previous = None
+            if hasattr(getattr(claim, 'queue', None), 'previous_receipt'):
+                previous = timed_call(counters, 'source_lookup', claim.queue.previous_receipt, claim, source)
+            old = timed_call(counters, 'source_lookup', store.lookup, source)
+            if previous is not None and old is not None:
+                # 双生产者结果并存是完整性冲突，不是可判定的单源失败；保持整轮停下。
+                raise RuntimeError('ambiguous source has both old and new producer results; preserve and inspect')
+            if previous is not None:
+                receipts.append(previous)
+                counters['retained_previous_producer_hits'] += 1
+                counters['retained_previous_decision_counts'][previous['decision']] += 1
+                counters['decision_counts'][previous['decision']] += 1
+                timed_call(counters, 'journal', claim.journal, {'source_id':source['source_id'],
+                           'status':'verified_previous_producer_retained', 'receipt':previous})
+                continue
+            if old is not None:
+                receipts.append(old); counters["sidecar_cache_hits"] += 1; counters["decision_counts"][old["decision"]] += 1
+                timed_call(counters, 'journal', claim.journal, {"source_id": source["source_id"], "status": "verified_sidecar_cache_hit", "receipt": old})
+                continue
+            started = utcnow(); identity, errors = timed_call(counters, 'source_audit', inspect_source, source); windows = []; vad = {"status": "missing", "reused": False, "segments": [], "errors": []}
+            if identity["decode_status"] == "decoded_complete":
+                vad = timed_call(counters, 'VAD_and_plan', reuse_vad, source, identity); errors.extend(vad.get("errors", []))
+                if identity["frames"] > 0:
+                    try: windows = timed_call(counters, 'VAD_and_plan', plan_windows, identity, source, contract["runtime"], vad)
+                    except Exception: errors.append({"stage": "window_plan", "traceback": traceback.format_exc()})
+            if native_profile is not None:
+                # 单源自身超过整组上限：任何 cohort 都装不下，属确定性单源失败而不是整组失败。
+                need(len(windows) <= 256, 'native source alone exceeds 256 fixed windows; preserve and refuse, no regrouping')
+            contexts.append({"source": source, "identity": identity, "vad": vad, "windows": windows,
+                             "errors": errors, "started_utc": started})
+        except (ValueError, Refused) as exc:
+            # 白名单之外的 OSError/CUDA/KeyboardInterrupt 仍然上抛，不把环境故障当成数据失败。
+            counters['source_refused'] = counters.get('source_refused', 0) + 1
+            if len(counters['errors']) < 1000:
+                counters['errors'].append({'source_id': source['source_id'], 'stage': 'source_refused',
+                                           'reason': str(exc)[:400]})
             continue
-        if old is not None:
-            receipts.append(old); counters["sidecar_cache_hits"] += 1; counters["decision_counts"][old["decision"]] += 1
-            timed_call(counters, 'journal', claim.journal, {"source_id": source["source_id"], "status": "verified_sidecar_cache_hit", "receipt": old})
-            continue
-        started = utcnow(); identity, errors = timed_call(counters, 'source_audit', inspect_source, source); windows = []; vad = {"status": "missing", "reused": False, "segments": [], "errors": []}
-        if identity["decode_status"] == "decoded_complete":
-            vad = timed_call(counters, 'VAD_and_plan', reuse_vad, source, identity); errors.extend(vad.get("errors", []))
-            if identity["frames"] > 0:
-                try: windows = timed_call(counters, 'VAD_and_plan', plan_windows, identity, source, contract["runtime"], vad)
-                except Exception: errors.append({"stage": "window_plan", "traceback": traceback.format_exc()})
-        contexts.append({"source": source, "identity": identity, "vad": vad, "windows": windows,
-                         "errors": errors, "started_utc": started})
 
     if native_profile is not None:
         total_windows=sum(len(c['windows'])for c in contexts)
@@ -302,7 +315,7 @@ def main(argv=None, *, bounded_lease=None):
                 "decision_counts": {"candidate": 0, "unknown": 0, "failed": 0}, "stage_cache_hits": {"asr": 0, "aligner": 0},
                 "retained_previous_producer_hits": 0,
                 "retained_previous_decision_counts": {"candidate":0,"unknown":0,"failed":0},
-                "model_windows": 0, "decoded_audio_seconds": 0.0, "error_source_count": 0, "errors": [],
+                "model_windows": 0, "decoded_audio_seconds": 0.0, "error_source_count": 0, "source_refused": 0, "errors": [],
                 "pipeline_seconds": {key: 0.0 for key in PIPELINE_TIMERS},
                 "short_window_refused": 0}
     refs = []; assigned = 0; group_size = int(contract["runtime"].get("source_batch_rows", 8))

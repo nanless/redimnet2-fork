@@ -17,10 +17,16 @@ import struct
 
 if __package__:
     from . import bounded_speed_handoff as H
+    from .contracts import Refused
 else:
     import bounded_speed_handoff as H
+    from contracts import Refused
 P = H.P
 need = H.need
+
+
+class AllShardsQuarantined(Refused):
+    """所有未完成片都已隔离：显式失败并留证据，禁止空候选的尾部无限循环。"""
 
 
 def write_new(path, value):
@@ -166,7 +172,19 @@ class BoundedWorkQueue:
             p=self.root/'identity.json'
             if p.exists():need(P.read_json(p,65536)[0]==self.identity,'new queue belongs to another handoff/contract')
             else:write_new(p,self.identity)
-            if not(self.root/'broker.json').exists():replace_json(self.root/'broker.json',dict(next=0,leases={},completed_chunks=0))
+            # broker.json 是游标与完成计数的唯一权威；缺失时绝不静默重建为 next=0。
+            # 只有“完全没有任何进度证据”的全新队列才允许初始化一次。
+            broker=self.root/'broker.json'
+            if not broker.exists():
+                evidence=[path for path in (self.root/'completion_map.bin',self.root/'completed',
+                                            self.root/'claims',self.root/'attempt_state')
+                          if path.exists() and (not path.is_dir() or any(path.iterdir()))]
+                if evidence:
+                    raise Refused('broker.json missing under %s; refusing to rebuild a zero cursor. '
+                        '恢复指引: 从 queue/ 的同级备份或 index+已完成 receipt 重建 broker，'
+                        '并用 tools/open_annotation/bounded_metadata_progress.py 交叉核对 completed_chunks 后再启动'
+                        % self.root)
+                replace_json(broker,dict(next=0,leases={},completed_chunks=0))
             p=self.root/'completion_map.bin'
             if not p.exists():
                 with p.open('xb')as f:f.truncate(len(self.shards)*1024);f.flush();os.fsync(f.fileno())
@@ -240,6 +258,30 @@ class BoundedWorkQueue:
         finally:os.close(fd)
         return value
 
+    QUARANTINE_FAILURES=3
+
+    def quarantine_path(self):return self.root/'quarantine.json'
+
+    def _quarantine(self):
+        path=self.quarantine_path()
+        if not path.exists():return {}
+        value=P.read_json(path,1024**2)[0]
+        need(isinstance(value,dict)and all(isinstance(entry,dict)for entry in value.values()),'quarantine file is malformed')
+        return value
+
+    def quarantine(self):
+        """只读隔离快照；不构造 claim、不改 broker。"""
+        return self._quarantine()
+
+    def _quarantine_shard(self,quarantine,sid,failures,reason):
+        entry=dict(quarantine.get(sid)or{})
+        entry.update(quarantined=True,failures=max(int(entry.get('failures')or 0),failures),
+                     last_error=str(reason)[:400],quarantined_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
+        value=dict(quarantine);value[sid]=entry
+        replace_json(self.quarantine_path(),value)
+        quarantine.clear();quarantine.update(value)
+        return entry
+
     def claim_next(self,worker_id):
         self.old_lease.assert_held()
         with new_lock(self.root/'broker.lock'):
@@ -247,9 +289,13 @@ class BoundedWorkQueue:
             need(type(state.get('next'))is int and 0<=state['next']<=len(self.shards) and isinstance(state.get('leases'),dict),'bad new broker cursor')
             need(all(sid in self.by_id and self.ordinal[sid]<state['next']for sid in state['leases']),'new lease outside cursor')
             need(type(state.get('completed_chunks'))is int and state['completed_chunks']==state['next']-len(state['leases']),'new broker completed count differs')
+            quarantine=self._quarantine()
             candidates=sorted(state['leases'],key=self.ordinal.get)
             if state['next']<len(self.shards):candidates.append(self.shards[state['next']]['id'])
+            offered=0
             for sid in candidates:
+                if (quarantine.get(sid)or{}).get('quarantined'):continue
+                offered+=1
                 lock=P.child(self.root,'claims/'+sid+'.lock');lock.parent.mkdir(parents=True,exist_ok=True)
                 need(not lock.is_symlink(),'new claim symlink refused')
                 fd=os.open(lock,os.O_RDWR|os.O_CREAT|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0),0o600);handle=os.fdopen(fd,'r+b')
@@ -259,20 +305,33 @@ class BoundedWorkQueue:
                 try:fcntl.flock(handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
                 except BlockingIOError:handle.close();continue
                 try:
-                    previous=self.receipt(sid)
-                    if previous is not None:
-                        self.write_completion(sid,previous)
-                        if sid in state['leases']:state['leases'].pop(sid);state['completed_chunks']+=1
-                        if state['next']<len(self.shards)and self.shards[state['next']]['id']==sid:state['next']+=1
-                        replace_json(self.root/'broker.json',state);handle.close();continue
                     p=P.child(self.root,'attempt_state/'+sid+'.json')
                     generation=P.read_json(p,65536)[0]['generation']+1 if p.exists()else 1
                     token=dict(generation=generation,nonce=secrets.token_hex(24),worker_id=str(worker_id),pid=os.getpid(),claimed_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
                     replace_json(p,token)
                     if state['next']<len(self.shards)and self.shards[state['next']]['id']==sid:state['next']+=1
                     state['leases'][sid]=token;replace_json(self.root/'broker.json',state)
+                    # 先落租约与代数：毒片的 receipt 校验失败也要留下可累计的失败次数。
+                    try:previous=self.receipt(sid)
+                    except (ValueError,Refused) as exc:
+                        if generation>self.QUARANTINE_FAILURES:
+                            self._quarantine_shard(quarantine,sid,generation-1,'chunk receipt refused %d times: %s'%(generation-1,str(exc)[:300]))
+                            handle.close();continue
+                        raise
+                    if previous is not None:
+                        self.write_completion(sid,previous)
+                        if sid in state['leases']:state['leases'].pop(sid);state['completed_chunks']+=1
+                        replace_json(self.root/'broker.json',state);handle.close();continue
+                    if generation>self.QUARANTINE_FAILURES:
+                        self._quarantine_shard(quarantine,sid,generation-1,'shard reclaimed %d times without a committed chunk receipt'%(generation-1))
+                        handle.close();continue
                     return BoundedClaim(self,self.by_id[sid],handle,token)
                 except BaseException:handle.close();raise
+            if not offered:
+                if state['next']>=len(self.shards)and not state['leases']:return None
+                blocked=sorted(sid for sid,entry in quarantine.items()if (entry or {}).get('quarantined'))
+                raise AllShardsQuarantined('every unfinished shard is quarantined: '+','.join(blocked[:20])+
+                    '; inspect attempts/<shard> and completed/<shard>.json before clearing quarantine.json')
         return None
 
     def is_complete(self):

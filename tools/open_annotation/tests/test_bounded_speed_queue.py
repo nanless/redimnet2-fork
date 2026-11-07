@@ -11,6 +11,7 @@ HERE=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(HERE));sys.path.insert(0,str(HERE/'tests'))
 import bounded_speed_handoff as H
 import bounded_speed_queue as Q
+import contracts as C
 import test_bounded_speed_handoff as Fixtures
 
 
@@ -128,6 +129,37 @@ class BoundedQueueTests(unittest.TestCase):
     def test_parent_lease_close_refuses_further_new_claim(self):
         self.lease.__exit__(None,None,None)
         with self.assertRaisesRegex(ValueError,'not held'):self.queue.claim_next('w')
+
+    def test_poison_shard_is_quarantined_after_three_failed_reclaims(self):
+        # 模拟 worker 连续 3 次在提交前死亡：租约滞留、generation 递增，第 4 次不再返回该片。
+        first=self.queue.claim_next('w0');self.assertIsNotNone(first)
+        poison=first.shard['id'];first.close()
+        for attempt in range(1,3):
+            claim=self.queue.claim_next('w%d'%attempt)
+            self.assertIsNotNone(claim);self.assertEqual(claim.shard['id'],poison);claim.close()
+        nxt=self.queue.claim_next('w3')
+        try:
+            self.assertIsNotNone(nxt);self.assertNotEqual(nxt.shard['id'],poison)
+        finally:
+            if nxt is not None:nxt.close()
+        quarantined=json.loads((self.newroot/'quarantine.json').read_text())
+        self.assertIn(poison,quarantined);entry=quarantined[poison]
+        self.assertTrue(entry['quarantined']);self.assertEqual(entry['failures'],3)
+        self.assertTrue(entry['last_error']);self.assertTrue(entry['quarantined_utc'])
+
+    def test_all_unfinished_quarantined_refuses_infinite_tail(self):
+        (self.newroot/'quarantine.json').write_text(json.dumps({s['id']:dict(
+            quarantined=True,failures=3,last_error='synthetic',quarantined_utc='2026-11-08T00:00:00+00:00')
+            for s in self.queue.shards}))
+        with self.assertRaises(Q.AllShardsQuarantined):self.queue.claim_next('w')
+
+    def test_missing_broker_is_refused_and_not_rebuilt(self):
+        broker=self.newroot/'broker.json';broker.unlink()
+        before=sorted(p.name for p in self.newroot.iterdir())
+        with self.assertRaisesRegex(C.Refused,'refusing to rebuild'):Q.BoundedWorkQueue(
+            self.index,self.isha,self.newroot,'a'*64,self.newtree,self.lease)
+        self.assertFalse(broker.exists())
+        self.assertEqual(sorted(p.name for p in self.newroot.iterdir()),before)
 
     def test_portable_previous_receipt_keeps_proof_and_original_bytes(self):
         self.lease.__exit__(None,None,None)
