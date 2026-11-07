@@ -137,6 +137,13 @@ def _stage_inputs(stage, window, context, contract, contract_sha, models):
     return value
 
 
+def refused_receipt(source, contract_sha, reason):
+    """没有（也不能写）侧车时的 failed 回执；字段与 finish()/write_completion 的期望一致。"""
+    return {"source_id": source["source_id"], "job_key": job_key(source, contract_sha),
+            "decision": "failed", "status": "failed", "failure_kind": "source_refused",
+            "engine_crash": False, "reason": reason}
+
+
 def process_group(sources, claim, store, cache, backend, contract, args, descriptor, counters):
     """单窗沿原缓冲；明确新试验先固定最多256窗整组，整批提交后才发布。"""
     native_profile=asr_batch_profile(contract)
@@ -180,6 +187,18 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
             if len(counters['errors']) < 1000:
                 counters['errors'].append({'source_id': source['source_id'], 'stage': 'source_refused',
                                            'reason': str(exc)[:400]})
+            # 2026-11-08 P0-1b：被拒的源也必须留下可提交的记录。
+            # work_queue.finish() 要求分片内每个源都有 receipt，只记数不产记录会让整个分片
+            # 永远 "cannot commit incomplete chunk"（跑到那里就停，无人值守全线卡死）。
+            # 这里按 schema 已有的 decode_failed 语义造一条空窗记录：decision.state='failed'，
+            # windows=[] 是合法形态（与"VAD 未检出语音"同构），因此不需要新增任何 schema 键。
+            contexts.append({"source": source,
+                             "identity": {"decode_status": "decode_failed", "stat_after": None,
+                                          "refused_reason": str(exc)[:400]},
+                             "vad": {"status": "missing", "reused": False, "segments": [], "errors": []},
+                             "windows": [],
+                             "errors": [{"stage": "source_refused", "reason": str(exc)[:400]}],
+                             "started_utc": utcnow()})
             continue
 
     if native_profile is not None:
@@ -265,13 +284,23 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
                      "backend": backend.name, "started_utc": context["started_utc"], "finished_utc": utcnow(), "api_calls": 0}
         record = build_record(source, identity, descriptor, context["vad"], context["windows"], units, execution, context["errors"])
         record = native_json(record)
-        receipt = timed_call(counters, 'sidecar_publish', store.publish, source, record, claim)
-        receipts.append(receipt); counters["sidecars_committed"] += 1; counters["decision_counts"][receipt["decision"]] += 1
+        if identity.get("refused_reason") and store.path(source).exists():
+            # 拒绝原因可能正是"这个位置已经有一份不同/损坏的产物"（corrupt sidecar、content changed）：
+            # store.publish 的 no-replace 会抛 Refused，分片照样提交不了。绝不覆盖既有证据，
+            # 改回一条不带侧车的 failed receipt —— 仍然表达"此源失败但不是引擎崩溃"。
+            receipt = refused_receipt(source, args.contract_sha, identity["refused_reason"])
+            published = False
+        else:
+            receipt = timed_call(counters, 'sidecar_publish', store.publish, source, record, claim)
+            published = True
+        receipts.append(receipt); counters["decision_counts"][receipt["decision"]] += 1
+        if published: counters["sidecars_committed"] += 1
         if record["errors"]:
             counters["error_source_count"] += 1
             if len(counters["errors"]) < 100: counters["errors"].append({"source_id": source["source_id"], "sidecar_relpath": receipt.get("sidecar_relpath"), "error_count": len(record["errors"])})
         if identity["decode_status"] == "decoded_complete": counters["decoded_audio_seconds"] += identity["duration_seconds"]
-        timed_call(counters, 'journal', claim.journal, {"source_id": source["source_id"], "status": "sidecar_committed", "receipt": receipt})
+        journal_status = "source_refused_receipt" if identity.get("refused_reason") else "sidecar_committed"
+        timed_call(counters, 'journal', claim.journal, {"source_id": source["source_id"], "status": journal_status, "receipt": receipt})
     return receipts
 
 

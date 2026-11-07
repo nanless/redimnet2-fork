@@ -73,6 +73,10 @@ class FakeStore:
         self.refuse_lookup = None
         self.published = []
 
+    def path(self, source):
+        # 真实 SidecarStore 的路径接口；worker 在 refused 分支用它判断"是否已有产物"。
+        return self.root / source['sidecar_relpath']
+
     def lookup(self, source):
         if source['source_id'] == self.refuse_lookup:
             raise ValueError('source content changed: inode differs')
@@ -83,7 +87,10 @@ class FakeStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b'{"synthetic":true}')
         self.published.append(source['source_id'])
-        return {'source_id': source['source_id'], 'decision': 'unknown'}
+        # 2026-11-08：不要再硬编码 decision，否则测不到 build_record 的失败语义。
+        # 真实 store.publish 返回的是记录自身的 decision.state。
+        return {'source_id': source['source_id'],
+                'decision': (record.get('decision') or {}).get('state', 'unknown')}
 
 
 def counters():
@@ -140,18 +147,27 @@ class SourceRefusalTests(unittest.TestCase):
                    'src_bad_many': [window(bad_many, i) for i in range(257)],
                    'src_good_a': [window(good_a, 0)], 'src_good_b': [window(good_b, 0)]}
         receipts, observed, store, backend = self.run_group(sources, windows, refuse_lookup='src_bad_stat')
-        # 坏源入账、不发布侧车；好源照常产出回执与侧车。
-        self.assertEqual([r['source_id'] for r in receipts], ['src_good_a', 'src_good_b'])
+        # 2026-11-08 P0-1b：被拒源也必须产回执（否则分片永远 cannot commit incomplete chunk）。
+        # 回执必须覆盖分片内全部源，坏源标 failed，好源照常产侧车。
+        self.assertEqual(sorted(r['source_id'] for r in receipts),
+                         ['src_bad_many', 'src_bad_stat', 'src_good_a', 'src_good_b'])
+        self.assertEqual(len({r['source_id'] for r in receipts}), len(sources))
+        # 注意：本用例用 patch.object 替换了 worker.build_record，decision 由真实 build_record
+        # 计算，因此这里只断言"覆盖度"这一 P0-1b 真正的不变量；decision 语义另由
+        # test_refused_identity_maps_to_failed_decision 直接测 schema.build_record。
+        refused_ids = {r['source_id'] for r in receipts} & {'src_bad_stat', 'src_bad_many'}
+        self.assertEqual(refused_ids, {'src_bad_stat', 'src_bad_many'})
         self.assertEqual(observed['source_refused'], 2)
-        self.assertEqual(observed['sidecars_committed'], 2)
-        self.assertEqual(sorted(store.published), ['src_good_a', 'src_good_b'])
+        self.assertEqual(observed['sidecars_committed'], 4)
+        self.assertEqual(sorted(store.published), ['src_bad_many', 'src_bad_stat', 'src_good_a', 'src_good_b'])
         self.assertEqual({e['source_id'] for e in observed['errors']}, {'src_bad_stat', 'src_bad_many'})
         self.assertTrue(any('source content changed' in e['reason'] for e in observed['errors']))
         self.assertTrue(any('256' in e['reason'] for e in observed['errors']))
         self.assertTrue((store.root / 'synthetic/good_a.wav.annotation.json').exists())
         self.assertTrue((store.root / 'synthetic/good_b.wav.annotation.json').exists())
-        self.assertFalse((store.root / 'synthetic/bad_stat.wav.annotation.json').exists())
-        self.assertFalse((store.root / 'synthetic/bad_many.wav.annotation.json').exists())
+        # 坏源也要有侧车文件（内容为 decode_failed 空窗记录），否则分片无法提交。
+        self.assertTrue((store.root / 'synthetic/bad_stat.wav.annotation.json').exists())
+        self.assertTrue((store.root / 'synthetic/bad_many.wav.annotation.json').exists())
         self.assertEqual(observed['assigned_source_rows'], 4)
         self.assertTrue(backend.groups)
 
@@ -165,3 +181,25 @@ class SourceRefusalTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class RefusedRecordSemantics(unittest.TestCase):
+    """被拒源在真实 build_record 下必须落成 decision=failed（P0-1b 的语义面）。"""
+
+    def test_refused_identity_maps_to_failed_decision(self):
+        import sys
+        sys.path.insert(0, str(HERE))
+        import schema
+        source = {'source_id': 'src_x', 'dataset': 'synthetic', 'relative_path': 'x.wav',
+                  'sidecar_relpath': 'synthetic/x.wav.annotation.json', 'roles': ['enroll'],
+                  'original_splits': [], 'protection': {'training_forbidden': False},
+                  'channel_policy': 'mean_channels_to_mono', 'audio_path': '/tmp/x.wav'}
+        identity = {'decode_status': 'decode_failed', 'stat_after': None, 'refused_reason': 'boom'}
+        record = schema.build_record(
+            source, identity, {'version': 'v1', 'runtime': {}},
+            {'status': 'missing', 'reused': False, 'segments': [], 'errors': []},
+            [], [],
+            {'job_key': 'k', 'attempt_id': 'a', 'worker_id': 'w', 'device': 'cpu',
+             'backend': 'x', 'started_utc': 't', 'finished_utc': 't', 'api_calls': 0},
+            [{'stage': 'source_refused', 'reason': 'boom'}])
+        self.assertEqual(record['decision']['state'], 'failed')
+        self.assertEqual(record['windows'], [])
