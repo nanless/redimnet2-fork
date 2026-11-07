@@ -206,7 +206,7 @@ def main():
         # 默认写到仓库的 checkpoints/ 下，且用一个**不会覆盖**已发布汇总表的文件名
         # （已发布的是 eval_vox1_O_all.csv / eval_ood_all.csv 等）。
         # 想写到别处就显式传 --out-csv。
-        default=REPO / "checkpoints" / "eval_vox1_results.csv",
+        default=Path("/tmp/redimnet2-eval/eval_vox1_results.csv"),  # 2026-11-08：默认不再写仓库，避免跑一次就脏 git status
     )
     ap.add_argument("--only-lm", action="store_true", help="Only evaluate *-lm.pt")
     ap.add_argument("--training-config", type=Path,

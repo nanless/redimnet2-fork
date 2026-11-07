@@ -304,9 +304,20 @@ fi
 PTN_SPK2ID=""
 if [ "$STAGE" = "lm" ]; then
     if [ -z "$MODEL_CKPT" ]; then
-        MODEL_CKPT="$(newest_ckpt "$PTN_EXP_DIR" || true)"
-        [ -n "$MODEL_CKPT" ] || die ptn_ckpt_missing \
-            "大间隔微调需要一个主训练权重，但在 $PTN_EXP_DIR/models 里没找到 model_*.pt。请先跑完 STAGE=ptn，或用 MODEL_CKPT=<权重文件> 指定。"
+        # 2026-11-08 修正：STAGE=lm 不再按 mtime 取"最新"。
+        # 按 mtime 会静默选中 model_120（第 120 轮），而受控 LM 必须从 model_115 起跑
+        # （见 docs/12 第 7 节与 lm_launch/run_lm.sh 的字节 pin）。这里改成 fail-closed：
+        # 只接受显式 MODEL_CKPT；未指定时若目录里恰好只有 model_115.pt 才自动采用，
+        # 否则拒绝并给出可复制的命令行。
+        candidate="$PTN_EXP_DIR/models/model_115.pt"
+        count="$(find "$PTN_EXP_DIR/models" -maxdepth 1 -type f -name 'model_*.pt' 2>/dev/null | wc -l)"
+        if [ "$count" -eq 1 ] && [ -f "$candidate" ]; then
+            MODEL_CKPT="$candidate"
+        else
+            newest="$(newest_ckpt "$PTN_EXP_DIR" || true)"
+            die ptn_ckpt_ambiguous \
+                "STAGE=lm 必须显式指定起跑权重：请用 MODEL_CKPT=$candidate（受控口径为第 115 轮）。当前目录有 ${count} 个 model_*.pt，按 mtime 的"最新"是 ${newest:-无}，自动采用它会静默改写复现口径。"
+        fi
     fi
     [ -f "$MODEL_CKPT" ] || die ptn_ckpt_missing "MODEL_CKPT 指向的文件不存在: $MODEL_CKPT"
     MODEL_CKPT="$(to_abs "$MODEL_CKPT")"

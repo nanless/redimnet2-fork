@@ -320,7 +320,7 @@ def main():
     # 默认写到仓库的 checkpoints/ 下，且用一个**不会覆盖**已发布汇总表的文件名
     # （已发布的是 eval_ood_all.csv）。想写到别处就显式传 --out-csv。
     ap.add_argument("--out-csv", type=Path,
-                    default=REPO / "checkpoints" / "eval_ood_results.csv")
+                    default=Path("/tmp/redimnet2-eval/eval_ood_results.csv"))  # 2026-11-08：默认不再写仓库
     ap.add_argument("--only-mix", action="store_true", help="Only mix-table checkpoints")
     ap.add_argument("--training-config", type=Path,
                     help="Saved experiment config.yaml, required only for raw training checkpoints")
