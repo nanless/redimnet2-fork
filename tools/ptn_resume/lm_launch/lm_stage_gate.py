@@ -304,8 +304,13 @@ def postflight(contract, code):
         payload["checks"]["cold_start_marker"] = cold
         payload["checks"]["forbidden_restore_lines"] = forbidden or []
         payload["checks"]["cold_start_clean"] = bool(cold) and not forbidden
-        payload["checks"]["ok"] = bool(payload["checks"].get("model_1_exists")) and bool(
-            payload["checks"]["cold_start_clean"]
+        # ok 必须同时看训练退出码：崩溃但恰好留下 model_1.pt 与 marker 时，
+        # 不能记成成功（审计 P0：307 行原实现只看 model_1 + marker）。
+        payload["checks"]["training_succeeded"] = (code == 0)
+        payload["checks"]["ok"] = (
+            bool(payload["checks"].get("model_1_exists"))
+            and bool(payload["checks"]["cold_start_clean"])
+            and payload["checks"]["training_succeeded"]
         )
     except OSError as error:
         payload["checks"]["error"] = str(error)

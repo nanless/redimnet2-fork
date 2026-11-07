@@ -202,3 +202,40 @@ class Gate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+class PostflightSemantics(unittest.TestCase):
+    """postflight 的 ok 必须同时要求训练退出码为 0（审计 P0，2026-11-08）。"""
+
+    def _run_root(self, marker=True, model=True):
+        root = Path(tempfile.mkdtemp(prefix="lm-postflight-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        if model:
+            (root / "models").mkdir(parents=True, exist_ok=True)
+            (root / "models" / "model_1.pt").write_bytes(b"synthetic-checkpoint")
+        if marker:
+            (root / "train.log").write_text(
+                "cold start: model_ckpt loads model parameters only; optimizer/scaler start fresh\n",
+                encoding="utf-8")
+        return root
+
+    def _postflight(self, root, code):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("lm_stage_gate_under_test", GATE)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.postflight({"new_run_root": str(root)}, code)
+        # postflight 把回执写到 <run_root>/lm_receipt.json（返回值是 None）
+        return json.loads((root / "lm_receipt.json").read_text(encoding="utf-8"))
+
+    def test_postflight_ok_requires_exit_zero(self):
+        payload = self._postflight(self._run_root(), 1)
+        self.assertTrue(payload["checks"]["model_1_exists"])
+        self.assertTrue(payload["checks"]["cold_start_clean"])
+        self.assertFalse(payload["checks"]["training_succeeded"])
+        self.assertFalse(payload["checks"]["ok"],
+                         "崩溃(exit=1)但留下 model_1 与 marker 不能记成成功")
+
+    def test_postflight_ok_when_exit_zero(self):
+        payload = self._postflight(self._run_root(), 0)
+        self.assertTrue(payload["checks"]["training_succeeded"])
+        self.assertTrue(payload["checks"]["ok"])
