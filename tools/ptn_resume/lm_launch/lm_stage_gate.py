@@ -287,13 +287,20 @@ def postflight(contract, code):
         if payload["checks"]["model_1_exists"]:
             payload["checks"]["model_1_sha256"] = sha256_file(checkpoint)
 
-        log_path = os.path.join(run_root, "train.log")
+        # 冷启动标记由 shell 包装层打到 cloud_launch_lm.log；train.log 只有 trainer 输出。
+        # 两处都读，避免 2026-11-07 那次"训练成功但 ok:false"的假阴性。
+        candidate_logs = [os.path.join(run_root, "train.log"),
+                          os.path.join(run_root, "cloud_launch_lm.log")]
         cold = forbidden = None
-        if os.path.isfile(log_path):
-            with open(log_path, "r", encoding="utf-8", errors="replace") as stream:
-                text = stream.read()
-            cold = COLD_START_MARKER in text
-            forbidden = [line for line in FORBIDDEN_LOG_LINES if line in text]
+        texts = []
+        for log_path in candidate_logs:
+            if os.path.isfile(log_path):
+                with open(log_path, "r", encoding="utf-8", errors="replace") as stream:
+                    texts.append(stream.read())
+        if texts:
+            cold = any(COLD_START_MARKER in text for text in texts)
+            forbidden = [line for text in texts for line in FORBIDDEN_LOG_LINES if line in text]
+            payload["checks"]["cold_start_logs_seen"] = [p for p in candidate_logs if os.path.isfile(p)]
         payload["checks"]["cold_start_marker"] = cold
         payload["checks"]["forbidden_restore_lines"] = forbidden or []
         payload["checks"]["cold_start_clean"] = bool(cold) and not forbidden
