@@ -26,18 +26,30 @@ import device_preflight as D  # noqa: E402
 
 
 class FakeStat:
-    """用固定 device 表替代 os.stat；可指定要抛 FileNotFoundError 的路径。"""
+    """用固定 device 表替代 os.stat；内容字段默认取 SAMPLES 里记录的真值。
 
-    def __init__(self, device=2097190, missing=()):
+    2026-11-08 起 device 不再是内容身份，所以"设备不同但内容相同"必须被判为通过；
+    测试需要能分别构造 device 漂移与内容漂移两种情形。
+    """
+
+    def __init__(self, device=2097190, missing=(), content=None):
         self.device = device
         self.missing = set(missing)
+        self.content = dict(content or {})      # role -> {inode|bytes|mtime_ns|ctime_ns}
         self.calls = []
 
     def __call__(self, path):
         self.calls.append(path)
         if path in self.missing:
             raise FileNotFoundError(2, "No such file or directory", path)
-        return types.SimpleNamespace(st_dev=self.device, st_ino=1234, st_size=5678)
+        sample = next((s for s in D.SAMPLES if s["path"] == path), None)
+        recorded = (sample or {}).get("recorded") or {}
+        over = self.content.get((sample or {}).get("role"), {})
+        inode = over.get("inode", recorded.get("inode", 1234))
+        size = over.get("bytes", recorded.get("bytes", 5678))
+        return types.SimpleNamespace(st_dev=self.device, st_ino=inode, st_size=size,
+                                     st_mtime_ns=over.get("mtime_ns", recorded.get("mtime_ns")),
+                                     st_ctime_ns=over.get("ctime_ns", recorded.get("ctime_ns")))
 
 
 def run_check(stat, samples=D.SAMPLES):
@@ -68,18 +80,31 @@ class DevicePreflightUnitTests(unittest.TestCase):
         # 三个样本都必须被真的 stat 到，顺序与 SAMPLES 一致
         self.assertEqual(stat.calls, [sample["path"] for sample in D.SAMPLES])
 
-    def test_mismatch_returns_21_and_prints_grepable_marker(self):
+    def test_device_only_mismatch_is_relaxed_and_greppable(self):
+        """2026-11-08 契约：device 不同、内容相同 → 通过，但必须打印标记并记状态。"""
         stat = FakeStat(device=57)          # dev 主机实测值
         code, text = run_check(stat)
-        self.assertEqual(code, D.EXIT_MISMATCH)
-        self.assertEqual(code, 21)
+        self.assertEqual(code, 0, "device 漂移不得再阻断（内容一致）")
         self.assertIn("PREFLIGHT_DEVICE_MISMATCH expected=2097190 actual=", text)
         self.assertIn("orphan_source:57", text)
-        # 第一行仍是 JSON，便于平台日志抓取
         payload = json.loads(text.splitlines()[0])
         self.assertTrue(all(not row["device_ok"] for row in payload["samples"]))
+        self.assertTrue(payload["device_mismatch_observed"])
+        self.assertTrue(payload["device_relaxed"])
+        self.assertFalse(payload["identity_mismatch_observed"])
+
+    def test_content_mismatch_still_returns_21_and_names_the_field(self):
+        """device 相同但内容变了 → 仍然拒绝，且点名字段。"""
+        stat = FakeStat(device=D.EXPECTED_DEVICE, content={"orphan_source": {"inode": 1}})
+        code, text = run_check(stat)
+        self.assertEqual(code, 21)
+        self.assertIn("PREFLIGHT_IDENTITY_MISMATCH", text)
+        self.assertIn("inode", text)
+        payload = json.loads(text.splitlines()[0])
+        self.assertTrue(payload["identity_mismatch_observed"])
 
     def test_missing_sample_is_a_mismatch_not_a_crash(self):
+        """文件读不到 = stat 失败 = 内容身份不可证 → 仍然拒绝（不是 device 问题）。"""
         missing = D.SAMPLES[2]["path"]
         stat = FakeStat(device=D.EXPECTED_DEVICE, missing={missing})
         code, text = run_check(stat)
@@ -88,7 +113,8 @@ class DevicePreflightUnitTests(unittest.TestCase):
         row = [r for r in payload["samples"] if r["role"] == "group_shared_readonly"][0]
         self.assertIsNone(row["st_dev"])
         self.assertIn("FileNotFoundError", row["error"])
-        self.assertIn("group_shared_readonly:missing", text)
+        self.assertIn("PREFLIGHT_IDENTITY_MISMATCH", text)
+        self.assertIn("stat_error", text)
 
     def test_check_writes_nothing_to_disk(self):
         stat = FakeStat(device=D.EXPECTED_DEVICE)

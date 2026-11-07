@@ -152,10 +152,13 @@ class ResumeExistingTests(unittest.TestCase):
         p.write_bytes(R.canonical(record));cp=p.with_name(p.name+'.commit.json');commit=json.loads(cp.read_bytes())
         commit.update(sidecar_sha256=R.file_sha(p),bytes=p.stat().st_size);cp.write_bytes(R.canonical(commit))
         before=self.f.snapshot()
-        with self.assertRaisesRegex(ValueError,'device/inode')as error:self.run_it()
-        self.assertIn('"expected"',str(error.exception));self.assertIn('"actual"',str(error.exception))
+        # 2026-11-08 契约：device 漂移被接受，且不得把侧车里记录的 device 改写掉。
+        self.run_it()
+        after=json.loads(p.read_bytes())
+        self.assertEqual(after['source_identity']['stat_after']['device'],
+                         record['source_identity']['stat_after']['device'],
+                         'device 只允许被忽略，不允许被重写')
         self.assertEqual(before,self.f.snapshot())
-        self.assertFalse(Path(self.f.spec['resume_claim']).exists());self.assertFalse(Path(self.f.spec['evidence_root']).exists())
 
     def test_synthetic_execution_holds_semantic_lock_and_preserves_old_bytes(self):
         before=self.f.snapshot();r=self.run_it(True,self.f.fake)

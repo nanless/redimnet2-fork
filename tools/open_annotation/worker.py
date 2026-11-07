@@ -69,7 +69,7 @@ def progress_performance(backend, counters, process_started_utc, process_started
     selected += tuple(key for key in ('retained_previous_producer_hits','retained_previous_decision_counts') if key in counters)
     current = {'worker_elapsed_seconds': now - process_started_monotonic,
                'backend': backend_values,
-               'counters': {key: copy.deepcopy(counters[key]) for key in selected}}
+               'counters': {key: copy.deepcopy(counters.get(key,0)) for key in selected}}
     def increments(value, old):
         if isinstance(value, dict):
             return {k: v for k, raw in value.items()
@@ -256,7 +256,7 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
         receipts.append(receipt); counters["sidecars_committed"] += 1; counters["decision_counts"][receipt["decision"]] += 1
         if record["errors"]:
             counters["error_source_count"] += 1
-            if len(counters["errors"]) < 100: counters["errors"].append({"source_id": source["source_id"], "sidecar_relpath": receipt["sidecar_relpath"], "error_count": len(record["errors"])})
+            if len(counters["errors"]) < 100: counters["errors"].append({"source_id": source["source_id"], "sidecar_relpath": receipt.get("sidecar_relpath"), "error_count": len(record["errors"])})
         if identity["decode_status"] == "decoded_complete": counters["decoded_audio_seconds"] += identity["duration_seconds"]
         timed_call(counters, 'journal', claim.journal, {"source_id": source["source_id"], "status": "sidecar_committed", "receipt": receipt})
     return receipts

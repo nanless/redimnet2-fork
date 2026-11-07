@@ -152,10 +152,11 @@ class PortableUnionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'current terminal observation stale'):self.x.audit()
         self.assertTrue(self.x.audit('complete')['exact_union_and_disjoint'])
 
-    def test_old_strict_reader_is_not_relaxed_by_available_portable_files(self):
+    def test_device_difference_is_readable_by_the_shared_reader(self):
+        """2026-11-08 契约：内容相同的孤儿侧车可读，device 漂移不再抛 stat changed。"""
         b=self.x.f.base
-        with self.assertRaisesRegex(ValueError,'stat changed'):
-            C.retained_sidecar(b.sources[2],b.tree,b.csha,C.record_validator())
+        ref=C.retained_sidecar(b.sources[2],b.tree,b.csha,C.record_validator())
+        self.assertTrue(ref and ref.get('source_id'),'内容一致的侧车应返回引用')
     def test_mode_must_be_explicit_in_both_spec_and_plan(self):
         self.x.f.spec.pop('source_identity_mode');self.x.f.write_spec()
         with self.assertRaisesRegex(ValueError,'explicit new union mode'):self.x.audit()

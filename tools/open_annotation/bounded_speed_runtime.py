@@ -612,6 +612,10 @@ class RuntimeLease:
                 fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);self._identity(self.handles[-1],fd)
             self.current=Q.ExistingProducerLease(self.compiled['spec']['index']['path'],self.compiled['spec']['index']['sha256'],self.compiled['terminal_pin']).__enter__()
             self.held=True
+            # 先把所有此前置门（内容/锁/lineage/冻结态）跑完，claim 写盘放到最后：
+            # 任一门失败都不会烧掉唯一生产者声明。
+            if self.transport is None:
+                self.verify(allow_missing_claim=True)
             path=Path(self.compiled['unique_claim_path']);core=self.compiled['unique_claim_core']
             if path.exists():
                 actual=R.ref_unpinned(path)
@@ -654,7 +658,7 @@ class RuntimeLease:
         for entry in self.handles:self._identity(entry,entry['fd'])
         self.current.assert_held()
 
-    def verify(self):
+    def verify(self,*,allow_missing_claim=False):
         self.assert_held()
         if self.transport is not None:
             if self.proof is None:self.proof=_new_parent_proof(self)
@@ -665,8 +669,9 @@ class RuntimeLease:
             for pin in self.compiled['pins']:R.pinned_file(pin)
         need(R.ref_unpinned(self.compiled['lineage_path'])==self.compiled['lineage_value'],'previous permanent claim changed')
         for check in self.compiled['old']['checks']:R.pinned_file(check['script'])
-        need(self.unique_claim_pin is not None,'unique producer claim not admitted')
-        R.pinned_file(self.unique_claim_pin)
+        if not allow_missing_claim:
+            need(self.unique_claim_pin is not None,'unique producer claim not admitted')
+            R.pinned_file(self.unique_claim_pin)
         self.current.verify_frozen_state()
 
     @property
