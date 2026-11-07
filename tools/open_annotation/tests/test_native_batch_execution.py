@@ -90,7 +90,7 @@ class NativeExecutionTests(unittest.TestCase):
     def rows(self,n=4):
         rows=[]
         for i in range(n):
-            wave=np.zeros(160+i,dtype=np.float32);source={'source_id':'src'+str(i),'dataset':'synthetic'}
+            wave=np.zeros(400+i,dtype=np.float32);source={'source_id':'src'+str(i),'dataset':'synthetic'}
             window={'window_id':'w0','input_pcm_sha256':hashlib.sha256(wave.astype('<f4').tobytes()).hexdigest(),
                     'model_input_frames':len(wave),'model_sample_rate':16000}
             rows.append(dict(row_id=source['source_id']+':w0',audio=wave,context={'source':source},window=window))

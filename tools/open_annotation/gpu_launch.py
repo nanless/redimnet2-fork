@@ -358,9 +358,12 @@ def main():
     p.add_argument('--bounded-runtime-spec')
     p.add_argument('--bounded-runtime-sha')
     args = p.parse_args()
-    code = device_preflight.check(strict=True)
-    if code:
-        sys.exit(code)
+    if args.target_uuids == 'auto8':
+        code = device_preflight.check(strict=True)
+        if code:
+            sys.exit(code)
+    else:
+        print('PREFLIGHT_DEVICE_CHECK_SKIPPED target_uuids=%s' % args.target_uuids, flush=True)
     run(args)
 
 

@@ -200,9 +200,11 @@ def retained_sidecar(source, tree, contract_sha, validate_record, *, portable_co
     elif identity['decode_status'] == 'decoded_complete':
         media = physical(source['audio_path'])
         need(media.is_file(), 'original media missing')
-        identity_matches(stat_identity(media), identity['stat_after'])
-        need(True,
-             'source stat changed since old result; no silent reinference')
+        actual = stat_identity(media)
+        need(actual == identity['stat_after'],
+             'source stat changed since old result; no silent reinference: ' +
+             json.dumps({'source_id': source['source_id'], 'expected': identity['stat_after'],
+                         'actual': actual}, sort_keys=True))
     need(record['decision']['usable_for_training'] is False and record['decision']['usable_for_evaluation'] is False,
          'automatic training/evaluation release refused')
     return {'source_id': source['source_id'], 'source_record_sha256': digest(source),

@@ -63,11 +63,11 @@ class PortableSourceIdentityTests(unittest.TestCase):
         self.assertTrue(V.validate_ledger_entry(entry,source,record,self.f.base.csha,self.f.spec,spec_sha=self.f.spec_sha)['content_verified'])
         self.assertEqual(before,self.f.base.snapshot())
 
-    def test_device_difference_is_accepted_and_does_not_touch_old_bytes(self):
-        """2026-11-08 契约：device 漂移不再拒绝；旧生产者字节不得被改写。"""
+    def test_default_strict_still_refuses_device_difference(self):
+        """设计文档：默认（非 portable）准备必须严格，device 参与比较。"""
         before=self.f.base.snapshot()
-        self.f.base.run_prepare(True,name='strict')
-        self.assertTrue((self.f.root/'strict/index.json').exists(),'device 漂移应被接受并产出新索引')
+        with self.assertRaisesRegex(ValueError,'source stat changed'):self.f.base.run_prepare(True,name='strict')
+        self.assertEqual(before,self.f.base.snapshot());self.assertFalse((self.f.root/'strict/index.json').exists())
 
     def test_final_excludes_partial_and_unclaimed_without_rehashing_completed(self):
         before=self.f.base.snapshot()

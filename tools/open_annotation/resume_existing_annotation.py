@@ -305,8 +305,8 @@ def retained_for_resume(source,tree,spec,contract,validate):
         media=legacy_media_path(spec,source['audio_path'])if spec['protocol']=='legacy_frozen_v2'else physical(source['audio_path'])
         need(media.is_file(),'original source missing')
         actual=stat_identity(media)
-        identity_matches(actual, identity['stat_after'])
-        need(True,'original source stat differs (device/inode/bytes/mtime/ctime preserved): '+
+        need(actual==identity['stat_after'],
+             'original source stat differs (device/inode/bytes/mtime/ctime preserved): '+
              json.dumps({'source_id':source['source_id'],'expected':identity['stat_after'],'actual':actual},sort_keys=True))
     need(record['decision']['usable_for_training']is False and record['decision']['usable_for_evaluation']is False,
          'partial sidecar automatically released labels')

@@ -136,7 +136,7 @@ def _wired():
         import gpu_launch
     except Exception:
         return False
-    return hasattr(gpu_launch, "device_preflight") and "device_preflight.check()" in Path(gpu_launch.__file__).read_text(encoding="utf-8")
+    return hasattr(gpu_launch, "device_preflight") and "device_preflight.check(" in Path(gpu_launch.__file__).read_text(encoding="utf-8")
 
 
 @unittest.skipUnless(_wired(), "预检未接入 gpu_launch.main()")
