@@ -10,15 +10,15 @@ description: Inspect and maintain the nanless/redimnet2-fork reproduction projec
 ## 当前状态（2026-11-06 核查）
 
 - **PTN 已完成 120/120 轮**。48—120 段自 `model_47` 受控接续：起 2026-10-26 07:51:27（北京，首个真实 SGD，绝对迭代 705,047），止 **2026-11-03 10:12:02（北京）**。`ptn_success.json` 记 `ptn_complete:true`、`epochs:[48..120]`、`LM_started:false`、`historical_numeric_root_cause_proven:false`、`three_segment_LM_contract_required:true`。`model_115.pt`/`model_120.pt` 各 650,778,662 B，sha256 `65497b6a…aad5c` / `2798fe23…b0cc2f`；`final_model.pt` 只是→`model_120.pt` 的 12 B 软链。末轮 `vox1-eer-8s` **0.399%**（该口径只读前 8 秒，不能与官方 0.26% 整段协议直接比）。
-- **LM 已完成**（2026-11-07 03:05–05:37 UTC）：任务 `t-20261106110454-vd8pq`，名称 `zhounan_redimnet2-lm-from-ptn115-8a800-p6-20261106-v1c`；跑满 1 轮、13,075 步、`training_exit_code=0`，产出 `model_1.pt`（sha256 `9858cf62…9cf70f80`）、`vox1-eer-8s=0.293%`。注意 `lm_receipt.json` 的 `ok:false` 是门禁只读 `train.log` 造成的假阴性（源码已在 `7d03d3c` 修复，冻结包未重打）。早期任务 `t-20261106195855-rq2b7`（入口误带 `--execute`）与 `t-20261107053934-6lcmt`（`launch.sh` 缺执行位）均已失败作废；单机 8×A800、优先级 6、自动重试关闭。受控包 `package-r3`：package sha256 `08a34b68…9aa003`、contract sha256 `bf437dc8…9230d0`。判据、命令与首屏自检见[LM 受控启动](references/lm-launch-20261106.md)。
+- **LM 已完成 1 轮**：运行目录 `.../lm-from-ptn115-20261106-v1/lm` 于 2026-11-07 03:05–05:37 UTC 跑满 1 轮、13,075 步、`training_exit_code=0`，`vox1-eer-8s=0.293%`。**完成者的平台 ID 是 `t-20261106110454-vd8pq`，属平台侧记录；运行产物里没有 `task_id` 字段，本地无该 ID 的留档**——要核终态只能在控制台详情页看，不要据"本地能不能 grep 到任务号"判断跑没跑。早期 `t-20261106195855-rq2b7`（入口误带 `--execute`，被 gate 的 argparse 拒绝，从未运行）与 `t-20261107053934-6lcmt`（冻结包内 `launch.sh` 缺执行位，`launcher_missing`）均已失败作废。`lm_receipt.json` 的 `ok:false` 是门禁只读 `train.log` 造成的假阴性（仓库源码已修，冻结包未重打）。单机 8×A800、优先级 6、自动重试关闭。受控包 `package-r3`：package sha256 `08a34b68…9aa003`、contract sha256 `bf437dc8…9230d0`；**`model_1.pt`/`model_115`/`model_120` 的体积与完整 sha 一律现查**（`sha256sum <artifact>`，或看仓库自动生成的 `docs/STATUS.md` 第 4 节），本页不再抄写。判据、命令与首屏自检见[LM 受控启动](references/lm-launch-20261106.md)。
 - **自动标注已停摆**：2026-11-01 13:13:34（北京），平台任务 `t-20261028191840-s6429` 失败；累计 **6,064,755 / 11,521,178 ≈ 52.64%**（新完成 4,447,318 + 历史保留 1,617,437）。
-- 以上都是**带日期的观测**。任何人再查询前须取新快照；排队中不等于开始训练，本段不能当实时状态用。
+- 以上都是**带日期的观测**。任何人再查询前须取新快照；「已提交」不等于开始训练，本段不能当实时状态用。**易变事实（HEAD、权限位、pytest 摘要、产物 sha、最近几次提交）只认仓库 `docs/STATUS.md`**（由 `tools/gen_status.py` 生成，`--check` 判过期、`--lint` 查正文硬编码）；本技能正文不抄这些数字。
 
 ## 找到实际仓库
 
 维护对象是`nanless/redimnet2-fork`，地址`https://github.com/nanless/redimnet2-fork`。已知服务器仓库为`dev_a800_2gpus:/root/code/github_repos/redimnet2-fork`，每次仍按用户指定位置核对主机、仓库根、remote、branch、HEAD和已有修改。开发机与实际八卡worker分别记录，不能用一台的进程或GPU代表另一台。
 
-2026-11-05 只读核对：服务器该路径 HEAD `0a3f6dd`（2026-10-20）的 `docs/` 只有旧编号文件，没有 `16-实验维护与验收边界.md`，也没有 `.agents/skills/`；带维护源和这份文档的是本机工作副本 `/Users/zhounan/Documents/声纹降噪/redimnet2-fork`（HEAD `605f560`）。要读维护文档和技能源先看本机副本，服务器仓库按它实际有的内容读，不要据技能里的文件名假定服务器也有。
+2026-11-05 只读核对：服务器该路径当时的 HEAD 是 `0a3f6dd`（2026-10-20）的 `docs/` 只有旧编号文件 <!-- volatile-ok: 2026-11-05 的历史快照，已标日期 -->，没有 `16-实验维护与验收边界.md`，也没有 `.agents/skills/`；带维护源和这份文档的是本机工作副本 `/Users/zhounan/Documents/声纹降噪/redimnet2-fork`（HEAD `605f560`）。要读维护文档和技能源先看本机副本，服务器仓库按它实际有的内容读，不要据技能里的文件名假定服务器也有。
 
 本机“声纹降噪”资料根可能另有`redimnet2-fork/`副本。先运行只读的`git rev-parse --show-toplevel`并核对远端，避免让Git向父目录查找而写入另一个空仓库。不要恢复历史临时工作树、别名或软链接来迎合旧路径。
 
