@@ -23,6 +23,32 @@ _ACTIVE_BACKEND = None
 PIPELINE_TIMERS = ('source_lookup', 'source_audit', 'VAD_and_plan', 'window_read',
                    'stage_cache', 'sidecar_publish', 'journal', 'chunk_finish')
 
+# Whisper 特征提取器 n_fft=400、center=True 时在两侧各补 200 帧；torch.stft 内部的 F.pad
+# 要求 pad < 输入长度，所以 <201 帧必然抛 RuntimeError。这里取 400（= 一个完整分析窗）
+# 作为"可标注下限"，而不是刚好 201：12.5–25 ms 的窗口即使侥幸不崩也没有标注价值。
+MIN_WINDOW_FRAMES = 400
+
+
+def refuse_short_window(window, frames, context, counters):
+    """把进不了 ASR 的短窗写成失败窗：不抛异常、不丢源、不进批次。
+
+    形态与 process_group 里 read_window 失败的兜底一致（schema 的 preprocessing_failed
+    谓词只认这四个字段），并把帧数与下限写进 errors，便于事后按原因统计。
+    """
+    error = ('asr_input_too_short: model input has %d frames at 16000 Hz (%.3f ms); '
+             'WhisperFeatureExtractor needs >= %d frames (n_fft=400, center pad 200 per side)'
+             % (frames, frames / 16.0, MIN_WINDOW_FRAMES))
+    window.update(preprocessing_status="failed", input_pcm_sha256=None,
+                  asr={"status": "failed", "raw_text": "", "normalized_text": "", "language": None,
+                       "native": {"eos_observed": False}, "error": error},
+                  alignment={"status": "not_applicable", "reason": "asr_input_too_short", "target_text": "",
+                             "items": [], "native_timestamps_ms": [], "fixed_timestamps_ms": [],
+                             "repair_changed": False})
+    context["errors"].append({"stage": "asr_input_too_short", "window_id": window["window_id"],
+                              "frames": frames, "min_frames": MIN_WINDOW_FRAMES, "traceback": error})
+    counters["short_window_refused"] = counters.get("short_window_refused", 0) + 1
+    return True
+
 
 def timed_call(counters, stage, function, *args, **kwargs):
     """记录互不包含模型阶段的CPU/存储调用墙钟；异常仍完整向外传播。"""
@@ -38,7 +64,8 @@ def progress_performance(backend, counters, process_started_utc, process_started
     now = time.monotonic()
     backend_values = backend.snapshot_stats()
     selected = ('assigned_source_rows', 'sidecars_committed', 'sidecar_cache_hits',
-                'stage_cache_hits', 'model_windows', 'decoded_audio_seconds', 'pipeline_seconds')
+                'stage_cache_hits', 'model_windows', 'decoded_audio_seconds', 'pipeline_seconds',
+                'short_window_refused')
     selected += tuple(key for key in ('retained_previous_producer_hits','retained_previous_decision_counts') if key in counters)
     current = {'worker_elapsed_seconds': now - process_started_monotonic,
                'backend': backend_values,
@@ -196,6 +223,9 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
         for window in context["windows"]:
             try:
                 wave = timed_call(counters, 'window_read', read_window, context["source"], context["identity"], window)
+                if len(wave) < MIN_WINDOW_FRAMES:
+                    refuse_short_window(window, len(wave), context, counters)
+                    continue
                 window["preprocessing_status"] = "completed"
                 rows.append({"row_id": context["source"]["source_id"] + ":" + window["window_id"],
                              "audio": wave, "context": context, "window": window})
@@ -273,7 +303,8 @@ def main(argv=None, *, bounded_lease=None):
                 "retained_previous_producer_hits": 0,
                 "retained_previous_decision_counts": {"candidate":0,"unknown":0,"failed":0},
                 "model_windows": 0, "decoded_audio_seconds": 0.0, "error_source_count": 0, "errors": [],
-                "pipeline_seconds": {key: 0.0 for key in PIPELINE_TIMERS}}
+                "pipeline_seconds": {key: 0.0 for key in PIPELINE_TIMERS},
+                "short_window_refused": 0}
     refs = []; assigned = 0; group_size = int(contract["runtime"].get("source_batch_rows", 8))
     previous_performance = None
     need(1 <= group_size <= 32, "source decode batch must remain bounded 1..32")
