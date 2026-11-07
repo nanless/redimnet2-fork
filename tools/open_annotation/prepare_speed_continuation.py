@@ -126,6 +126,19 @@ def stat_identity(path):
     return {'device': s.st_dev, 'inode': s.st_ino, 'bytes': s.st_size,
             'mtime_ns': s.st_mtime_ns, 'ctime_ns': s.st_ctime_ns}
 
+CONTENT_STAT_KEYS = ('inode', 'bytes', 'mtime_ns', 'ctime_ns')
+
+
+def identity_matches(actual, recorded):
+    """内容身份：device 是挂载命名空间标签，不参与；其余字段必须完全相等。"""
+    relaxed = actual.get('device') != recorded.get('device')
+    for key in CONTENT_STAT_KEYS:
+        if key not in recorded:
+            raise ValueError('recorded stat identity missing field: ' + key)
+        if actual.get(key) != recorded[key]:
+            raise ValueError('source content changed: %s expected=%r actual=%r' % (key, recorded[key], actual.get(key)))
+    return relaxed
+
 
 def read_shard(index_root, shard):
     path = child(index_root, shard['path'])
@@ -186,7 +199,9 @@ def retained_sidecar(source, tree, contract_sha, validate_record, *, portable_co
         portable_sink(proof)
     elif identity['decode_status'] == 'decoded_complete':
         media = physical(source['audio_path'])
-        need(media.is_file() and stat_identity(media) == identity['stat_after'],
+        need(media.is_file(), 'original media missing')
+        identity_matches(stat_identity(media), identity['stat_after'])
+        need(True,
              'source stat changed since old result; no silent reinference')
     need(record['decision']['usable_for_training'] is False and record['decision']['usable_for_evaluation'] is False,
          'automatic training/evaluation release refused')

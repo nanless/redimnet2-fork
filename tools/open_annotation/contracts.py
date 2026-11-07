@@ -133,6 +133,27 @@ def stat_identity(path):
             "mtime_ns": s.st_mtime_ns, "ctime_ns": s.st_ctime_ns}
 
 
+CONTENT_STAT_KEYS = ('inode', 'bytes', 'mtime_ns', 'ctime_ns')
+
+
+def identity_matches(actual, recorded):
+    """内容身份：device 是挂载命名空间标签，不参与；其余字段必须完全相等。
+
+    返回 True 表示"只有 device 不同"（调用方据此记 device_relaxed）；
+    False 表示完全一致；任何内容字段不符抛 ValueError 并点名该字段。
+    """
+    if not isinstance(actual, dict) or not isinstance(recorded, dict):
+        raise ValueError('stat identity must be dicts')
+    relaxed = actual.get('device') != recorded.get('device')
+    for key in CONTENT_STAT_KEYS:
+        if key not in recorded:
+            raise ValueError('recorded stat identity missing field: ' + key)
+        if actual.get(key) != recorded[key]:
+            raise ValueError('source content changed: %s expected=%r actual=%r'
+                             % (key, recorded[key], actual.get(key)))
+    return relaxed
+
+
 def atomic_new(path, value):
     """Atomic, no-replace publication; an interrupted tmp remains as evidence."""
     path = Path(path)

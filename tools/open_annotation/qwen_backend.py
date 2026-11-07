@@ -1,5 +1,11 @@
 """Offline, one-GPU ASR+FA replica; native tokens/times are never repaired here."""
 from __future__ import annotations
+
+
+def _is_short_window_error(exc):
+    """单个窗口短于 STFT 最小帧数（pad 不足）属于该源的材料问题，不是整轮故障。"""
+    text=str(exc)
+    return 'padding (' in text and 'dimension 2 of input' in text
 import copy
 import contextlib
 import inspect
@@ -420,7 +426,7 @@ class QwenBackend:
                                        "normalized_text": audit["normalized_text"], "normalization_audit": audit, "language": answer.language,
                                        "native": native, "batch_rows": ids, "batch_size": len(batch), "inference_call": call}
             except Exception as exc:
-                if native_cohort:
+                if native_cohort and not _is_short_window_error(exc):
                     exc.native_batch_evidence=dict(expected_row_ids=ids,actual_generate_count=self._native_generate_count,
                         native_generate_captures=copy.deepcopy(self._captures),padding_policy=copy.deepcopy(getattr(self,'native_padding',None)))
                     raise

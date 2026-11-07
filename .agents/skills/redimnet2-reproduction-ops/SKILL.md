@@ -10,7 +10,7 @@ description: Inspect and maintain the nanless/redimnet2-fork reproduction projec
 ## 当前状态（2026-11-06 核查）
 
 - **PTN 已完成 120/120 轮**。48—120 段自 `model_47` 受控接续：起 2026-10-26 07:51:27（北京，首个真实 SGD，绝对迭代 705,047），止 **2026-11-03 10:12:02（北京）**。`ptn_success.json` 记 `ptn_complete:true`、`epochs:[48..120]`、`LM_started:false`、`historical_numeric_root_cause_proven:false`、`three_segment_LM_contract_required:true`。`model_115.pt`/`model_120.pt` 各 650,778,662 B，sha256 `65497b6a…aad5c` / `2798fe23…b0cc2f`；`final_model.pt` 只是→`model_120.pt` 的 12 B 软链。末轮 `vox1-eer-8s` **0.399%**（该口径只读前 8 秒，不能与官方 0.26% 整段协议直接比）。
-- **LM 已提交**：任务 `t-20261106195855-rq2b7`，名称 `zhounan_redimnet2-lm-from-ptn115-8a800-p6-20261106-v1`，2026-11-06 19:58 创建、排队中；单机 8×A800、优先级 6、自动重试关闭。受控包 `package-r3`：package sha256 `08a34b68…9aa003`、contract sha256 `bf437dc8…9230d0`。判据、命令与首屏自检见[LM 受控启动](references/lm-launch-20261106.md)。
+- **LM 已完成**（2026-11-07 03:05–05:37 UTC）：任务 `t-20261106110454-vd8pq`，名称 `zhounan_redimnet2-lm-from-ptn115-8a800-p6-20261106-v1c`；跑满 1 轮、13,075 步、`training_exit_code=0`，产出 `model_1.pt`（sha256 `9858cf62…9cf70f80`）、`vox1-eer-8s=0.293%`。注意 `lm_receipt.json` 的 `ok:false` 是门禁只读 `train.log` 造成的假阴性（源码已在 `7d03d3c` 修复，冻结包未重打）。早期任务 `t-20261106195855-rq2b7`（入口误带 `--execute`）与 `t-20261107053934-6lcmt`（`launch.sh` 缺执行位）均已失败作废；单机 8×A800、优先级 6、自动重试关闭。受控包 `package-r3`：package sha256 `08a34b68…9aa003`、contract sha256 `bf437dc8…9230d0`。判据、命令与首屏自检见[LM 受控启动](references/lm-launch-20261106.md)。
 - **自动标注已停摆**：2026-11-01 13:13:34（北京），平台任务 `t-20261028191840-s6429` 失败；累计 **6,064,755 / 11,521,178 ≈ 52.64%**（新完成 4,447,318 + 历史保留 1,617,437）。
 - 以上都是**带日期的观测**。任何人再查询前须取新快照；排队中不等于开始训练，本段不能当实时状态用。
 

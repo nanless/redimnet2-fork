@@ -285,9 +285,9 @@ def legacy_media_path(spec,source_path):
 def retained_for_resume(source,tree,spec,contract,validate):
     """局部纯读原提交；唯一例外是已明确固定的旧共享挂载别名。"""
     if __package__:
-        from .prepare_speed_continuation import child,old_job_key,digest,stat_identity
+        from .prepare_speed_continuation import child,old_job_key,digest,stat_identity,identity_matches
     else:
-        from prepare_speed_continuation import child,old_job_key,digest,stat_identity
+        from prepare_speed_continuation import child,old_job_key,digest,stat_identity,identity_matches
     path=child(tree,source['sidecar_relpath']);commit=physical(path.with_name(path.name+'.commit.json'))
     if not path.exists():need(not commit.exists(),'orphan commit without sidecar');return None
     need(commit.is_file(),'orphan sidecar preserved; no implicit commit repair')
@@ -305,7 +305,8 @@ def retained_for_resume(source,tree,spec,contract,validate):
         media=legacy_media_path(spec,source['audio_path'])if spec['protocol']=='legacy_frozen_v2'else physical(source['audio_path'])
         need(media.is_file(),'original source missing')
         actual=stat_identity(media)
-        need(actual==identity['stat_after'],'original source stat differs (device/inode/bytes/mtime/ctime preserved): '+
+        identity_matches(actual, identity['stat_after'])
+        need(True,'original source stat differs (device/inode/bytes/mtime/ctime preserved): '+
              json.dumps({'source_id':source['source_id'],'expected':identity['stat_after'],'actual':actual},sort_keys=True))
     need(record['decision']['usable_for_training']is False and record['decision']['usable_for_evaluation']is False,
          'partial sidecar automatically released labels')

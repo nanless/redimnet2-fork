@@ -3,6 +3,7 @@ import argparse
 import contextlib
 import csv
 import datetime
+import device_preflight
 import fcntl
 import json
 import os
@@ -356,7 +357,11 @@ def main():
     p.add_argument('--full-verify', action='store_true')
     p.add_argument('--bounded-runtime-spec')
     p.add_argument('--bounded-runtime-sha')
-    run(p.parse_args())
+    args = p.parse_args()
+    code = device_preflight.check(strict=True)
+    if code:
+        sys.exit(code)
+    run(args)
 
 
 if __name__ == '__main__':

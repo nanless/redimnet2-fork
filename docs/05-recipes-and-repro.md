@@ -244,7 +244,13 @@ exp_dir: /root/group-shared/voiceprint/data/wespeaker_data/exp/vox2/b0_ptn
   --exp_dir exp/vox2/smoke
 ```
 
-PTN 跑完后，把 `lm.yaml` 的 `model_ckpt` 指到对应 `model_*.pt`，并保证能读到 PTN 旁的 `spk2id.json`，再启 LM。
+PTN 跑完后**不要**用"把 `lm.yaml` 的 `model_ckpt` 改成 PTN 的 `model_*.pt` 再启 LM"这条老办法。本仓库这次的大间隔微调不是改个配置直接跑 `train.py`，而是走**冻结包 + 合同**的专用入口，三条硬规矩（详见 `AGENTS.md` §9.2）：
+
+1. **两个 sha256 必须是已冻结的那一份**：`LM_PACKAGE_SHA`（包）与 `LM_CONTRACT_SHA`（合同），换包或换合同就是新版本，重新冻结、重新记哈希。
+2. **`new_run_root` 必须不存在**：入口拒绝写已有输出，"上次失败、目录留着接着用"不是理由。
+3. **平台自动重试必须关**：失败要人看日志定因，自动重跑会冲掉现场。
+
+入口形状是 `export LM_PACKAGE_SHA=…`、`export LM_CONTRACT_SHA=…`，再 `exec /bin/bash <包根>/runtime/lm_launch.sh`。包内会检查 `spk2id.json`（缺失即拒绝，不允许退回"按索引切片分类头"）。首屏见到 `LM_GATE_REFUSED` 或 `resumed optimizer state` 立刻停，不要重提任务碰运气。
 
 ---
 

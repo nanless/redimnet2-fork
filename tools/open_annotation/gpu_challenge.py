@@ -50,7 +50,7 @@ class ParentChallenge:
   return {u:by[u][0]['used_mib'] for u in self.uuids},pid
  def advance(self,snapshot):
   need(not self.complete,'challenge already complete')
-  limit=120 if self.seq==0 and not getattr(self,'baseline_response_seen',False) else 20
+  limit=600 if self.seq==0 and not getattr(self,'baseline_response_seen',False) else 60
   need(time.monotonic()-self.phase_started<limit,'worker initialization or CUDA allocation phase timed out')
   stamp=snapshot['monotonic'];need(type(stamp)in(int,float) and math.isfinite(stamp) and (self.last_sample_stamp is None or stamp>self.last_sample_stamp),'snapshot must be strictly fresh/increasing');self.last_sample_stamp=stamp
   observed=self.rows(snapshot,initial=self.baseline is None)

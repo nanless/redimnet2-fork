@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from contracts import Refused, atomic_new, canonical_bytes, digest, job_key, need, safe_join, sha_file, stat_identity, utcnow
+from contracts import (Refused, atomic_new, canonical_bytes, digest, identity_matches, job_key, need, safe_join, sha_file, stat_identity, utcnow)
 from schema import assert_valid_record
 
 
@@ -41,7 +41,9 @@ class SidecarStore:
         need(record["execution"]["job_key"] == job_key(source, self.contract_sha), "existing sidecar job key differs")
         identity = record["source_identity"]
         if check_current_source and identity["decode_status"] == "decoded_complete":
-            need(source.get("audio_path") and stat_identity(source["audio_path"]) == identity["stat_after"], "source changed since sidecar publication")
+            if not source.get("audio_path"):
+                need(False, "source changed since sidecar publication")
+            identity_matches(stat_identity(source["audio_path"]), identity["stat_after"])
         descriptor = {"schema": "redimnet2-sidecar-commit/v1", "source_id": source["source_id"],
                       "job_key": job_key(source, self.contract_sha), "contract_sha256": self.contract_sha,
                       "source_record_sha256": digest(source), "sidecar_sha256": digest_bytes(raw),
