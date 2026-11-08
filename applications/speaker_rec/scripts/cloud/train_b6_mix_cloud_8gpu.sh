@@ -25,17 +25,17 @@
 #   递归替换成 DATA_ROOT -> 写出一份完整的新配置 -> 交给 launch.sh 用
 #   `--config <新配置>` 启动。
 #
-# 只替换 YAML；不改 data.list 内的音频路径，不修软链接。两者都须另外核实。
+# 只替换 YAML；不改 data.list 内的音频路径，不修软链接。两者都要另外核实。
 # 配方文件本身一个字都不改。若 DATA_ROOT 与 RECIPE_DATA_PREFIX 相同
 # （例如云端就把共享盘挂在原来那个路径上），替换结果与原文相同，等于不做改写。
 #
 # -----------------------------------------------------------------------------
 # 断点续训（抢占恢复）是怎么做到的
 # -----------------------------------------------------------------------------
-# 这是本脚本在云端最关键的一点：**同一条命令重跑就会接着上次继续，不会重头再来。**
+# 这是本脚本在云端最关键的一点：同一条命令重跑就会接着上次继续，不会重头再来。
 #
 # 依据是训练代码 train.py 的既有行为（不是本脚本实现的）：
-#   * 启动时扫描 $EXP_DIR/models/model_<N>.pt，取**修改时间最新**的那个，
+#   * 启动时扫描 $EXP_DIR/models/model_<N>.pt，取修改时间最新的那个，
 #     令 start_epoch = N + 1；
 #   * 训练循环 `for epoch in range(start_epoch, num_epochs + 1)`，
 #     所以已经跑过的轮次不会再跑；
@@ -43,7 +43,7 @@
 #   * 优化器的动量、AMP 的缩放系数也随权重一起存进 model_<N>.pt，
 #     续训时会一起读回（见 wespeaker_lite/utils/checkpoint.py）。
 #
-# 所以火山引擎实例被抢占后，只要 $EXP_DIR 在**掉电不丢的存储**上（例如 vePFS），
+# 所以火山引擎实例被抢占后，只要 $EXP_DIR 在掉电不丢的存储上（例如 vePFS），
 # 重新拉起同一条命令即可。平台侧可以把本脚本的输出当作判断依据：
 # 看到 `TRAIN_START epoch=37 ...` 就说明前 36 轮已经跑过、这次从第 37 轮继续。
 #
@@ -80,7 +80,7 @@
 #   applications/speaker_rec/scripts/cloud/train_b6_mix_cloud_8gpu.sh
 #
 # 八卡每卡96条至少需要768条才能有一步；576只适用于上面的两卡示例。
-# 八卡32步短测可用 SAMPLE_NUM_PER_EPOCH=24576，正式训练不要覆盖样本数。
+# 八卡32步短测可用 SAMPLE_NUM_PER_EPOCH=24576，正式训练不覆盖样本数。
 # 本次正式入口为 run_b6_mix_reproduction.sh；PTN120轮，LM显式固定第115轮。
 # =============================================================================
 
@@ -143,7 +143,7 @@ EXP_DIR="${EXP_DIR:-$DEFAULT_EXP_DIR}"
 NUM_GPUS="${NUM_GPUS:-8}"
 # 用哪个 Python（留空则按 launch.sh 的规则自动找 conda 环境 redimnet2）
 PYTHON_BIN="${PYTHON_BIN:-}"
-# 通信端口（留空则 launch.sh 自动选一个空闲端口；多机训练时必须显式指定）
+# 通信端口（留空则 launch.sh 自动选一个空闲端口；多机训练时要显式指定）
 MASTER_PORT="${MASTER_PORT:-}"
 
 # 期望的训练清单行数。主训练 11,521,178 句、大间隔微调 5,021,010 句。
@@ -285,7 +285,7 @@ newest_ckpt() {
     printf '%s' "${line#* }"
 }
 
-# 把相对路径变成绝对路径，免得「检查时按一个目录、训练时又按另一个目录」。
+# 把相对路径变成绝对路径，避免检查时按一个目录、训练时又按另一个目录。
 to_abs() {
     local path="$1"
     if [ -d "$path" ]; then
@@ -305,7 +305,7 @@ PTN_SPK2ID=""
 if [ "$STAGE" = "lm" ]; then
     if [ -z "$MODEL_CKPT" ]; then
         # 2026-11-08 修正：STAGE=lm 不再按 mtime 取"最新"。
-        # 按 mtime 会静默选中 model_120（第 120 轮），而受控 LM 必须从 model_115 起跑
+        # 按 mtime 会静默选中 model_120（第 120 轮），而受控 LM 要从 model_115 起跑
         # （见 docs/12 第 7 节与 lm_launch/run_lm.sh 的字节 pin）。这里改成 fail-closed：
         # 只接受显式 MODEL_CKPT；未指定时若目录里恰好只有 model_115.pt 才自动采用，
         # 否则拒绝并给出可复制的命令行。
@@ -408,9 +408,9 @@ def as_int(name):
         sys.exit(4)
 
 
-# 超参覆盖：**只给冒烟测试用**。复现官方结果时必须一个都不设，
+# 超参覆盖：只给冒烟测试用。复现官方结果时一个都不设，
 # 否则跑出来的就不是官方那组超参了。下面每处覆盖都会打印一行 TRAIN_WARN，
-# 让"这次跑偏离了配方"这件事在日志里一眼可见，而不是悄悄发生。
+# 让"这次跑偏离了配方"在日志里可见。
 _ov = []
 num_epochs_override = as_int("NUM_EPOCHS")
 if num_epochs_override is not None:

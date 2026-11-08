@@ -1,8 +1,8 @@
 """保留原生生成证据的Qwen/vLLM最小离线适配。
 
-导入此模块不导入torch、qwen_asr或vllm。CPU测试必须注入假引擎并标记为
+导入此模块不导入torch、qwen_asr或vllm。CPU测试要注入假引擎并标记为
 synthetic。真实构造仅由build_real_engine(execute=True)显式触发；该低层
-函数不授予机器资源、GPU质量或全量任务准入，调用者仍须先做资源组验收。
+函数不授予机器资源、GPU质量或全量任务准入，调用者仍要先做资源组验收。
 """
 from __future__ import annotations
 import argparse
@@ -39,7 +39,7 @@ def _token_ids(value, label):
 
 
 def _evidence(value):
-    """失败时也保留原生字段；非JSON值显式标记，不偷偷改成0。"""
+    """失败时也保留原生字段；非JSON值显式标记，不改成0。"""
     if value is None or type(value) in (str,int,bool): return value
     if type(value) is float:
         return value if math.isfinite(value) else {'nonfinite_native_float': repr(value)}

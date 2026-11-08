@@ -54,7 +54,7 @@ def minimal_record(window, errors):
 @unittest.skipUnless(P1_APPLIED, "P1 未应用：worker.MIN_WINDOW_FRAMES / refuse_short_window 不存在")
 class ShortWindowGuardTests(unittest.TestCase):
     def test_threshold_is_one_full_analysis_window(self):
-        """护栏阈值必须是一个完整分析窗，而不是刚好越过 stft 下限。"""
+        """护栏阈值取一个完整分析窗，不取刚好越过 stft 下限的值。"""
         self.assertEqual(worker.MIN_WINDOW_FRAMES, STFT_N_FFT)
         # 现场那一例必然崩：两侧各补 200 帧 > 171 帧。
         self.assertGreater(2 * STFT_PAD_PER_SIDE, OBSERVED_SHORT_FRAMES)
@@ -63,7 +63,7 @@ class ShortWindowGuardTests(unittest.TestCase):
         self.assertGreaterEqual(worker.MIN_WINDOW_FRAMES, 2 * STFT_PAD_PER_SIDE)
 
     def test_171_frames_becomes_failed_window_without_raising(self):
-        """171 帧不得抛异常，必须落成 failed 窗。"""
+        """171 帧不抛异常，落成 failed 窗。"""
         window = short_window()
         context = {"errors": []}
         counters = {}
@@ -96,14 +96,14 @@ class ShortWindowGuardTests(unittest.TestCase):
         return schema.build_record(source, identity, contract, vad, [window], [], execution, context["errors"])
 
     def test_real_validator_accepts_the_failed_window(self):
-        """必须过 schema 的真实发布门（validate_record / assert_valid_record），不是本地复刻谓词。"""
+        """要过 schema 的真实发布门（validate_record / assert_valid_record），不是本地复刻谓词。"""
         record = self.failed_record()
         self.assertEqual(schema.validate_record(record), [],
                          "真实 validator 拒绝了护栏产出的失败窗")
         schema.assert_valid_record(record)   # 不抛异常即通过 store.publish 的同一道门
 
     def test_real_build_record_decides_unknown(self):
-        """真 build_record 的决策必须落 unknown，且理由是 asr_not_succeeded。"""
+        """真 build_record 的决策要落 unknown，且理由是 asr_not_succeeded。"""
         record = self.failed_record()
         self.assertEqual(record["decision"]["state"], "unknown")
         reasons = record["decision"]["reasons"]
@@ -114,7 +114,7 @@ class ShortWindowGuardTests(unittest.TestCase):
         self.assertFalse(record["decision"]["usable_for_evaluation"])
 
     def test_real_validator_rejects_a_broken_shape(self):
-        """负向对照：把形状改坏（有状态但无 PCM 身份）后，真 validator 必须拒绝。
+        """负向对照：把形状改坏（有状态但无 PCM 身份）后，真 validator 拒绝。
 
         没有这条，上面那条"validator 接受"可能只是因为门根本没在查。
         """
@@ -134,14 +134,14 @@ class ShortWindowGuardTests(unittest.TestCase):
             self.assertEqual(window["preprocessing_status"] if "preprocessing_status" in window else None, None)
 
     def test_boundary_just_below_threshold_is_refused(self):
-        """399 帧必须被拒；400 帧放行。"""
+        """399 帧被拒；400 帧放行。"""
         self.assertTrue(worker.MIN_WINDOW_FRAMES - 1 < worker.MIN_WINDOW_FRAMES)
         window = short_window(worker.MIN_WINDOW_FRAMES - 1)
         self.assertTrue(worker.refuse_short_window(window, worker.MIN_WINDOW_FRAMES - 1, {"errors": []}, {}))
         self.assertEqual(window["preprocessing_status"], "failed")
 
     def test_guard_continues_instead_of_appending_the_row(self):
-        """源码层不变量：护栏之后必须是 continue，短行绝不能进 rows/批次。"""
+        """源码层不变量：护栏之后是 continue，短行不进 rows/批次。"""
         source = Path(worker.__file__).read_text(encoding="utf-8")
         marker = "refuse_short_window(window, len(wave), context, counters)"
         self.assertIn(marker, source, "护栏调用点缺失")
@@ -150,7 +150,7 @@ class ShortWindowGuardTests(unittest.TestCase):
                          "护栏后必须是 continue，否则短窗仍会进入 ASR 批次")
 
     def test_counters_are_initialised_and_reported(self):
-        """计数字段必须在 counters 初值与 performance 选择表中同时存在。"""
+        """计数字段要在 counters 初值与 performance 选择表中同时存在。"""
         source = Path(worker.__file__).read_text(encoding="utf-8")
         self.assertIn('"short_window_refused": 0', source)
         self.assertIn("'short_window_refused')", source)

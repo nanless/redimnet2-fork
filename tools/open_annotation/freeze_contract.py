@@ -49,7 +49,7 @@ def freeze(base_path, base_sha, output, version_prefix, normalization_profile=No
     if asr_preprocessing_sources is not None:
         c['asr_preprocessing_sources']=copy.deepcopy(asr_preprocessing_sources)
     if c['runtime'].get('execution_policy')==h.NATIVE_BATCH_POLICY:
-        # 通用冻结器永远只生成合批试验；正式声明只能走下面显式数据工厂。
+        # 通用冻结器只生成合批试验；正式声明只能走下面显式数据工厂。
         c['purpose']='pilot_validation';c.pop('native_formal',None)
     h.validate_execution_policy(c)
     if h.asr_feature_profile(c)is not None:

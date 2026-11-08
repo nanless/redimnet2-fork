@@ -87,7 +87,7 @@ class ResumeFixture:
         return {str(p):(p.read_bytes(),p.stat().st_mtime_ns)for p in paths if p.is_file()}
     def fake(self,argv,log,semantic_fd):
         self.calls.append(argv);log.write_text('synthetic command only\n')
-        # 语义锁必须由同一FD贯穿；独立打开无法再取锁。
+        # 语义锁要由同一FD贯穿；独立打开无法再取锁。
         with self.assert_lock_held(semantic_fd):pass
         if '--execute'in argv:
             out=Path(self.spec['resource_output']);out.mkdir()

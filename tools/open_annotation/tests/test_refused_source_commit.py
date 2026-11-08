@@ -1,10 +1,10 @@
-"""P0-1b 回归：含坏源（甚至全坏）的分片必须能 finish() 提交落盘。
+"""P0-1b 回归：含坏源（甚至全坏）的分片要能 finish() 提交落盘。
 
 CPU 合成，无模型、无 GPU：真实 WorkQueue + 真实 SidecarStore + 真实 build_record，
 只有 inspect/VAD/plan/read 用确定性桩。覆盖三件事：
 1) 1 个坏源 + N 个好源 → finish 成功、chunk commit 落盘、坏源 receipt=failed、好源侧车正常；
 2) 全坏分片 → 同样成功提交，不无限重试、不卡后面的片；
-3) 拒绝原因本身就是"这里已有不同/损坏产物"时 → 绝不覆盖，退回不带侧车的 failed receipt。
+3) 拒绝原因本身就是"这里已有不同/损坏产物"时 → 不覆盖，退回不带侧车的 failed receipt。
 """
 from __future__ import annotations
 import hashlib

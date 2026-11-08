@@ -65,7 +65,7 @@ class Fixture:
 class ProbeTests(unittest.TestCase):
     def setUp(self):
         self.f=Fixture();self.env=patch.dict(os.environ,{},clear=True);self.env.start()
-        # CPU独立审阅可以并行，假GPU的协作锁也必须按测试fixture隔离。
+        # CPU独立审阅可以并行，假GPU的协作锁也要按测试fixture隔离。
         self.locktemp=patch.object(P.tempfile,'gettempdir',return_value=str(self.f.root));self.locktemp.start()
     def tearDown(self):self.locktemp.stop();self.env.stop();self.f.close()
     def test_inspect_no_output_no_engine_import(self):

@@ -237,7 +237,7 @@ class SerialExecutor:
             with (self.output/(name+'.log')).open('xb')as log:
                 proc=subprocess.Popen(argv,cwd=code,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
                 identity={'pid':proc.pid,'start_ticks':None,'argv':argv,'nonce':nonce,'driver_pid':os.getpid()}
-                # Popen尚未被wait/poll回收，pidfd先绑定，避免首次/proc读失败丢失清理句柄。
+                # Popen尚未被wait/poll回收，pidfd先绑定，避免首次/proc读失败时丢掉清理句柄。
                 fd=open_pidfd(proc.pid);identity['start_ticks']=process_start(proc.pid);identify();atomic_new(self.output/(name+'-child.json'),identity)
                 print(json.dumps({'event':'pilot_step_started','step':name,'pid':proc.pid}),flush=True)
                 while proc.poll()is None:

@@ -111,7 +111,7 @@ class SelectionScopeTests(unittest.TestCase):
 
     def test_later_pin_capture_changes_earlier_pin_before_capability_is_issued(self):
         original=A._selection_fingerprint;inputs=A._selection_inputs;first=[];changed=[]
-        # 只修改本用例的临时质量文件，绝不修改真实维护源码。
+        # 只修改本用例的临时质量文件，不修改真实维护源码。
         quality=self.f.selected['quality_review']['path']
         def ordered(*args):
             refs=inputs(*args);return sorted(refs,key=lambda ref:ref['path']!=quality)

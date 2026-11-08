@@ -223,7 +223,7 @@ def frozen_roots(path,base,locks):
 
 
 def frozen_bundle(spec):
-    """每次都重开原包及全部成员，不能只相信启动前的一次摘要。"""
+    """每次都重开原包及全部成员，不能只依据启动前的一次摘要。"""
     code=physical(spec['code_root'])
     need(physical(spec['bundle']['path'])==code/'bundle_files.json','original bundle path differs')
     members=ref(spec['bundle'])

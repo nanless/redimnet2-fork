@@ -116,7 +116,7 @@ class UnionCoverageTests(unittest.TestCase):
 
     def test_production_cannot_reuse_minimal_cpu_producer_metadata(self):
         self.f.spec['purpose']='production';self.f.write_spec()
-        # 只缩小拒绝测试的分母，不创建成功正式报告；合成最小合同必须仍被拒绝。
+        # 只缩小拒绝测试的分母，不创建成功正式报告；合成最小合同仍然被拒。
         with patch.object(U,'PRODUCTION_COUNT',6),patch.object(U,'PRODUCTION_DOMAINS',{'fixture':6}):
             with self.assertRaisesRegex(ValueError,'complete models/runtime'):self.check()
 

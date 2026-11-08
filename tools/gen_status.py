@@ -54,13 +54,13 @@ PYTEST_PY = "/root/miniforge3/envs/USE/bin/python"
 PYTEST_DIR = "tools/open_annotation/tests"
 PYTEST_TIMEOUT = 1800
 
-TITLE = "# 仓库状态（自动生成，请勿手改）"
+TITLE = "# 仓库状态（自动生成，不手改）"
 PREAMBLE = """\
-> 本文件由 `tools/gen_status.py` 生成。**正文里不要复制这里的数字**——正文写"见
-> [STATUS.md](STATUS.md) 第 N 节"或写复核命令，让读者自己查。
+> 本文件由 `tools/gen_status.py` 生成。正文不复制这里的数字：正文写“见
+> [STATUS.md](STATUS.md) 第 N 节”或复核命令，由读者自己查。
 > 重新生成：`python3 tools/gen_status.py`；校验是否过期：`python3 tools/gen_status.py --check`；
 > 检查文档有没有又把易变事实写死：`python3 tools/gen_status.py --lint`。
-> 为保证可 diff，本文件不含生成时间戳；"时间"只来自 git 提交与实验产物的文件时间。\
+> 为保证可 diff，本文件不含生成时间戳；“时间”只来自 git 提交与实验产物的文件时间。\
 """
 
 # 五个关键脚本（是否有可执行位属于易变事实，只允许出现在这里）
@@ -188,7 +188,7 @@ def section_scripts():
         executable = os.access(str(path), os.X_OK)
         lines.append("| `%s` | %s | %s | %s |" % (
             rel, mode, "ok" if executable else "否",
-            "能" if executable else "不能，必须 `bash %s`" % rel))
+            "能" if executable else "不能，用 `bash %s` 调用" % rel))
     lines.append("")
     lines.append("复核：`test -x <file> && echo ok`、`stat -c '%a %n' <file>`、"
                  "`git ls-files -s <file>`（`100755` 即带可执行位）")
@@ -222,7 +222,7 @@ def pytest_section_text():
     body.append("- 退出码：%d" % rc)
     body.append("- 摘要行：`%s`" % (summary or "（没有输出摘要行）"))
     body.append("")
-    body.append("注意：这是**本次生成时**的观测。用例数、失败项都会变；把它当结论引用前先重跑。")
+    body.append("注意：这是本次生成时的观测。用例数、失败项都会变，引用前先重跑。")
     if rc != 0:
         fails = [ln.strip() for ln in out.splitlines() if ln.startswith("FAILED ")]
         if fails:
@@ -377,8 +377,8 @@ def section_notes():
     return [
         "## 6. 说明",
         "",
-        "- 本文件的**唯一**用途是承载易变事实。`docs/*.md` 正文里不要写死 HEAD、权限位、"
-        "测试计数、产物 sha、\"已修/已验证\"、目录里有什么。",
+        "- 本文件只用于承载易变事实。`docs/*.md` 正文不写死 HEAD、权限位、"
+        "测试计数、产物 sha、“已修/已验证”、目录里有什么。",
         "- 复核全部产物 sha：",
         "",
         "  ```bash",

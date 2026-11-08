@@ -84,7 +84,7 @@ def inspect_experiment(ref):
         frames=item.get('model_input_frames');require(type(frames) is int and 0<frames<=30*16000 and
               item.get('model_sample_rate')==16000,'PCM exceeds 30 seconds or changes source clock')
         p=physical(item['pcm_path']);require(p.suffix=='.npy' and V._file_sha(p)==item['pcm_file_sha256'],'fixed PCM file SHA differs')
-        # 文件上限避免损坏的npy文件先分配巨大数组；绝不启用pickle。
+        # 文件上限避免损坏的npy文件先分配巨大数组；不启用pickle。
         require(p.stat().st_size<=frames*4+65536,'PCM file larger than declared bound')
         wave=np.load(p,allow_pickle=False)
         require(wave.dtype==np.dtype('float32') and wave.ndim==1 and len(wave)==frames and np.isfinite(wave).all(),
@@ -219,7 +219,7 @@ def existing_exclusive_lock(config,spec):
     require(len(selected)==1,'existing exclusive ticket UUID lock missing or ambiguous')
     old=selected[0];path=physical(old['path'])
     require(path.name==gpu+'.lock','existing exclusive lock filename differs')
-    # 不创建、不写入、不删除旧锁。原parent占有同一锁时，下面必须立即拒绝。
+    # 不创建、不写入、不删除旧锁。原parent占有同一锁时，下面立即拒绝。
     fd=os.open(str(path),os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
     try:
         info=os.fstat(fd)
@@ -273,8 +273,8 @@ def _run_experiment(ref,*,factory,snapshot,pause,after_durable_commit,locks):
     snapshots=[];grant=None;device_selection=None;exclusive_lock=None
     if complete:adapter=cached
     else:
-        # 禁止真实构造：原锁尚不能由supervisor持有到全部自身上下文排空。
-        # 完整cache恢复走上方分支；不得靠许可JSON或自定义pilot factory重开。
+        # 不做真实构造：原锁尚不能由supervisor持有到全部自身上下文排空。
+        # 完整cache恢复走上方分支；不靠许可JSON或自定义pilot factory重开。
         require(factory is not None,'real GPU construction is disabled until supervisor/group/context lifetime is verified; inspect or full-cache restore only')
         preview=read_ref(config['resource_admission']);gpu=preview.get('gpu_uuid')
         require(isinstance(gpu,str) and gpu.startswith('GPU-') and
@@ -336,7 +336,7 @@ def main():
     child=subprocess.Popen(command,env=env,start_new_session=True)
     try:code=child.wait(timeout=config['wall_seconds'])
     except subprocess.TimeoutExpired:
-        # 只结束本助手新建的进程组；绝不发送信号给现场已存在的PID。
+        # 只结束本助手新建的进程组；不发送信号给现场已存在的PID。
         os.killpg(child.pid,signal.SIGTERM)
         try:child.wait(timeout=10)
         except subprocess.TimeoutExpired:os.killpg(child.pid,signal.SIGKILL);child.wait()

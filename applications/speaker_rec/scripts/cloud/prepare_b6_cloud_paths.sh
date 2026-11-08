@@ -33,7 +33,7 @@ for target in (Path("/shared/group-shared"), Path("/root/group-shared")):
     if target == source:
         print(f"共享盘已挂载: {target}")
         continue
-    # 不能让源目录位于待替换的目标目录内部，否则会构成失效链接。
+    # 源目录不能位于待替换的目标目录内部，否则会构成失效链接。
     if target in source.parents:
         raise SystemExit(f"拒绝操作: 源目录 {source} 位于目标 {target} 内")
     if target.is_symlink():

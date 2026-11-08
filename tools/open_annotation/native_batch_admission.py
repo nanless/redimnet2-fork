@@ -2,7 +2,7 @@
 
 只读已经完成的有限试验、完整批次/行映射收据及质量审阅；不创建模型、
 不读取原音、不扫描正式全库、不建数据库。正式合同与选定pilot仅允许
-purpose/version及默认关闭声明不同，模型数学与工程执行源必须完全相同。
+purpose/version及默认关闭声明不同，模型数学与工程执行源要完全相同。
 """
 from __future__ import annotations
 import math
@@ -232,7 +232,7 @@ def check_formal_bundle(selected,pilot_bundle_pin,new_contract,purpose):
 
 
 def _full_check_native_selected_pilot(pin,new_contract,purpose):
-    """严格新schema；缺实际3000/512或完整packet/readback时永不授正式。"""
+    """严格新schema；缺实际3000/512或完整packet/readback时不授正式。"""
     selected=pinned(pin);need(selected.get('schema')==SCHEMA and selected.get('purpose')==purpose,'explicit native selected-admission v2 required; old single-window evidence refused')
     candidate=pinned(selected['candidate_contract']);profile=formal_equivalent(candidate,new_contract,purpose)
     baseline=pinned(selected['baseline_track']);main=pinned(selected['main_track']);resume=pinned(selected['recovery_track']);basec=pinned(baseline['contract']);compare_native_profiles(basec,candidate)
@@ -286,7 +286,7 @@ def _full_check_native_selected_pilot(pin,new_contract,purpose):
     if any(item.get('classification')==TRACEBACK_CLASS for item in quality_doc.get('dispositions',[])):
         traceback_context,traceback_refs=_traceback_roots(matrix,name,bundles['main']);refs.extend(traceback_refs)
     refs.extend(check_quality(selected['quality_review'],speed,selected['candidate_contract'],purpose,traceback_context=traceback_context))
-    # 收据由有限native auditor已核的原件生成；逐包/plan/行映射本身仍要核，不信布尔口号。
+    # 收据由有限native auditor已核的原件生成；逐包/plan/行映射本身仍要核，不只看布尔值。
     if __package__:from .native_batch_readback import verify_readback_receipt,verify_comparison_maps
     else:from native_batch_readback import verify_readback_receipt,verify_comparison_maps
     readbacks={}
@@ -297,7 +297,7 @@ def _full_check_native_selected_pilot(pin,new_contract,purpose):
         need(value['proof']['performance']==expected and value['proof']['parent_result']==selected['resource_evidence'][role]['parent_result'],'native readback metrics/parent not bound to actual comparison')
     verify_comparison_maps(speed,{'baseline':readbacks['baseline'],'candidate':readbacks['main']})
     verify_comparison_maps(recovery,{'baseline':readbacks['main'],'candidate':readbacks['recovery']})
-    # 恢复512可引用原main整包，但其源/侧车/窗口原件必须正是main中的同一成员。
+    # 恢复512可引用原main整包，但其源/侧车/窗口原件要正是main中的同一成员。
     for sid,value in readbacks['recovery']['sources'].items():need(readbacks['main']['sources'].get(sid)==value,'native recovery source/sidecar/packet changed from main')
     need(any(len(item['requests'])==profile['max_requests']for item in readbacks['main']['proof']['native_packets']),
          'selected native maximum batch width was not actually exercised')
@@ -367,14 +367,14 @@ def _verify_selection_fingerprints(fingerprints):
     for ref,expected in fingerprints:
         need(_selection_fingerprint(ref,verify_sha=False)==expected,
              'selection proof input fingerprint changed; no reuse permitted')
-        # 共享盘metadata可碰撞；每个输入仍实际读字节核SHA，绝不以ctime代替内容证明。
+        # 共享盘metadata可碰撞；每个输入仍实际读字节核SHA，不以ctime代替内容证明。
         need(_selection_fingerprint(ref,verify_sha=True)==expected,
              'selection proof input fingerprint changed during content verification')
 
 
 def _selection_inputs(selected,new_contract,purpose,selected_pin):
     refs=[selected_pin,*selected['verified_evidence_pins']];refs.append(dict(path=str(Path(__file__).resolve()),sha256=R.file_sha(__file__)))
-    # 只沿已核实际角色找GPU包；同名质量材料不能冒充bundle，也不能漏掉包成员。
+    # 只沿已核实际角色找GPU包；同名质量材料不能当作bundle，也不能漏掉包成员。
     result=pinned(selected['pilot_result']);plan=pinned(result['plan']);matrix=pinned(plan['main_prepared'])
     chosen=matrix['variants'][selected['selected_profile_name']]['freeze']
     pilot_bundle=dict(path=str(Path(chosen['frozen_copy'])/'bundle_files.json'),sha256=selected['verified_pilot_bundle_sha256'])

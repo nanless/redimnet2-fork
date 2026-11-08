@@ -141,7 +141,7 @@ def _read_retained_cpu_process(job):
 
 
 def _shutdown_retained_pool(pool):
-    """幂等排空；必须由持旧锁的_validate先调用，外层finally不重复释放后shutdown。"""
+    """幂等排空；由持旧锁的_validate先调用，外层finally不重复释放后shutdown。"""
     if pool is not None and not getattr(pool,'_annotation_retained_drained',False):
         pool.shutdown(wait=True,cancel_futures=True)
         pool._annotation_retained_drained=True
@@ -155,7 +155,7 @@ def _drain_retained_pool_on_exit(pool):
 
 @contextlib.contextmanager
 def retained_read_pool(workers,backend='thread',*,producer_value=None,contract=None,purpose='production'):
-    """共享的安全构造入口；union和有界实测CLI复用，绝不用fork。"""
+    """共享的安全构造入口；union和有界实测CLI复用，不用fork。"""
     spec={'retained_read_workers':workers,'retained_read_backend':backend,'purpose':purpose}
     retained_read_workers(spec);retained_read_backend(spec)
     if workers==1:
@@ -316,7 +316,7 @@ def _complete_chunk(index_pin, descriptor, ordinal, queue, producer_value, rows,
                     results=list(read_executor.map(_read_retained_cpu_process,jobs,chunksize=1))
                 else:results=list(read_executor.map(read_one,batch))
             except BaseException:
-                # 失败必须在调用者仍持旧父锁时排空/取消此pool，不能先放锁再留后台读取。
+                # 失败时要在调用者仍持旧父锁期间排空/取消此pool，不能先放锁再留后台读取。
                 _shutdown_retained_pool(read_executor)
                 raise
         for source,(record_sha,commit_sha,decision)in zip(batch,results):

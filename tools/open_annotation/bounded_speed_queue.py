@@ -1,6 +1,6 @@
 """提速新生产者的有界队列：原片懒读、旧结果原producer保留、无数据库。
 
-必须由新冻结worker显式选择；不会修改旧queue或旧labels。资源控制器必须
+由新冻结worker显式选择；不会修改旧queue或旧labels。资源控制器要
 把ExistingProducerLease.pass_fds传入每个GPU子进程，并在CUDA排空后关闭。
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ need = H.need
 
 
 class AllShardsQuarantined(Refused):
-    """所有未完成片都已隔离：显式失败并留证据，禁止空候选的尾部无限循环。"""
+    """所有未完成片都已隔离：显式失败并留证据，不再出现空候选的尾部无限循环。"""
 
 
 def write_new(path, value):
@@ -172,7 +172,7 @@ class BoundedWorkQueue:
             p=self.root/'identity.json'
             if p.exists():need(P.read_json(p,65536)[0]==self.identity,'new queue belongs to another handoff/contract')
             else:write_new(p,self.identity)
-            # broker.json 是游标与完成计数的唯一权威；缺失时绝不静默重建为 next=0。
+            # broker.json 是游标与完成计数的唯一权威；缺失时不静默重建为 next=0。
             # 只有“完全没有任何进度证据”的全新队列才允许初始化一次。
             broker=self.root/'broker.json'
             if not broker.exists():
@@ -449,9 +449,9 @@ def inspect_bounded_progress(index_path,index_sha,queue_root,contract_sha):
 
 
 def verify_bounded_terminal_metadata(index_path,index_sha,queue_root,contract_sha,*,terminal_pin=None,task_id=None,parent_lock_fd=None):
-    """仅确认新queue全部固定槽已封账；不冒充全量侧车、人审或GPU归还验收。
+    """仅确认新queue全部固定槽已封账；不能当作全量侧车、人审或GPU归还验收。
 
-    外部调用须新鲜实际平台终态并独占现有父锁；GPU父内部终态汇总则传其
+    外部调用要求新鲜的实际平台终态并独占现有父锁；GPU父内部终态汇总则传其
     实际持有的parent_lock_fd，不在仍持锁的父内重新open竞争自己的锁。
     """
     root=P.physical(Path(queue_root));reader=H.BoundedShardReader(index_path,index_sha)

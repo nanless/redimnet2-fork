@@ -4,15 +4,15 @@
 记录 `device = 2097190`（集群 GPFS 命名空间），而容器里同一文件读到 `device = 75`
 （另一套挂载命名空间）。inode/bytes/mtime/ctime 完全相同，内容没有变化。
 
-因此 device 只是**挂载命名空间的标签**，不是内容身份。2026-11-07 v2 生产任务在
+因此 device 只是挂载命名空间的标签，不是内容身份。2026-11-07 v2 生产任务在
 `PREFLIGHT_DEVICE_MISMATCH expected=2097190 actual=orphan_source:75,...` 处 exit 21，
 任务在 CUDA 之前就停了——预检把"命名空间不同"误判成"文件变了"。
 
 现在的语义：
-* **device 不符**：打印 `PREFLIGHT_DEVICE_MISMATCH`，回执里记
-  `device_mismatch_observed:true` / `device_relaxed:true`，**继续**（不退出）。
-* **内容不符**（inode / bytes，以及记录里给出时的 mtime_ns / ctime_ns）：
-  打印 `PREFLIGHT_IDENTITY_MISMATCH` 并 **exit 21** —— 这是真的文件变了，必须拒。
+* device 不符：打印 `PREFLIGHT_DEVICE_MISMATCH`，回执里记
+  `device_mismatch_observed:true` / `device_relaxed:true`，继续（不退出）。
+* 内容不符（inode / bytes，以及记录里给出时的 mtime_ns / ctime_ns）：
+  打印 `PREFLIGHT_IDENTITY_MISMATCH` 并以 exit 21 退出：这说明文件内容确实变了，拒绝。
 * 只 `stat` + 只写 stdout；不创建目录、不写文件、不开锁、不碰队列。
 * 由 `gpu_launch.main()` 在 `run()` 之前调用，因此 exit 21 时未 claim 任何租约。
 
@@ -52,7 +52,7 @@ IDENTITY_FIELDS = ('inode', 'bytes', 'mtime_ns', 'ctime_ns')
 
 
 def probe(samples=SAMPLES, *, stat=None):
-    """对每个样本做一次只读 stat，返回逐条结果；永不抛（异常记进 error 字段）。"""
+    """对每个样本做一次只读 stat，返回逐条结果；不抛异常（异常记进 error 字段）。"""
     stat = stat or os.stat
     rows = []
     for sample in samples:

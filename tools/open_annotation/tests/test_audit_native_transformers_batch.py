@@ -35,7 +35,7 @@ def add_feature_protocol(value):
 
 
 def feature_proof(native,row,contract):
-    """显式CPU合成收据；真正tensor读取另由适配器测试覆盖，不冒充GPU。"""
+    """显式CPU合成收据；实际 tensor 读取另由适配器测试覆盖，不能当作GPU。"""
     active=[v for v,m in zip(native['input_token_ids'],native['input_attention_mask'])if m]
     return dict(schema='annotation-official-b1-feature-proof/v1',policy='official_b1_features_then_pad/v1',
         row_id=row['row_id'],original_input_pcm_sha256=row['input_pcm_sha256'],sdk_input_pcm_sha256=row['input_pcm_sha256'],

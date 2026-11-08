@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""只读复核工程保存文件；先实际SHA，再CPU weights_only/mmap；绝不前向或CUDA。"""
+"""只读复核工程保存文件：先核实际SHA，再用CPU weights_only/mmap加载；不跑前向，也不初始化CUDA。"""
 from __future__ import annotations
 import argparse
 import hashlib

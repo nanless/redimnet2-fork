@@ -144,7 +144,7 @@ class ASRStageStore:
             return copy.deepcopy(found)
 
     def plans(self, identities):
-        """调用者持有store锁；恢复pending批次时必须提供原批完整请求。"""
+        """调用者持有store锁；恢复pending批次时要提供原批完整请求。"""
         by_key = {digest(x): x for x in identities}
         require(len(by_key) == len(identities), 'duplicate request identity')
         pending, unseen = {}, []

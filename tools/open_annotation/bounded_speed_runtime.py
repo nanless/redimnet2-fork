@@ -80,7 +80,7 @@ def _file_stamp(path):
 
 def _directory_stamp(path):
     s=os.lstat(path);need(stat.S_ISDIR(s.st_mode),'proof ancestor must remain a nonlinked directory')
-    # 无关文件的创建不使历史证明失效；目录本身被换掉则必须拒绝。
+    # 无关文件的创建不使历史证明失效；目录本身被换掉则拒绝。
     return [s.st_dev,s.st_ino,s.st_mode]
 
 
@@ -128,7 +128,7 @@ def _verify_snapshot_file(entry):
     def stamp(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
     need(_file_stamp(pin['path'])==expected,'sealed proof input identity/content timestamp changed')
     try:
-        # 不跟随末级软链接；FIFO等替换也不能在fstat拒绝前把父进程挂住。
+        # 不跟随末级软链接；FIFO等替换也不能在fstat拒绝前卡住父进程。
         fd=os.open(pin['path'],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
         before=os.fstat(fd)
         need(stat.S_ISREG(before.st_mode)and stamp(before)==expected,'sealed proof input identity/content timestamp changed')
@@ -236,7 +236,7 @@ def _adopt_parent_proof(runtime_pin,evidence):
 
 
 def index_kind(path, expected_sha):
-    """仅识别显式schema；绝不凭可选参数把旧v1变成新薄索引。"""
+    """仅识别显式schema；不凭可选参数把旧v1变成新薄索引。"""
     # 仅分派沿用旧v1读取语义；新薄索引随后由BoundedShardReader独立核物理路径。
     if __package__:from .readonly_progress import read_small
     else:from readonly_progress import read_small
@@ -318,7 +318,7 @@ def check_selected_pilot(pin,new_contract,purpose):
          totals.get('asr_rows')==totals.get('aligner_rows')==0,'recovery must reuse published bytes without model calls')
     need(result.get('schema')=='annotation-bounded-speed-pilot-result/v1' and result.get('purpose')==purpose and
          result.get('all_finite_audits_completed')is True and result.get('database_created')is False,'finite pilot not completely verified')
-    # 比较结果、完整父进程归还和主/恢复track必须属于同一次固定试验。
+    # 比较结果、完整父进程归还和主/恢复track要属于同一次固定试验。
     plan=pinned(result['plan']);main=pinned(selected['main_track']);baseline=pinned(selected['baseline_track']);resume=pinned(selected['recovery_track'])
     baseline_contract=pinned(baseline['contract']);same_profile(candidate,baseline_contract)
     need(baseline_contract['runtime'].get('asr_compute',{'dtype':'float32','attention':'eager'})=={'dtype':'float32','attention':'eager'},'measured baseline must be historical FP32/eager')
@@ -464,7 +464,7 @@ def compile_runtime(runtime_pin,*,fresh=True,selection_scope=None,_selected_proo
         if __package__:from .native_batch_admission import check_native_selected_pilot
         else:from native_batch_admission import check_native_selected_pilot
         if _selected_proof is not None:
-            # 只在真parent仍持有封印FD时采用其已验结果，磁盘布尔/普通JSON不可进入。
+            # 只在真parent仍持有封印FD时采用其已验结果，磁盘上的布尔值或普通JSON不参与判断。
             selected=json.loads(json.dumps(_selected_proof.payload['selected']))
             need(selected.get('schema')==NATIVE_ADMISSION_SCHEMA and selected.get('purpose')==purpose,
                  'sealed selected fact schema/purpose differs')
@@ -566,7 +566,7 @@ def verify_mounts(compiled,*,runner=subprocess.run):
 
 
 class RuntimeLease:
-    """父进程开已有祖先锁；子进程只接收同一FD，绝不另造替代锁。"""
+    """父进程开已有祖先锁；子进程只接收同一FD，不另造替代锁。"""
     def __init__(self,runtime_pin):
         self._initialize(runtime_pin)
 
@@ -577,7 +577,7 @@ class RuntimeLease:
         self.transport=proof_transport_profile(self.compiled['spec'])
 
     def _small_pins(self):
-        # 不按文件体积猜“小”：仅保留原控制链的明确关键JSON与脚本。
+        # 不按文件体积判断“小”：仅保留原控制链的明确关键JSON与脚本。
         # 大finite证明仍逐文件核实际SHA，memfd仅省JSON／映射重构。
         facts=self.compiled['selected'];selected={p['path']for p in facts['verified_evidence_pins']}
         common=[p for p in self.compiled['pins']if p['path']not in selected]
@@ -613,7 +613,7 @@ class RuntimeLease:
             self.current=Q.ExistingProducerLease(self.compiled['spec']['index']['path'],self.compiled['spec']['index']['sha256'],self.compiled['terminal_pin']).__enter__()
             self.held=True
             # 先把所有此前置门（内容/锁/lineage/冻结态）跑完，claim 写盘放到最后：
-            # 任一门失败都不会烧掉唯一生产者声明。
+            # 任一门失败都不会消耗掉唯一生产者声明。
             if self.transport is None:
                 self.verify(allow_missing_claim=True)
             path=Path(self.compiled['unique_claim_path']);core=self.compiled['unique_claim_core']
@@ -694,7 +694,7 @@ class RuntimeLease:
         """仅GPU父调用；原W2原字节原参数，挂载核同原profile，不读百万侧车。"""
         self.verify();c=self.compiled;old=c['old'];R.frozen_bundle(old)
         R.frozen_roots(Path(old['code_root'])/'gpu_launch.py',Path(old['task_root']),Path(old['device_lock_root']))
-        # Python可执行原件必须同前一run固定的二进制，而不是PATH另找解释器。
+        # Python可执行原件要同前一run固定的二进制，不在PATH另找解释器。
         R.pinned_file(old['python_binary']);need(Path(old['python']).resolve(strict=True)==Path(old['python_binary']['path'])==Path(sys.executable).resolve(strict=True),'original/actual interpreter differs')
         command=c['original_commands'][0];result=runner(command,capture_output=True,text=True,timeout=600,check=False)
         output=R.physical(output);output.mkdir(parents=True,exist_ok=True)

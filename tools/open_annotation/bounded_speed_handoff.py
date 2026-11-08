@@ -350,7 +350,7 @@ class BoundedShardReader:
     def lookup_previous_for_claim(self, shard_id, source):
         """新worker领取片后、推理前检查旧结果；返回原producer，不生成新job。
 
-        此方法不取得claim或GPU锁，调用者仍必须持有真实新claim和旧writer父锁。
+        此方法不取得claim或GPU锁，调用者仍要持有真实新claim和旧writer父锁。
         """
         need(self._selected.get(shard_id, {}).get(source['source_id']) == source, 'source outside selected claimed shard')
         proofs=[];portable=self._portable.get(shard_id)

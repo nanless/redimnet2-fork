@@ -1,4 +1,4 @@
-"""在仓库外cwd导入新模块，禁止意外导入真实GPU推理库。"""
+"""在仓库外cwd导入新模块，防止意外导入真实GPU推理库。"""
 from pathlib import Path
 import subprocess
 import sys

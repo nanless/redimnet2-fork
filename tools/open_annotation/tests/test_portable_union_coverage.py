@@ -153,7 +153,7 @@ class PortableUnionTests(unittest.TestCase):
         self.assertTrue(self.x.audit('complete')['exact_union_and_disjoint'])
 
     def test_default_reader_stays_strict_without_portable_context(self):
-        """设计文档：默认（非 portable）读取必须严格，device 参与比较。"""
+        """设计文档：默认（非 portable）读取要严格，device 参与比较。"""
         b=self.x.f.base
         with self.assertRaisesRegex(ValueError,'stat changed'):
             C.retained_sidecar(b.sources[2],b.tree,b.csha,C.record_validator())

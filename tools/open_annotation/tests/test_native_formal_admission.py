@@ -200,7 +200,7 @@ class NativeAdmissionTests(unittest.TestCase):
 
     def test_new_preprocessing_input_difference_never_counts_as_metadata_only(self):
         row=copy.deepcopy(A.pinned(self.f.speed)['rows'][0])
-        # 旧协议不带这些新字段时保持原判断；新协议字段存在时必须明确为True。
+        # 旧协议不带这些新字段时保持原判断；新协议字段存在时要明确为True。
         before=A._metadata_only(row)
         for flag in ('preprocessing_valid_mel_equal','preprocessing_feature_mask_equal','preprocessing_unpadded_prompt_equal'):
             r=copy.deepcopy(row);r['windows'][0]['ASR'][flag]=False;self.assertFalse(A._metadata_only(r))

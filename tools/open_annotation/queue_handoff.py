@@ -124,7 +124,7 @@ def write_new(path,value):
         with os.fdopen(fd,'wb',closefd=False)as stream:
             stream.write(canonical(value));stream.flush();os.fsync(fd)
     finally:os.close(fd)
-    # 保留失败时的pending原件；绝不覆盖目标或删除历史失败证据。
+    # 保留失败时的pending原件；不覆盖目标或删除历史失败证据。
     os.link(pending,p,follow_symlinks=False);pending.unlink();_fsync_dir(p.parent)
     return file_pin(p,private=True)
 
@@ -205,7 +205,7 @@ def check(path,pin):
     old=ref(base['old_control']);freeze=ref(base['freeze_receipt']);union=ref(base['union_spec']);data=ref(base[proof_key])
     consumer=None
     if prepared:
-        # v2复用已完成的逐源剩余清单检查；不把中断的联合库冒充成功。
+        # v2复用已完成的逐源剩余清单检查；不把中断的联合库当成成功。
         plan=ref(union['continuation_plan'])
         need(data.get('schema')=='annotation-remaining-role-finalize/v1'and
             data.get('new_plan')==union['continuation_plan']and

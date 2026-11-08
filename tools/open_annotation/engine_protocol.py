@@ -104,7 +104,7 @@ def code_identity(contract):
 
 
 def validate_native_spec(producer, contract):
-    """读取真正的适配配置；只有一个散列字符串不证明模型与解码声明相同。"""
+    """读取实际的适配配置；只有一个散列字符串不证明模型与解码声明相同。"""
     from vllm_backend import validate_spec
     need('native_asr_spec' in producer, 'vLLM producer requires the actual pinned adapter spec')
     value,_=read_ref(producer['native_asr_spec'])
@@ -185,7 +185,7 @@ def validate_input(row):
 
 
 def native_result_identity(native, planned, source_id, producer, native_spec):
-    """独立保存vLLM原生结果，不把其终止原因猜成旧transformers的EOS。"""
+    """独立保存vLLM原生结果，不把其终止原因当成旧transformers的EOS。"""
     need(native.get('schema') == 'annotation-asr-native-result/v1' and native.get('source_id') == source_id and
          all(native.get(k) == planned[k] for k in ('window_id','input_pcm_sha256','model_input_frames','model_sample_rate')),
          'native ASR request/input identity differs')

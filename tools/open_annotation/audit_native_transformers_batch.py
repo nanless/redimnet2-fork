@@ -111,7 +111,7 @@ def validate_preprocessing_sources_observation(metrics,contract):
 
 
 def validate_native_preprocessing(native,contract,rows,position,request=None):
-    """核独立B1参考及真正generate张量观察；PCM相同不能代替此证明。"""
+    """核独立B1参考及实际 generate 张量观察；PCM相同不能代替此证明。"""
     profile=asr_feature_profile(contract)
     if profile is None:
         need('preprocessing'not in native,'undeclared native B1 feature preprocessing proof')
@@ -568,7 +568,7 @@ def compare_record(a,b,mode='speed'):
         pl=left.get('asr',{}).get('native',{}).get('preprocessing')
         pr=right.get('asr',{}).get('native',{}).get('preprocessing')
         if pl is not None or pr is not None:
-            # 批宽导致的总padding宽度允许不同，有效特征、mask、prompt必须逐条相同。
+            # 批宽导致的总padding宽度允许不同，有效特征、mask、prompt要逐条相同。
             for name,keys in (
                 ('policy',('policy',)),
                 ('source_bindings',('source_bindings_sha256','source_bindings_verified')),

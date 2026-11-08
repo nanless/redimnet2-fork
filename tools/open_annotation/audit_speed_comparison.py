@@ -1,6 +1,6 @@
 """只读比较固定输入的转写提速试验和断点恢复，不能授予人工质量资格。
 
-输入必须是已结束的有限验证任务。只写明确指定的新报告，不创建队列、不加载模型。
+输入是已结束的有限验证任务。只写明确指定的新报告，不创建队列、不加载模型。
 """
 from __future__ import annotations
 import argparse
@@ -93,7 +93,7 @@ def compute_execution(metrics, contract):
                 'actual SDPA QKV tensor dtype differs from explicit ASR profile')
         else: need(sum(sdpa.values()) == 0, 'requested eager observed actual SDPA calls')
     else:
-        # Legacy只说明实际发生的逐模块配置，不能按顶层eager猜子模块。
+        # Legacy只说明实际发生的逐模块配置，不能按顶层eager推断子模块。
         actual = observation.get('attention_module_configurations', {})
         if not all(actual.get(k) in {'eager', 'sdpa'} for k in forward):
             return {'verified': False, 'reason': 'legacy_attention_module_config_missing_or_unsupported',

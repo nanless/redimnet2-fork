@@ -2,15 +2,15 @@
 
 上一篇：[背景与动机](01-background.md) · 下一篇：[代码走读](03-code-walkthrough.md)
 
-这篇文档解决一个问题：**这个仓库里到底有哪几块东西、它们之间的依赖方向是什么、数据从哪进哪出、哪些部分已经冻住不能动。** 目标是三个月后接手的人能凭这篇文档找到文件、知道改哪个文件会影响哪条链路，而不是凭目录名猜。
+这篇文档回答一组问题：这个仓库里有哪些块、它们之间的依赖方向、数据从哪进哪出、哪些部分已经冻住。目标是三个月后接手的人能凭这篇文档找到文件，知道改哪个文件会影响哪条链路，不必靠目录名去猜。
 
-核对口径：2026-11-08 只读核对 `dev_a800_2gpus:/root/code/github_repos/redimnet2-fork`。**仓库状态不写死**——HEAD 与未提交改动数用 `git rev-parse --short HEAD`、`git status --porcelain | wc -l` 查，或看自动生成的 [STATUS 第 1 节](STATUS.md)。本文引用行号的地方只对当时的提交成立，改动后请以函数名重新定位。**没有实际读到的内容一律标注“未验证”**，不靠目录名推断。
+核对口径：2026-11-08 只读核对 `dev_a800_2gpus:/root/code/github_repos/redimnet2-fork`。**仓库状态不写死**——HEAD 与未提交改动数用 `git rev-parse --short HEAD`、`git status --porcelain | wc -l` 查，或看自动生成的 [STATUS 第 1 节](STATUS.md)。本文引用行号的地方只对当时的提交成立，改动后按函数名重新定位。没有实际读到的内容，本文标注“未验证”，不按目录名推断。
 
 ---
 
 ## 1. 仓库体量实测
 
-这一节解决“这个仓库有多大、力气该花在哪”。数字全部来自本次 `find ... -name "*.py" | xargs wc -l` 的实测。
+这一节看仓库有多大、力气该花在哪。数字全部来自本次 `find ... -name "*.py" | xargs wc -l` 的实测。
 
 | 目录 | py 文件数 | 总行数 | 里面是什么 |
 |---|---:|---:|---|
@@ -53,7 +53,7 @@
 
 ## 2. 五层结构与依赖方向
 
-这一节解决“谁可以 import 谁”。仓库不是按包安装的库，而是靠 `PYTHONPATH` 与目录约定拼接，**依赖方向错了会在导入期直接炸**，所以先记住方向。
+这一节说明谁可以 import 谁。仓库没有按包安装，靠 `PYTHONPATH` 与目录约定拼接；**依赖方向反了会在导入期直接报错**，所以先看方向。
 
 ```text
 L4 文档与证据    docs/  checkpoints/reports/  docs/plans/  docs/reviews/
@@ -72,7 +72,7 @@ L1 训练栈        applications/speaker_rec/
 L0 模型库        redimnet2/  （只依赖 torch / torchaudio / numpy，不认识训练栈）
 ```
 
-实测的导入事实（不是约定，是代码里就这么写的）：
+导入事实（读代码得到，不是文档约定）：
 
 | 事实 | 证据 |
 |---|---|
@@ -88,7 +88,7 @@ L0 模型库        redimnet2/  （只依赖 torch / torchaudio / numpy，不认
 
 ## 3. 第 0 层：`redimnet2/` 模型库
 
-这一节解决“模型是怎么把一个波形变成一个 192 维向量的”，以及“为什么变长批处理需要一路传掩码”。
+这一节看模型怎么把一个波形变成一个 192 维向量，以及变长批处理为什么需要一路传掩码。
 
 ### 3.1 三个对外入口
 
@@ -98,7 +98,7 @@ L0 模型库        redimnet2/  （只依赖 torch / torchaudio / numpy，不认
 | `from_pretrained(...)` / `redimnet2(...)` / `hubconf.redimnet2(...)` | `__init__.py:38-47`、`__init__.py:50-53`、`hubconf.py:10-26` | 同上 | 同上 | 三个名字同一行为；`hubconf.py` 是 `torch.hub` 的入口壳 |
 | `ReDimNet2Wrap(**model_config)` | `redimnet2/redimnet2.py:508-610` | 配置字典 | `nn.Module` | 训练与自定义实验的正式入口，`ReDimNet2Custom` 只是它的别名（`:687-688`） |
 
-**外部边界**：`load_custom` 的权重来源是硬编码的 GitHub Release 地址（`__init__.py:6`）。离线机器上它必然失败，这不是 bug，是仓库对“公开权重”的边界。仓库内训练/评测不经过它，而是直接构造 `ReDimNet2Wrap` 再 `load_state_dict`。
+**外部边界**：`load_custom` 的权重来源是硬编码的 GitHub Release 地址（`__init__.py:6`）。离线机器上它必然失败；这是仓库对“公开权重”的边界，不是 bug。仓库内训练/评测不经过它，而是直接构造 `ReDimNet2Wrap` 再 `load_state_dict`。
 
 ### 3.2 形状与数据流
 
@@ -122,7 +122,7 @@ embedding (B, 192)
 
 **型号 B0–B6 不在包内**：包内没有 B0–B6 的字典或分支（对 `redimnet2/` 全目录检索 `b6`/`B6` 无命中），规模完全由配置里的 `C`、`out_channels`、`stages_setup` 决定。所以“这是 B6”只能从配方或检查点里的 `model_config` 读出来。
 
-### 3.3 掩码契约：三处必须同时成立
+### 3.3 掩码契约：三处要同时成立
 
 这是全仓最容易改错的地方。传 `lengths` 之后，掩码要一路穿到池化，任何一处漏掉都会静默改变结果（不是报错）。
 
@@ -136,9 +136,9 @@ embedding (B, 192)
 | 池化 | `layers/poolings.py:181-241` | 上下文均值/方差、注意力 logits、加权矩都排除补零帧 |
 | 截断一致性 | `redimnet2.py:649-671` | `Wrap.forward` 提前把 `(x, mask)` 一起截到 `time_stride` 整数倍，避免骨干里两条分支帧数不同 |
 
-两个已写进代码注释的坑，接手时必须知道：
+代码注释里记了两个坑，接手时需要知道：
 
-1. **“传了 `lengths`”不等于“和逐条推理逐位相同”**。只要批里有补零，边界帧会进入卷积感受野，余弦会掉到 0.92–0.98（`redimnet2.py:466-495` 的实测记录；`tests/test_varlen_masking.py` 记的是下限）。文档里不许写成“等于 1.0”。
+1. **“传了 `lengths`”不等于“和逐条推理逐位相同”**。只要批里有补零，边界帧会进入卷积感受野，余弦会掉到 0.92–0.98（`redimnet2.py:466-495` 的实测记录；`tests/test_varlen_masking.py` 记的是下限）。写成“等于 1.0”与这条实测不符。
 2. **补零却不传 `lengths`** 是错误用法，同一说话人的余弦会掉到 0.326 量级（同上注释）。
 
 ### 3.4 池化与分类头
@@ -149,13 +149,13 @@ embedding (B, 192)
 | `TAP`/`TMAP`/`TSDP`/`TSTP`/`MHASTP`/`MQMHASTP` | 同文件 `:30/53/79/99/244/318` | 其它池化，配方可换 |
 | 分类头 | **不在 `redimnet2/`**，在 `applications/speaker_rec/wespeaker_lite/models/projections.py` | 训练期的大间隔分类器与损失，推理时丢弃 |
 
-这条边界很重要：`redimnet2/` 到 embedding 为止；**“embedding 之后算什么损失”属于训练栈**。所以导出的推理权重里没有 `projection.*`，而训练检查点里有（见第 5.4 节）。
+这条边界的作用是：`redimnet2/` 到 embedding 为止；**“embedding 之后算什么损失”属于训练栈**。所以导出的推理权重里没有 `projection.*`，训练检查点里有（见第 4 节的损失一行）。
 
 ---
 
 ## 4. 第 1 层：`applications/speaker_rec/` 训练栈
 
-这一节解决“一次训练从敲命令到写出 `model_N.pt` 中间发生了什么”。
+这一节说明一次训练从执行命令到写出 `model_N.pt` 中间经过哪些环节。
 
 ### 4.1 启动与进程模型
 
@@ -170,7 +170,7 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 要点：
 
 - **卡数不由配置决定**。`launch.sh` 第二个参数是唯一来源；配方里写 `gpus:` 不会被读（`official_repro_ptn.yaml:81-82` 的注释就是这么写的）。
-- 每个 rank 各自读同一份样本清单，`spk2id()` 在**每个 rank 上分别**从 `utt2spk` 重建（`train.py:226-232`）——所以 `utt2spk` 的行序必须稳定，否则各 rank 的类别编号会不一致。
+- 每个 rank 各自读同一份样本清单，`spk2id()` 在**每个 rank 上分别**从 `utt2spk` 重建（`train.py:226-232`）——`utt2spk` 的行序决定各 rank 的类别编号，行序变了编号就不一致。
 - `models/` 的创建与恢复判定之间有 `dist.barrier`（`train.py:195-207`），防止非 0 rank 先列目录、误判“没有可恢复检查点”而从第 1 轮重新开始。
 
 ### 4.2 数据面
@@ -186,10 +186,10 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 
 `collate_varlen` 产出的 batch 字典键就是训练器读取的契约：`key`（语句名）、`label`（整数类别）、`wav`（右侧补零后的波形）、以及**仅变长时存在**的 `lengths`。`executor.run_epoch` 用 `batch.get('lengths', None)` 判断走哪条路（`utils/executor.py:225-231`），所以**老配方不加这个键就完全走旧路径**。
 
-已写进代码的硬约束：
+代码里的几条硬约束（违反即抛错）：
 
-- 打开按语音活动取段（`dataset_args.vad_segments.enable`）必须同时打开变长（`dataset_args.varlen.enable`），否则 `Dataset()` 直接抛错（`dataset/dataset.py:346-355`），因为按语音活动取出的片段长度本来就是变的。
-- 分桶打开时，`DataLoader` 的 `batch_size` 必须置 `None`、`drop_last` 必须去掉（`train.py:340-357`），否则会把已经成批的数据再乘一次批大小。
+- 打开按语音活动取段（`dataset_args.vad_segments.enable`）而不打开变长（`dataset_args.varlen.enable`）时，`Dataset()` 直接抛错（`dataset/dataset.py:346-355`），因为按语音活动取出的片段长度本来就是变的。
+- 分桶打开时，`DataLoader` 的 `batch_size` 置 `None`、`drop_last` 关掉才能正常工作；留着原值会把已经成批的数据再乘一次批大小（`train.py:340-357`）。
 - 每轮结束的步数上限来自 `sample_num_per_epoch // world_size // batch_size`，为 0 时直接断言失败（`train.py:371-390`），因为训练循环用 `if (i+1) == epoch_iter: break` 收尾，为 0 会永不结束。
 
 ### 4.3 优化面
@@ -197,7 +197,7 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 | 组件 | 位置 | 关键事实 |
 |---|---|---|
 | 模型 + 分类头 | `train.py:441-448` | `SpeakerModel(backbone, projection)`；`SpeakerModel.forward` 直接转发给骨干（`models/speaker_model.py:26-36`） |
-| 损失 | `train.py:596` | `getattr(torch.nn, configs['loss'])`。**注意**：三语料 B6 配方用 `project_type: sphereface2`，该投影头自己算损失并返回 `(logits, loss)`（`models/projections.py:201-211`），训练器见元组就取第二项（`utils/executor.py:263-268`）。因此配方里的 `loss: CrossEntropyLoss` 在这条路上**不生效**（见 03 的可疑点清单） |
+| 损失 | `train.py:596` | `getattr(torch.nn, configs['loss'])`。三语料 B6 配方用 `project_type: sphereface2`，该投影头自己算损失并返回 `(logits, loss)`（`models/projections.py:201-211`），训练器见元组就取第二项（`utils/executor.py:263-268`）。因此配方里的 `loss: CrossEntropyLoss` 在这条路上**不生效**（见 03 的可疑点清单） |
 | 参数组 | `train.py:601-608` | 两组：骨干用 `optimizer_args.weight_decay`，投影头用 `loss_weight_decay_mult × weight_decay` |
 | 学习率调度 | `utils/schedulers.py:97-320`；装配在 `train.py:616-640` | 纯 Python 类，不是 `torch.optim.lr_scheduler`；由**绝对迭代数**驱动（`executor.py:213-220` 每步 `scheduler.step(cur_iter)`），所以续训能自行复现轨迹 |
 | 学习率缩放 | `train.py:617-633` | 默认 `lr_scaling: legacy`：配方峰值学习率会被 `world_size × batch_size / 64` 乘一遍。八卡每卡 96 条时倍率 12，配方写 0.06 实际跑 0.72（`official_repro_ptn.yaml:192` 有同样注释）。要“写多少跑多少”就写 `lr_scaling: base_lr` |
@@ -233,7 +233,7 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 | `scripts/export_checkpoint.py:19-43` | 把训练检查点剥成推理权重（只留骨干，附 `model_config`） |
 | `applications/speaker_rec/scripts/cloud/evaluate_b6_mix_reproduction.sh` | 三语料复现的正式评测包装（训练权重 + 官方参考权重对比） |
 
-**口径纪律**：`val_log.csv` 里的 `vox1-eer-8s` 只读前 8 秒，**不能与官方整段协议的 0.26% 直接相减比较**（AGENTS.md 第 9.1 节已写明）。同口径比较只能拿整段评测脚本重跑。
+**口径纪律**：`val_log.csv` 里的 `vox1-eer-8s` 只读前 8 秒，与官方整段协议的 0.26% **不是同一口径，直接相减没有意义**（AGENTS.md 第 9.1 节已写明）。要做同口径比较，只能用整段评测脚本重跑。
 
 ### 4.6 配方家族
 
@@ -243,7 +243,7 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 |---|---|---|
 | 只练 VoxCeleb2 | `examples/vox2/recipes/redimnet2/{b0..b6}/{ptn,lm}.yaml` | 公开权重口径，b0 是冒烟首选 |
 | 三语料（VB2+Vox2+CNC2） | `examples/vb2_vox2_cnc2/recipes/redimnet2/{b3,b6}/*.yaml` | 复现论文主表；`official_repro_ptn.yaml` / `official_repro_lm.yaml` 是本次正式实验的依据 |
-| 变体 | 同目录 `varlen_*.yaml`、`vadseg_*.yaml` | 变长训练、按语音活动取段训练；必须成对打开（见 4.2） |
+| 变体 | 同目录 `varlen_*.yaml`、`vadseg_*.yaml` | 变长训练、按语音活动取段训练；两类开关成对打开（见 4.2） |
 
 三语料 B6 主训练配方的关键取值（`official_repro_ptn.yaml`，行号为该文件内行号）：`data_type: raw_fast`（:16）、每卡 96 条（:18）、200 帧定长裁剪（:71）、`compile_backbone: null`（:15，本次明确关闭 `torch.compile`）、`num_epochs: 120`（:173）、`SGD lr 0.06 momentum 0.9 nesterov`（:174-179）、`project_type: sphereface2 scale 32 t 3 lanbuda 0.7`（:180-188）、`save_epoch_interval: 1`（:189）、间隔 `0.0→0.2`、第 15 轮开始升、第 30 轮固定（:87-94）。
 
@@ -253,7 +253,7 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 
 ## 5. 第 2 层：标注系统 `tools/open_annotation/`
 
-这一节解决“逐音频标注是怎么组织的：谁持有 GPU、谁写盘、什么条件下才允许正式跑”。这是全仓最复杂的部分，90 个顶层模块，但结构其实只有六层。
+这一节说明逐音频标注怎么组织：谁持有 GPU、谁写盘、什么条件下才允许正式跑。这是全仓最复杂的部分，有 90 个顶层模块，但结构只有六层。
 
 ### 5.1 六层划分
 
@@ -277,20 +277,20 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 
 ### 5.3 一次运行的目录布局与互斥规则
 
-`gpu_launch.py:69-82` `validate_output_paths()` 把规则写成了断言，接手时不要放宽：
+`gpu_launch.py:69-82` 的 `validate_output_paths()` 把规则写成了断言：
 
-| 参数 | 必须满足 |
+| 参数 | 断言要求 |
 |---|---|
 | `--run-root` | 已存在的目录，且不等于代码目录、也不是代码目录的祖先（`:72`） |
 | `--device-lock-root` | 与 `run-root` 互不包含（`:74`）——所有协作任务共用一套卡锁，不能每个任务自造 |
 | `--output` / `--queue-root` / `--output-root` | 都在 `run-root` 之内、都在代码目录之外，三者两两互不包含（`:75-82`） |
-| `--output` | 必须不存在（`:78`），失败后换新目录，旧目录留证 |
+| `--output` | 已存在即拒绝（`:78`）；失败后换新目录，旧目录留证 |
 
 运行期还会在 `queue_root` 下放一把 `.parent.lock`（`gpu_launch.py:129-138`，`work_queue.py:61-67` 同名实现），保证同一队列只有一个父进程；worker 通过 `pass_fds` 继承这把锁与各卡锁的 fd，并在 `authenticate_resource()` 里核对 fd 指向的 inode（`worker.py:88-90`）。
 
 ### 5.4 单个来源的处理顺序（worker）
 
-`worker.py:113-232` `process_group()` 是标注系统的“主循环体”，顺序不能换：
+`worker.py:113-232` 的 `process_group()` 是标注系统的主循环体，处理顺序固定：
 
 ```text
 来源行 (source dict: source_id / dataset / relative_path / audio_path)
@@ -309,7 +309,7 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 
 - **窗口是“拥有区 + 上下文”两段**：`owned_start/end` 决定一个字属于哪个窗，`context_start/end` 是实际送模型的音频；跨窗重复的字按中点归属（`audio_windows.py:245-250`）。
 - **时间不是浮点乘采样率**：v2 映射把十进制秒当有理数处理（`source_clock.py:16-27`），避免“恰好共享边界”被算成 1 个采样点的重叠。
-- **发布前必须复查源文件**：`worker.py:216-219` 在发布前重读 stat，变了就把该源降级为 `decode_failed` 且不产出字单元——这是“音频在跑的过程中被替换”的唯一防线。
+- **发布前会复查源文件**：`worker.py:216-219` 在发布前重读 stat，变了就把该源降级为 `decode_failed` 且不产出字单元——这是“音频在跑的过程中被替换”的唯一防线。
 
 ### 5.5 队列、侧车与质量轴
 
@@ -319,12 +319,12 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 | 完成位图 | `work_queue.py:21-37,140-155` | 固定长度二进制位图，每分片一个槽位，写入后立即 `pread` 回读比对 |
 | 分片回执 | `work_queue.py:114-139` `receipt()` | 逐条核对 `schema`、索引 SHA、合同 SHA、分片 SHA、来源数与来源 ID 集合 |
 | 侧车发布 | `sidecar.py:56-69` `publish()` | 路径镜像源目录（`dataset/relative_path + '.annotation.json'`），`atomic_new` 不可覆盖，写完回读比对，再补 `.commit.json` |
-| 侧车查找 | `sidecar.py:32-54` `lookup()` | 语义回读 + 源 stat 复核；只有“侧车已写、commit 未写”这一种崩溃可以修 commit，其余一律拒绝 |
+| 侧车查找 | `sidecar.py:32-54` `lookup()` | 语义回读 + 源 stat 复核；只有“侧车已写、commit 未写”这一种崩溃可以修 commit，其余情况都拒绝 |
 | 阶段缓存 | `sidecar.py:77-106` `StageCache` | 按输入摘要寻址，命中时重新校验输入与输出摘要；已有胜者永不被覆盖 |
 | 质量轴 | `quality_axes.py:113-160`、`schema.py:130-219` | 机器可重建的分轴计数 + 保守的“为什么还不能当候选”的原因列表 |
 | 判定 | `schema.py:220-234` `build_record()` | `decision.state` 只有三种：`failed`（源解码失败）、`unknown`（有原因）、`candidate`（无原因）；**三者都写 `usable_for_training=False`** |
 
-`schema.py:130-219` 的原因列表是这套系统的“契约条文”，例如：源未完整解码、stat 前后不一致、窗口没有铺满整段、ASR 未观测到结束符、对齐目标与 ASR 文本不一致、对齐文本覆盖不上、源单位重叠或乱序。**改判定条件等于改数据资格**，必须当作合同变更处理。
+`schema.py:130-219` 的原因列表是这套系统的“契约条文”，例如：源未完整解码、stat 前后不一致、窗口没有铺满整段、ASR 未观测到结束符、对齐目标与 ASR 文本不一致、对齐文本覆盖不上、源单位重叠或乱序。**改判定条件等于改数据资格**，所以这类改动按合同变更处理：换版本，不就地改。
 
 ### 5.6 原生合批的文件事务
 
@@ -338,7 +338,7 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
   → 单行结果只能从已落盘批次里读，并带 durable_native_batch 引用  :192-238
 ```
 
-硬规则：**未提交的 cohort 必须提供原来的全部行与原顺序**，不允许“拿剩下的缓存未命中行另起一批”（`:196-214` 的 `need`）；失败会把整批原样写成 `attempts/*.json` 再抛出（`:185-190`）。
+规则写在 `:196-214` 的 `need` 里：未提交的 cohort 要带原来的全部行与原顺序，“拿剩下的缓存未命中行另起一批”会被拒绝；失败会把整批原样写成 `attempts/*.json` 再抛出（`:185-190`）。
 
 ### 5.7 准入链
 
@@ -351,7 +351,7 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
   → 正式八卡（gpu_launch.py --target-uuids auto8）
 ```
 
-规模门是硬的：正式用途要求 `n ≥ 3000` 且恢复轨 `rc == 512`（`native_batch_admission.py:246-248`，AGENTS.md 第 9.3 节同款表述）。300 条 pilot 不算准入。
+规模门是硬条件：正式用途要求 `n ≥ 3000` 且恢复轨 `rc == 512`（`native_batch_admission.py:246-248`，AGENTS.md 第 9.3 节同款表述）。300 条 pilot 不算准入。
 
 ### 5.8 交接与提速族
 
@@ -361,7 +361,7 @@ applications/speaker_rec/launch.sh <config.yaml> [num_gpus] [overrides...]
 
 ## 6. 第 3 层：接续与 LM `tools/ptn_resume/`
 
-这一节解决“主训练中断后怎么受控接上、以及 LM 凭什么能启动”。
+这一节看主训练中断后怎么受控接上，以及 LM 凭什么能启动。
 
 ```text
 build.py（47→48 接续包）
@@ -371,7 +371,7 @@ build.py（47→48 接续包）
   ├─ 复制本仓 state_gate.py / contracts.py 为 runtime/                                                INTERFACE.md:21
   └─ 写 resume-contract.json / source_delta.json / source_manifest.json / bundle_files.json            :116-166
 
-state_gate.verify_restored()（真实执行前必须调用）
+state_gate.verify_restored()（真实执行前调用；不调用会跳过恢复校验）
   ├─ verify_package：成员集合、逐文件摘要、源树 190 成员、两处差异                              state_gate.py:35-63
   ├─ 重读 model47（大小、SHA、只允许 4 个键、823 状态 / 584 动量）                              :79-83
   ├─ 逐张量精确比较 model / optimizer / scaler                                                  :91-100
@@ -390,7 +390,7 @@ lm_launch/（启动门，容器内执行）
   └─ lm_stage_gate.py：核 clock/批大小/margin/说话人表/配方/日志标记                    :37-51,119-279
 ```
 
-两个“设计上就该是 false / 就该校验”的点，别当故障修：
+两个“设计上就该是 false / 就该校验”的点，不是故障：
 
 - `ready_for_lm_execution` 恒 `false`（AGENTS.md 第 9.4 节）：它是“准备情况”检查器的输出，不是执行许可。
 - `verify_restored` 返回的 `runtime_admission: false`（`state_gate.py:112`）：单份精确状态不证明锁、资源、八 rank 一致。
@@ -458,7 +458,7 @@ PTN 的 models/model_115.pt（650,778,662 B，sha 65497b6a…）
 
 ## 9. 冻结与可改
 
-这一节解决“我能不能改这个文件”。判断标准不是“看起来重要不重要”，而是“它的 SHA 有没有被别人当作身份钉住”。
+这一节说明哪些文件可以改。判断标准是它的 SHA 有没有被别人当作身份钉住，而不是看起来重不重要。
 
 ### 9.1 已冻结、不可改（改了就要重新打包、重新准入）
 
@@ -477,14 +477,14 @@ PTN 的 models/model_115.pt（650,778,662 B，sha 65497b6a…）
 
 | 对象 | 影响面 | 自测方式 |
 |---|---|---|
-| `redimnet2/` 新增可选参数 | 推理一致性；已发布权重依赖的默认路径**必须逐位不变** | `tests/test_mask_input_contract.py`、`tests/test_varlen_masking.py` |
+| `redimnet2/` 新增可选参数 | 推理一致性；已发布权重依赖的默认路径**逐位不变**，改了就不再可比 | `tests/test_mask_input_contract.py`、`tests/test_varlen_masking.py` |
 | 训练栈新增可选配置项 | 老配方不写就走老路径 | `tests/test_schedule_and_launch_guards.py`、`tests/test_training_numeric_sampling.py` |
 | 新增配方 yaml | 只影响该实验 | 短测（`make_b6_smoke_recipe.py` 一类） |
 | `tools/open_annotation/` 的非引擎工具（绘图、只读进度、对照审计） | 不影响合同身份 | `python3 -m unittest discover -s tools/open_annotation/tests` |
 | `tools/ptn_resume/tests/`、`engineering_two_gpu.py` 等证据工具 | 不影响已冻结包 | `python3 -m unittest discover -s tools/ptn_resume/tests` |
 | 文档 `docs/*.md` | 无运行时影响 | `docs/reviews/check_document_links.py`、`check_report_tables.py` |
 
-判定口诀：**先看它是不是 `engine_source_files` 里的一员，再看它是不是某个包里被 SHA 钉住的一员，最后看它是不是公式本身。** 三者都不是，才是普通代码。
+判定顺序：**先看它是不是 `engine_source_files` 里的一员，再看它是不是某个包里被 SHA 钉住的一员，最后看它是不是公式本身。** 三者都不是，才是普通代码。
 
 ---
 
@@ -496,9 +496,9 @@ PTN 的 models/model_115.pt（650,778,662 B，sha 65497b6a…）
 | 变长批处理为什么结果不完全一致 | `redimnet2/redimnet2.py:466-495`、`docs/08-变长训练与长度分桶.md` |
 | 训练为什么卡住/不收敛 | `train.py:371-390`（步数断言）、`:616-647`（学习率与间隔）、`executor.py:213-289` |
 | 检查点能不能续训 | `utils/checkpoint.py:31-101`；**四键齐不齐**比 SHA 更重要 |
-| 某个配方到底跑的是哪套数据 | 配方 `train_data`/`train_label` 指向的 `data.list`/`utt2spk`；不要凭 `exp_dir` 目录名推断 |
+| 某个配方到底跑的是哪套数据 | 配方 `train_data`/`train_label` 指向的 `data.list`/`utt2spk`；`exp_dir` 目录名不能作为依据 |
 | 标注为什么停了 | `docs/reviews/` 里最近一份、`worker.py:280-295` 的 chunk 事件、`report.py:41-175` |
-| 标注能不能改代码 | 第 9.1 节；改了引擎文件就必须重新打包 + 重跑 pilot + 重新准入 |
+| 标注能不能改代码 | 第 9.1 节；改了引擎文件，需要重新打包、重跑 pilot、重新准入 |
 | LM 能不能启动 | `lm_launch/README.md`、`tools/ptn_resume/三段LM准备协议.md`、AGENTS.md 第 9.2 节 |
 | 三段证据从哪来 | `three_segment_lm_check.py` 的 `build` 子命令与它读的原件清单 |
 
@@ -506,7 +506,7 @@ PTN 的 models/model_115.pt（650,778,662 B，sha 65497b6a…）
 
 ## 11. 未验证与已知限制
 
-这一节列出本文**没有**证明的事，避免被当成结论引用。
+这一节列出本文没有证明的事，避免被当成结论引用。
 
 | 项 | 状态 |
 |---|---|

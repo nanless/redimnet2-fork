@@ -210,7 +210,7 @@ def execute(plan_pin,*,allow=False):
             controller_source_sha256=sha_file(__file__),child_code_sha256=hashlib.sha256(CHILD_CODE.encode()).hexdigest(),source_pins={'sealer':plan['sealer'],'track':plan['track'],'audit_bundle':plan['audit_bundle']},
             deadline_seconds=plan['deadline_seconds'],stack_dump_interval_seconds=60,CUDA_VISIBLE_DEVICES='',shell_used=False)
         write_new(root/'intent.json',intent)
-        # 意图写盘后再核固定输入；不得把已改源码或旧输出传给子进程。
+        # 意图写盘后再核固定输入；不把已改源码或旧输出传给子进程。
         check(plan_pin,created_root=root)
         with (root/'stdout.log').open('xb')as stdout,(root/'stderr.log').open('xb')as stderr:
             child=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=stdout,stderr=stderr,env=environment(),shell=False,start_new_session=True)

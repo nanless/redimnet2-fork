@@ -32,7 +32,7 @@ MIN_WINDOW_FRAMES = 400
 def refuse_short_window(window, frames, context, counters):
     """把进不了 ASR 的短窗写成失败窗：不抛异常、不丢源、不进批次。
 
-    形态与 process_group 里 read_window 失败的兜底一致（schema 的 preprocessing_failed
+    形态与 process_group 里 read_window 失败时一致（schema 的 preprocessing_failed
     谓词只认这四个字段），并把帧数与下限写进 errors，便于事后按原因统计。
     """
     error = ('asr_input_too_short: model input has %d frames at 16000 Hz (%.3f ms); '
@@ -187,9 +187,9 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
             if len(counters['errors']) < 1000:
                 counters['errors'].append({'source_id': source['source_id'], 'stage': 'source_refused',
                                            'reason': str(exc)[:400]})
-            # 2026-11-08 P0-1b：被拒的源也必须留下可提交的记录。
+            # 2026-11-08 P0-1b：被拒的源也要留下可提交的记录。
             # work_queue.finish() 要求分片内每个源都有 receipt，只记数不产记录会让整个分片
-            # 永远 "cannot commit incomplete chunk"（跑到那里就停，无人值守全线卡死）。
+            # 一直报 "cannot commit incomplete chunk"（跑到那里就停，无人值守时整条线停住）。
             # 这里按 schema 已有的 decode_failed 语义造一条空窗记录：decision.state='failed'，
             # windows=[] 是合法形态（与"VAD 未检出语音"同构），因此不需要新增任何 schema 键。
             contexts.append({"source": source,
@@ -286,7 +286,7 @@ def process_group(sources, claim, store, cache, backend, contract, args, descrip
         record = native_json(record)
         if identity.get("refused_reason") and store.path(source).exists():
             # 拒绝原因可能正是"这个位置已经有一份不同/损坏的产物"（corrupt sidecar、content changed）：
-            # store.publish 的 no-replace 会抛 Refused，分片照样提交不了。绝不覆盖既有证据，
+            # store.publish 的 no-replace 会抛 Refused，分片照样提交不了。不覆盖既有证据，
             # 改回一条不带侧车的 failed receipt —— 仍然表达"此源失败但不是引擎崩溃"。
             receipt = refused_receipt(source, args.contract_sha, identity["refused_reason"])
             published = False

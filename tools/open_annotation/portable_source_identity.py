@@ -111,7 +111,7 @@ def valid_stat(value):
 
 
 class SidecarInventory:
-    """一次目录扫描建新SQLite清单；千万个missing来源只查清单，不stat PFS。"""
+    """一次目录扫描建新SQLite清单；大量missing来源只查清单，不stat PFS。"""
     def __init__(self,path,tree,spec,spec_sha,domains,progress=None):
         self.path=physical(path);self.tree=physical(tree);self.spec=spec;self.spec_sha=spec_sha
         need(not self.path.exists()and self.path.parent.is_dir(),'fresh external inventory database required')

@@ -1,4 +1,4 @@
-"""可移植旧计算方式接续的独立CPU反例；真实文件锁但绝不调用GPU。"""
+"""可移植旧计算方式接续的独立CPU反例；真实文件锁但不调用GPU。"""
 import copy
 import datetime
 import fcntl
@@ -20,7 +20,7 @@ from test_resume_existing_annotation import ResumeFixture,pin
 
 
 class PortableSuccessorFixture:
-    """元数据合成输入不冒充生产验收；沿用现有旧协议文件fixture。"""
+    """元数据合成输入不当作生产验收；沿用现有旧协议文件fixture。"""
     def __init__(self):
         self.f=ResumeFixture();self.f.legacy();self.root=self.f.root;old=self.f.spec;b=self.f.base
         self.code=self.f.task/'successor-code';shutil.copytree(self.f.code,self.code)
@@ -113,7 +113,7 @@ class PortableSuccessorFixture:
 
 
 class PreparedSuccessorFixture(PortableSuccessorFixture):
-    """显式v2准备收据夹具；不用union数据库证明，不调用真正模型。"""
+    """显式v2准备收据夹具；不用union数据库证明，不调用真实模型。"""
     def __init__(self):
         setup_class=sys.modules[ResumeFixture.__module__].F.SpeedContinuationTests
         original_setup=setup_class.setUp
@@ -365,7 +365,7 @@ class PortableSuccessorTests(unittest.TestCase):
     def test_plan_unknown_producer_is_refused_even_when_rebound(self):
         self._reject_rebound_database("UPDATE sources SET selected='unknown' WHERE sid=(SELECT sid FROM sources LIMIT 1)")
     def test_plan_additional_foreign_producer_is_not_hidden_by_correct_old_new_counts(self):
-        # 旧/新计数仍恰好各3条；总数检查必须拒绝第三组，不能只核两项条件和。
+        # 旧/新计数仍恰好各3条；总数检查要拒绝第三组，不能只核两项条件和。
         self._reject_rebound_database('INSERT INTO sources VALUES(?,?,?,?,?,?,?,?,?)',
             ('src_'+'f'*64,'a'*64,3,0,'fixture/extra.annotation.json','foreign',None,None,None))
     def test_plan_additional_null_producer_is_not_hidden_by_correct_old_new_counts(self):
@@ -399,7 +399,7 @@ class PortableSuccessorTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'source/producer partition'):
                     P.check_database(pin(self.f.db),self.f.union_value,self.f.validation)
     def test_actual_partition_query_uses_one_scan_without_a_temporary_sort(self):
-        # 使用检查器实际送给SQLite的SQL做执行计划检查，不另写一份新聚合冒充。
+        # 使用检查器实际送给SQLite的SQL做执行计划检查，不另写一份新聚合代替。
         actual_connect=sqlite3.connect;plans=[]
         with actual_connect(str(self.f.db))as database:
             oldplan=database.execute('EXPLAIN QUERY PLAN SELECT selected,COUNT(*) FROM sources GROUP BY selected').fetchall()

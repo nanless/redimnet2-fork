@@ -139,7 +139,7 @@ class ProbeTests(unittest.TestCase):
         c=self.compiled();v=dict(self.v,track=dict(self.v['track'],output_root=str(self.root/'labels')))
         store,rows,callback=self.native_store(c,v);store.run_batch(rows,infer_batch=callback)
         snap=P.snapshot_partial(c,v);self.assertEqual(snap['uncommitted_cohorts'],[])
-        # 调度入口必须将此状态视为inconclusive，而不能把全命中恢复当半批恢复。
+        # 调度入口要把此状态视为inconclusive，而不能把全命中恢复当半批恢复。
         self.assertEqual(len(snap['committed_packets']),2)
     def test_release_reacquires_same_uuid_locks_before_five_second_probe_and_releases(self):
         from gpu_vendor import resources as G

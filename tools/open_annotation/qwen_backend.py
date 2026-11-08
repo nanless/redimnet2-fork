@@ -25,7 +25,7 @@ def normalize(text):
 
 
 class NativeBatchRefused(RuntimeError):
-    """批次、填充或请求映射不明时停止独立试验，不伪装成单条unknown。"""
+    """批次、填充或请求映射不明时停止独立试验，不记成单条unknown。"""
 
 
 def native_token_rows(input_rows, masks, generated, decoded, eos_ids, pad_id, max_tokens):
@@ -68,7 +68,7 @@ def length_batches(rows, max_batch, ratio):
 
 
 def model_configurations(model):
-    """包含根、thinker、audio、text子配置，避免仅修改顶层而伪称兑现。"""
+    """包含根、thinker、audio、text子配置，避免只改顶层就声称已兑现。"""
     result, seen = [], set()
     def visit(name, config):
         if config is None or id(config) in seen: return
@@ -81,7 +81,7 @@ def model_configurations(model):
 
 
 def apply_asr_compute(model, expected):
-    """仅对显式新试验设置全部真实子配置；历史缺省绝不强改。"""
+    """仅对显式新试验设置全部真实子配置；历史缺省不改。"""
     configurations = model_configurations(model)
     need(configurations, 'ASR nested model configurations are not observable')
     for _, config in configurations:
@@ -89,7 +89,7 @@ def apply_asr_compute(model, expected):
 
 
 def loaded_compute_facts(model, expected, strict_attention=False):
-    """核实际加载参数dtype和模型配置；不将配置读回冒充CUDA核追踪。"""
+    """核实际加载参数dtype和模型配置；不把配置读回当作CUDA核追踪。"""
     dtype_counts = {}
     for parameter in model.parameters():
         if parameter.is_floating_point():
@@ -110,7 +110,7 @@ def loaded_compute_facts(model, expected, strict_attention=False):
 
 
 class ComputeProfileRefused(RuntimeError):
-    """候选计算方式未实际兑现：停止该试验，不伪装成单条原音异常。"""
+    """候选计算方式未实际兑现：停止该试验，不记成单条原音异常。"""
 
 
 class ASRAttentionTrace:
@@ -238,7 +238,7 @@ class QwenBackend:
             eos=[eos]if type(eos)is int else list(eos or [])
             need(eos and all(type(v)is int and v>=0 for v in eos),'native pilot requires actual explicit EOS IDs')
             original_pad=getattr(generation,'pad_token_id',None)
-            # 原现场HF会临时采用首个EOS；新试验显式固定同一选择，不能审计后猜。
+            # 原现场HF会临时采用首个EOS；新试验显式固定同一选择，不在审计之后反推。
             generation.pad_token_id=eos[0]if original_pad is None else original_pad
             need(type(generation.pad_token_id)is int and generation.pad_token_id>=0,'native pilot pad token ID invalid')
             need(hasattr(self.asr.processor,'tokenizer'),'native pilot must observe actual tokenizer padding')

@@ -108,7 +108,7 @@ class TracebackMetadataTests(unittest.TestCase):
     def test_text_effective_token_feature_boundary_or_geometry_difference_refused(self):
         for group,key in [('ASR','raw_text_equal'),('ASR','effective_generated_token_ids_equal'),('ASR','preprocessing_effective_features_equal'),('alignment','items_equal')]:
             row=copy.deepcopy(self.row);row['windows'][0][group][key]=False
-            # 变化窗口仍须逐项列出，不能靠覆盖计数先拒绝掩盖真正分类条件。
+            # 变化窗口仍要逐项列出，不能靠覆盖计数先拒绝、掩盖实际分类条件。
             q=copy.deepcopy(self.quality);q['dispositions'][0]['window_ids']=['w']
             with self.assertRaisesRegex(ValueError,'text/input/token/boundary'):self.check(row,quality=q)
         row=copy.deepcopy(self.row);row['windows'][0]['input_identity_equal']=False;q=copy.deepcopy(self.quality);q['dispositions'][0]['window_ids']=['w']

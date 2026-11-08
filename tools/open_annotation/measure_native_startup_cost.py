@@ -100,7 +100,7 @@ def check(plan_pin,*,created=False):
 
 
 def _guard(output,code,allowed_jsonl):
-    """sqlite3 可正常导入；只禁止连接、真实媒体/权重、非有限JSONL及副作用。"""
+    """sqlite3 可以正常导入；测试不连接数据库、不碰真实媒体/权重、不写非有限JSONL，也不产生副作用。"""
     result_path=str(output/'child-result.json')
     def audit(event,args):
         if event in {'sqlite3.connect','fcntl.flock','subprocess.Popen','os.system','os.fork','os.forkpty','socket.connect','ctypes.dlopen',

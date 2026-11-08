@@ -85,7 +85,7 @@ def parent(output):
             'synthetic_fixture':True,'source_media_read':False,'GPU_executed':False})
         os.link(staged,Path(output)/'parent-ready.json')
         # 控制器持有stdin，随后发送TERM。默认信号退出不运行Python池清理，
-        # 因而子进程消失必须由已设置的内核父死亡信号完成。
+        # 因而子进程消失要靠已设置的内核父死亡信号。
         sys.stdin.buffer.read(1)
 
 

@@ -4,10 +4,10 @@
 
 ## 共享路径
 
-- 用户 vePFS 挂到 `/root`，用于独立 Conda 环境。
-- group-shared vePFS 挂到 `/shared/group-shared`，用于部署 workspace、模型、数据、索引、日志和输出。
-- 若 JSONL 音频是 `/root/group-shared/...`，launcher 必须安全验证或创建 `/root/group-shared -> /shared/group-shared`，不得覆盖非软链目录。
-- Torch extensions、Triton 和临时文件使用每节点独立的 `/tmp`；不要让 16 rank 共用一个编译缓存。
+- 用户 vePFS 挂到 `/root`，独立 Conda 环境放这里。
+- group-shared vePFS 挂到 `/shared/group-shared`，部署 workspace、模型、数据、索引、日志和输出放这里。
+- JSONL 音频路径是 `/root/group-shared/...` 时，launcher 要安全地验证或创建软链 `/root/group-shared -> /shared/group-shared`；目标已经是非软链目录时就保留原样，覆盖会丢掉里面原有的内容。
+- Torch extensions、Triton 和临时文件按节点各用独立的 `/tmp`；16 个 rank 共用一个编译缓存会争用同一份文件。
 
 ## 2×8 启动合同
 
@@ -21,14 +21,14 @@ MLP_WORKER_0_HOST -> MASTER_ADDR
 MLP_WORKER_0_PORT -> MASTER_PORT
 ```
 
-断言 2 workers、每 worker 8 GPU、node rank 为 0/1、每节点 8 个可见 GPU，训练进程内 `WORLD_SIZE=16`。调用 `torchrun --nnodes --nproc-per-node --node-rank --master-addr --master-port`，禁止 `--standalone`。
+启动前断言 2 个 worker、每 worker 8 GPU、node rank 为 0/1、每节点 8 个可见 GPU，训练进程内 `WORLD_SIZE=16`。启动命令用 `torchrun --nnodes --nproc-per-node --node-rank --master-addr --master-port`，不用 `--standalone`：它按单机本地 rendezvous 处理，多机场景下各节点接不到同一个 master。
 
-全局 batch 是 `16 × per_device_batch × accumulation`。以 micro-batch 1、accumulation 16 为例，global batch 为 256；3,757,173条样本按这个标称batch向上取整约为14,677个optimizer steps。实际值仍需核对DDP分片、drop_last与尾累积处理。
+全局 batch 是 `16 × per_device_batch × accumulation`。以 micro-batch 1、accumulation 16 为例，global batch 为 256；3,757,173 条样本按这个标称 batch 向上取整，约为 14,677 个 optimizer steps。这是标称值，实际还要核对 DDP 分片、drop_last 与尾累积的处理。
 
 ## 复制参考任务
 
-复制前先只读核实参考任务。复制后逐项复核镜像、PyTorchDDP、队列/AZ、优先级 `6`、运行时、2×8 A800 规格、两项 vePFS、入口、名称、描述、输出和自动重试；创建后从详情页再次核对实际优先级。初次配置验证保持自动重试关闭；路径、OOM 或依赖错误属于确定性失败，先修配置再创建独立后继任务。替换任务须先提交并核对新任务 ID/详情，再按已有停止授权处理精确旧任务；没有停止授权则保留旧任务。
+复制前先只读核实参考任务。复制后逐项复核镜像、PyTorchDDP、队列/AZ、优先级 `6`、运行时、2×8 A800 规格、两项 vePFS、入口、名称、描述、输出和自动重试；创建完成后再从详情页核对实际优先级。初次配置验证时自动重试保持关闭：路径、OOM 和依赖错误都是确定性失败，重试只会重复同一个错误，所以先修配置，再创建独立后继任务。替换任务时先提交并核对新任务 ID 和详情，再按已有停止授权处理这个具体旧任务；没有停止授权就保留旧任务。
 
-共享 vePFS 代码不使用网页源代码上传。默认使用 clean pushed commit；若用户没有授权 commit/push，可建立专用部署 snapshot 和哈希 manifest，并在交付中明确未 commit/push。
+共享 vePFS 上的代码不走网页源代码上传。默认用 clean 的 pushed commit；用户没有授权 commit/push 时，可以另建专用部署 snapshot 和哈希 manifest，并在交付里写明未 commit/push。
 
-提交只执行一次。平台显示运行中后，还要从两个 worker 的持久日志证明 rendezvous/collective 初始化、world size 16、模型权重加载和至少一个有限 loss batch，才能宣称训练启动。
+提交只做一次。平台显示运行中之后，还要从两个 worker 的持久日志看到 rendezvous/collective 初始化、world size 16、模型权重加载，以及至少一个有限 loss 的 batch，才能说训练启动了。

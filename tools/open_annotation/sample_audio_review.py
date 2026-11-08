@@ -268,7 +268,7 @@ class ProtocolError(ValueError):
 
 
 def response_block(response, started, maximum=16384):
-    """仅用一次底层读取的read1；连续滴字节也须在每块前后核绝对截止。"""
+    """仅用一次底层读取的read1；连续到达的字节也要在每块前后核绝对截止。"""
     remaining = WALL_BUDGET - (time.monotonic() - started)
     if remaining <= 0:
         raise TimeoutError('response deadline expired before read')
@@ -474,7 +474,7 @@ def one(case, key, profile, manifest_pin, runner_pin, out, network_base, stop):
                     try:
                         error, read_error = error_body(exc, started)
                     finally:
-                        # 截止或64KiB上限可能使错误体尚未读到EOF，重试/返回前也须关响应。
+                        # 截止或64KiB上限可能使错误体尚未读到EOF，重试/返回前也要关响应。
                         exc.close()
                     if read_error:
                         a['error_body_read_error_type'] = type(read_error).__name__
@@ -491,7 +491,7 @@ def one(case, key, profile, manifest_pin, runner_pin, out, network_base, stop):
                     retry = not fatal
                 finally:
                     if a.get('credential_echo_redacted'):
-                        # 跨SSE帧拼接后才出现的凭据也不得留可重组的内容；保留原接收SHA。
+                        # 跨SSE帧拼接后才出现的凭据也不保留可重组的内容；保留原接收SHA。
                         saved.seek(0)
                         saved.truncate()
                         saved.write(b'[REDACTED RESPONSE: SERVICE CREDENTIAL ECHO; received SHA retained]\n')

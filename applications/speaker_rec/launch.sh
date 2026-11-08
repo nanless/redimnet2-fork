@@ -20,17 +20,17 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 # ── 用哪个 Python 环境 ──────────────────────────────────────────────
 #
-# 训练必须跑在本仓库自己的 conda 环境里（本机是 `redimnet2`），
+# 训练要跑在本仓库自己的 conda 环境里（本机是 `redimnet2`），
 # 因为它装了这套代码需要的 torch / torchaudio / pandas / pyarrow 等。
 # 以前这里直接用 PATH 上的 `torchrun`，于是「在哪个环境里敲命令」决定了
-# 实际用哪个解释器：敲错环境就会报缺包，或者更糟——装了两个不同版本的
-# torch 时静默跑在错的版本上。
+# 实际用哪个解释器：环境敲错就会报缺包；装了两个不同版本的
+# torch 时还会静默跑在错的版本上。
 #
 # 解析顺序：
 #   1. `REDIMNET2_PYTHON` 环境变量（显式指定解释器路径，优先级最高）
 #   2. `REDIMNET2_ENV` 环境变量指定的 conda 环境名
 #   3. 名字就叫 `redimnet2` 的 conda 环境（本机默认）
-#   4. 当前 PATH 上的 `python`（最后兜底，会打印警告）
+#   4. 当前 PATH 上的 `python`（最后一项，会打印警告）
 resolve_python() {
     if [ -n "${REDIMNET2_PYTHON:-}" ]; then
         if [ ! -x "$REDIMNET2_PYTHON" ]; then
@@ -63,13 +63,13 @@ PYTHON_BIN="$(resolve_python)"
 PY_BIN_DIR="$(dirname "$PYTHON_BIN")"
 
 # 检查这个解释器真的能用；缺包就立刻停下并说清是哪个环境缺什么，
-# 而不是让训练跑到一半才在某个 import 上炸掉。
-# 除了"能不能 import"，还要挡住**版本太旧**的解释器。
+# 不至于让训练跑到一半才在某个 import 上失败。
+# 除了"能不能 import"，还要挡住版本太旧的解释器。
 #
-# 实测踩过：某个旧环境里是 torch 1.12.1 配 NumPy 2.x，
+# 实测遇到过：某个旧环境里是 torch 1.12.1 配 NumPy 2.x，
 # `import torch` 能过，但一用 `torch.from_numpy` 就报
 # `RuntimeError: Numpy is not available`。那种错误发生在训练跑到一半的时候，
-# 很难一眼看出是环境问题，所以在启动时就挡住。
+# 很难看出是环境问题，所以在启动时就挡住。
 # 这里要求 torch >= 2.0（本仓库的开发环境是 2.4.0）。
 if ! "$PYTHON_BIN" -c 'import torch, torchaudio' >/dev/null 2>&1; then
     echo "ERROR: $PYTHON_BIN 里没有 torch/torchaudio。" >&2
@@ -79,7 +79,7 @@ if ! "$PYTHON_BIN" -c 'import torch, torchaudio' >/dev/null 2>&1; then
     exit 1
 fi
 
-# torch 版本下限：低于 2.0 的老环境能 import 但会在训练中途炸。
+# torch 版本下限：低于 2.0 的老环境能 import 但会在训练中途失败。
 if ! "$PYTHON_BIN" - <<'PYCHK' >/dev/null 2>&1
 import sys
 import torch
@@ -87,8 +87,8 @@ parts = torch.__version__.split('.')
 try:
     major, minor = int(parts[0]), int(parts[1])
 except (ValueError, IndexError):
-    # 版本号形状不认识（例如只有 "2" 没有点）：**不拦**。
-    # 这里必须同时接住 IndexError —— 早先只接了 ValueError，
+    # 版本号形状不认识（例如只有 "2" 没有点）：不拦。
+    # 这里要同时接住 IndexError：早先只接了 ValueError，
     # 于是 "2".split('.')[1] 抛 IndexError -> heredoc 非零退出 ->
     # 一个 torch 2.x 被误报成"版本低于 2.0"。
     # 两个分支的策略要一致：认不出来就放行，交给后面的 import 检查。
@@ -121,15 +121,15 @@ MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
 
 # 通信端口。
 #
-# 原来这里写死 29400，于是**同一台机器上并发跑两个训练必然有一个起不来**，
+# 原来这里写死 29400，于是同一台机器上并发跑两个训练必然有一个起不来，
 # 报的是 `EADDRINUSE: address already in use`，而且要在 torchrun 的
-# 一大堆堆栈里才找得到这一行（实测踩过：上一个任务超时没退干净，
+# 一大堆堆栈里才找得到这一行（实测遇到过：上一个任务超时没退干净，
 # 下一次启动就撞上，看起来像配置错误）。
 #
-# 现在改成：没显式指定就**自动找一个空闲端口**。
+# 现在改成：没显式指定就自动找一个空闲端口。
 # 这样做是安全的，因为这个脚本用的是 `--nnodes=1:1`（单机），
 # 主进程和所有 worker 都在本机、共享同一个文件系统与端口空间。
-# 如果哪天要做多机训练，必须显式给 `MASTER_PORT`（多机时各节点得用同一个端口），
+# 如果做多机训练，需要显式给 `MASTER_PORT`（多机时各节点得用同一个端口），
 # 那时不要依赖自动选端口。
 if [ -z "${MASTER_PORT:-}" ]; then
     MASTER_PORT="$("$PYTHON_BIN" - <<'PYPORT'
@@ -138,7 +138,7 @@ import socket
 # 让内核分配一个空闲端口：绑到 0 号端口再读回实际端口，然后立刻释放。
 # 这中间有一个很短的窗口期，理论上别的进程可能抢走它；
 # 单机训练里这个窗口小到可以忽略，而且真抢走了也只是启动失败、
-# 报的还是同一个 EADDRINUSE，重跑一次即可 —— 比写死端口必冲突要好得多。
+# 报的还是同一个 EADDRINUSE，重跑一次即可；写死端口时必然冲突。
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.bind(("127.0.0.1", 0))
     print(s.getsockname()[1])

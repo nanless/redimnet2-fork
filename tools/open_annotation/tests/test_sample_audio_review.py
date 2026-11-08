@@ -315,7 +315,7 @@ class SampleAudioReviewTests(unittest.TestCase):
             self.assertNotIn(b'synthetic-private-',(root/'out/raw/case0.attempt-1.sse').read_bytes())
 
     def test_HTTP_error_response_closed_after_deadline_or_bounded_partial_body(self):
-        # 错误体没读到EOF时HTTPError不会自己归还响应，必须在重试/返回前显式关闭。
+        # 错误体没读到EOF时HTTPError不会自己归还响应，要在重试/返回前显式关闭。
         variants=[{'status':503,'raw':b'x'*2000,'drip_delay':.005},
                   {'status':400,'raw':b'x'*131072}]
         for entry in variants:

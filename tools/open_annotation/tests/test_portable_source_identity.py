@@ -1,4 +1,4 @@
-"""跨节点内容证明和真正剩余准备：真实小文件读SHA，禁止模型/GPU。"""
+"""跨节点内容证明和实际剩余准备：真实小文件读SHA，不加载模型，也不用GPU。"""
 import copy
 import hashlib
 import json
@@ -64,7 +64,7 @@ class PortableSourceIdentityTests(unittest.TestCase):
         self.assertEqual(before,self.f.base.snapshot())
 
     def test_default_strict_still_refuses_device_difference(self):
-        """设计文档：默认（非 portable）准备必须严格，device 参与比较。"""
+        """设计文档：默认（非 portable）准备要严格，device 参与比较。"""
         before=self.f.base.snapshot()
         with self.assertRaisesRegex(ValueError,'source stat changed'):self.f.base.run_prepare(True,name='strict')
         self.assertEqual(before,self.f.base.snapshot());self.assertFalse((self.f.root/'strict/index.json').exists())

@@ -1,4 +1,4 @@
-"""真实spawn只处理小合成侧车；Linux生命周期mock只验竞态逻辑，不冒充内核实证。"""
+"""真实spawn只处理小合成侧车；Linux生命周期mock只验竞态逻辑，不能当作内核实证。"""
 import ctypes
 import fcntl
 from concurrent.futures import ProcessPoolExecutor

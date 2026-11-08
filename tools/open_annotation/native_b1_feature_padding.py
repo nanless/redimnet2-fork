@@ -205,7 +205,7 @@ class B1FeatureBatchProcessor:
         self.capture=proofs;return result
 
     def observe_generate(self,kwargs):
-        """从真正generate入参读回valid mel/mask/prompt，不信构造时缓存摘要。"""
+        """从实际 generate 入参读回valid mel/mask/prompt，不信构造时缓存摘要。"""
         torch=self.torch;self.observations+=1
         need(self.calls==1 and self.observations==1 and self.capture is not None,'one actual generate must follow exactly one SDK preprocessing call')
         features=kwargs.get('input_features');fm=kwargs.get('feature_attention_mask');ids=kwargs.get('input_ids');mask=kwargs.get('attention_mask')

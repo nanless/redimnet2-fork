@@ -116,7 +116,7 @@ def compile_plan(plan_ref,output):
                if (p/'AGENTS.md').is_file() and (p/'redimnet2').is_dir()),None)
     control_root=repo if repo is not None else HERE
     # 计划常放在/P/plan.json，而输出为/P/evidence；不能把共同祖先/P
-    # 错当仓库。保护计划文件本身、真正源码和有限输入目录即可。
+    # 错当仓库。保护计划文件本身、实际源码和有限输入目录即可。
     input_roots=[physical(plan_ref['path']),control_root]
     for m in matrices.values():
         input_roots.append(physical(m['matrix']['index']['path']).parent)

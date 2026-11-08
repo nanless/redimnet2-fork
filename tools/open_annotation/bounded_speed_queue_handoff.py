@@ -150,7 +150,7 @@ def check(pin):
     code=F.physical(base['new_code_root']);need(base['new_bundle']['path']==str(code/'bundle_files.json'),'fixed new bundle path differs')
     members=F.ref(base['new_bundle']);need(isinstance(members,dict)and REQUIRED_SOURCE<=set(members),'bounded source bundle incomplete')
     R.frozen_bundle(dict(code_root=str(code),bundle=base['new_bundle']))
-    # 新GPU包保持cf7e859专属版本不改；外层只加入等待脚本，共同helper须逐字节相同。
+    # 新GPU包保持cf7e859专属版本不改；外层只加入等待脚本，共同helper要逐字节相同。
     if b['purpose']=='production':
         verify_dedicated_gpu_source(members)
     outer=verify_outer(b['outer_controller'],members,production=b['purpose']=='production')

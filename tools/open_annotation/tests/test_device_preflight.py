@@ -4,7 +4,7 @@
 覆盖三件事：
   1) 三个样本全命中 → 返回 0，且 stdout 是可解析的一行 JSON；
   2) 不匹配 / 文件缺失 → 返回 21，并打印可 grep 的 PREFLIGHT_DEVICE_MISMATCH；
-  3) 入口接线正确 → main() 在 auto8 下会把 21 原样透传出去（不被 __main__ 兜底改成 2），
+  3) 入口接线正确 → main() 在 auto8 下会把 21 原样透传出去（不被 __main__ 的保底处理改成 2），
      且非 auto8 时明确打印跳过、不误伤 W2 调试。
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ import device_preflight as D  # noqa: E402
 class FakeStat:
     """用固定 device 表替代 os.stat；内容字段默认取 SAMPLES 里记录的真值。
 
-    2026-11-08 起 device 不再是内容身份，所以"设备不同但内容相同"必须被判为通过；
+    2026-11-08 起 device 不再是内容身份，所以"设备不同但内容相同"要判为通过；
     测试需要能分别构造 device 漂移与内容漂移两种情形。
     """
 
@@ -77,11 +77,11 @@ class DevicePreflightUnitTests(unittest.TestCase):
                 self.assertIsNotNone(row[key])
             self.assertTrue(row["device_ok"])
             self.assertIsNone(row["error"])
-        # 三个样本都必须被真的 stat 到，顺序与 SAMPLES 一致
+        # 三个样本都要被实际 stat 到，顺序与 SAMPLES 一致
         self.assertEqual(stat.calls, [sample["path"] for sample in D.SAMPLES])
 
     def test_device_only_mismatch_is_relaxed_and_greppable(self):
-        """2026-11-08 契约：device 不同、内容相同 → 通过，但必须打印标记并记状态。"""
+        """2026-11-08 契约：device 不同、内容相同 → 通过，但要打印标记并记状态。"""
         stat = FakeStat(device=57)          # dev 主机实测值
         code, text = run_check(stat)
         self.assertEqual(code, 0, "device 漂移不得再阻断（内容一致）")
@@ -141,7 +141,7 @@ def _wired():
 
 @unittest.skipUnless(_wired(), "预检未接入 gpu_launch.main()")
 class DevicePreflightEntryTests(unittest.TestCase):
-    """入口接线：auto8 时 21 必须透传；非 auto8 时不阻断 W2 调试。"""
+    """入口接线：auto8 时 21 要原样透传；非 auto8 时不阻断 W2 调试。"""
 
     def argv(self, target_uuids):
         values = {

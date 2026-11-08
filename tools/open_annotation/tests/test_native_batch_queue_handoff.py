@@ -272,7 +272,7 @@ class FeatureOuterClosure(unittest.TestCase):
         code="import sys,json;sys.path.insert(0,sys.argv[1]);import native_batch_queue_handoff as Q;import contracts as C;c=json.load(open(sys.argv[2]));m=json.load(open(sys.argv[3]));controller=json.loads(sys.argv[4]);bundle=json.loads(sys.argv[5]);Q.verify_outer(controller,m,production=False,contract=c,gpu_bundle_pin=bundle);print(json.dumps({'feature_profile':C.asr_feature_profile(c),'torch_imported':'torch' in sys.modules}))"
         return subprocess.run([sys.executable,'-I','-B','-c',code,controller['root'],contract_pin['path'],self.bundle['path'],json.dumps(controller),json.dumps(self.bundle)],capture_output=True,text=True)
     def admission_import_check(self,controller):
-        # 真正进入选型时才加载两个审计器；单测进程里预先导入的模块不能补这个依赖。
+        # 实际进入选型时才加载两个审计器；单测进程里预先导入的模块不能补这个依赖。
         code="""import sys,json,importlib
 sys.path.insert(0,sys.argv[1])
 for name in ('native_batch_admission','native_batch_readback','audit_native_transformers_batch','audit_speed_comparison','work_queue'):

@@ -130,7 +130,7 @@ CONTENT_STAT_KEYS = ('inode', 'bytes', 'mtime_ns', 'ctime_ns')
 
 
 def identity_matches(actual, recorded):
-    """内容身份：device 是挂载命名空间标签，不参与；其余字段必须完全相等。"""
+    """内容身份：device 是挂载命名空间标签，不参与；其余字段要完全相等。"""
     relaxed = actual.get('device') != recorded.get('device')
     for key in CONTENT_STAT_KEYS:
         if key not in recorded:

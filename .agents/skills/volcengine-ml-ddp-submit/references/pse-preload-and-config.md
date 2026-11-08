@@ -20,7 +20,7 @@ print("distributed", cfg.get("distributed"))
 PY
 ```
 
-同时打印 trainer 的梯度累积和 checkpoint 保存间隔。不能只检查子 TOML：`extends` 链会递归合并。子配置中的 `preloaded_skip_prefixes` 不会覆盖从父配置继承的另一个键 `preloaded_embedding_skip_prefixes`。
+同时打印 trainer 的梯度累积和 checkpoint 保存间隔。子 TOML 单独看不够：`extends` 链会递归合并，父配置里的键也会进来。子配置里的 `preloaded_skip_prefixes` 覆盖不了从父配置继承的另一个键 `preloaded_embedding_skip_prefixes`，两个键名字不同，各读各的值。
 
 ## 关键加载语义
 
@@ -31,11 +31,11 @@ PY
 3. 优先读取 `preloaded_embedding_skip_prefixes`，只有该键不存在时才回退到 `preloaded_skip_prefixes`；
 4. 对 embedding 执行 `load_state_dict(..., strict=False)`。
 
-由于第 4 步是非严格加载，被跳过的 ArcFace 参数可能无报错地停留在构造器随机初始化状态。对架构兼容的完整预加载，必须显式清空通用和专项 skip 列表，并设置 `preload_embedding_skip_front=false`。
+第 4 步是非严格加载：被跳过的 ArcFace 参数可能不报错地停在构造器随机初始化的状态。架构兼容的完整预加载要显式清空通用和专项 skip 列表，并把 `preload_embedding_skip_front=false` 写进配置；skip 列表还留着时，这些参数就停在随机值上。
 
 ## checkpoint 证据
 
-下面的 `weights_only=False` 仅用于身份与来源已核实的自有训练checkpoint；它可能执行pickle对象。来源未知时不加载，也不为查看形状关闭安全限制。解释器以当前训练环境为准，代码中的历史绝对路径不是所有任务的默认入口。
+下面的 `weights_only=False` 只用于身份和来源都已核实的自有训练 checkpoint；它可能执行 pickle 对象。来源未知的 checkpoint 不加载，也不为了看形状去关掉这道安全限制。解释器以当前训练环境为准，代码里的历史绝对路径不是所有任务的默认入口。
 
 ```python
 ckpt = torch.load(path, map_location="cpu", weights_only=False)
@@ -44,12 +44,12 @@ assert "sv_arc_margin.weight" in embedding
 print(tuple(embedding["sv_arc_margin.weight"].shape))
 ```
 
-当前 SharedUtteranceSV 设置的预期形状为 `(n_speakers, 256)`。即使文件存在，只要形状或 speaker vocabulary 映射不一致，父 checkpoint 仍然不兼容。
+当前 SharedUtteranceSV 设置的预期形状为 `(n_speakers, 256)`。文件存在也不够：形状或 speaker vocabulary 映射对不上时，父 checkpoint 仍然不兼容。
 
 ## 启动验收证据
 
-启动日志必须显示 `sv_arc_margin.weight` 已加载，而不是被跳过或缺失。对同架构完整预加载，不应存在未被明确解释的模型 missing keys。
+启动日志里 `sv_arc_margin.weight` 要显示为已加载；显示成跳过或缺失都不算通过。同架构的完整预加载，不该有没解释清楚的模型 missing keys。
 
-需要更强证据时，在第一个 optimizer step 之前比较运行中模型参数与 checkpoint 参数的稳定指纹，或执行精度合适的 `allclose`；避免把训练更新后的差异误判为加载失败。
+需要更强的证据时，在第一个 optimizer step 之前比较运行中模型参数与 checkpoint 参数的稳定指纹，或执行精度合适的 `allclose`；比的是加载后、更新前的状态，训练更新造成的差异不会被误判成加载失败。
 
-任务描述中的“已完整加载兼容权重”只是文字；最终以有效配置、checkpoint 键/形状和加载摘要为准。
+任务描述里的“已完整加载兼容权重”只是一句话；判断依据是有效配置、checkpoint 键与形状、加载摘要。

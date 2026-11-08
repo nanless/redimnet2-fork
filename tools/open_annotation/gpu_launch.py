@@ -320,7 +320,7 @@ def _run(args, bounded=None):
 
 
 def run(args):
-    """新schema必须显式固定祖先和实际试验证明；旧v1行为不变。"""
+    """新schema要显式固定祖先和实际试验证明；旧v1行为不变。"""
     verify_bundle(HERE, args.bundle_sha)
     # 保留旧父进程先拒绝坏合同和正式auto2的顺序，再识别新schema。
     preflight_contract = read_contract(args.contract, args.contract_sha)

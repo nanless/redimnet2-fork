@@ -1,4 +1,4 @@
-"""旧完成片有界纯读线程检查；小文件、真锁，绝不读媒体或运行模型。"""
+"""旧完成片有界纯读线程检查；小文件、真锁，不读媒体或运行模型。"""
 import copy
 from concurrent.futures import ThreadPoolExecutor
 import fcntl

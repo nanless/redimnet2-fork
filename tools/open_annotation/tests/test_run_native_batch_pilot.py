@@ -77,7 +77,7 @@ class PlanFixture(unittest.TestCase):
             with self.subTest(target=target),self.assertRaisesRegex(RuntimeError,'control code'):
                 D.compile_plan(self.ref,target)
             self.assertFalse(target.exists())
-        # 计划在共同祖先根并不禁止正常兄弟evidence目录。
+        # 计划在共同祖先根并不排除正常兄弟evidence目录。
         self.assertEqual(D.compile_plan(self.ref,self.out)['output'],self.out)
     def test_real_purpose_rejects_custom_executor(self):
         self.plan['purpose']='production';self.save_plan()

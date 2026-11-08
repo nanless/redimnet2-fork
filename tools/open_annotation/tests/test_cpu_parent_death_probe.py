@@ -1,4 +1,4 @@
-"""探针控制器的失败收尾回归：真实自有 CPU child，绝非 Linux 内核成功证据。
+"""探针控制器的失败收尾回归：真实自有 CPU child，不是 Linux 内核成功证据。
 
 只把探针的平台/启动时钟读取替换为失败控制桩；不会执行合成 Linux
 pool、生产音频、模型或 GPU。每个实际 Popen 都由测试外层保底回收。
@@ -46,7 +46,7 @@ class CPUParentDeathProbeFailures(unittest.TestCase):
         self.output = self.root / 'failure-evidence'
         self.children = []
         self.addCleanup(self.temporary.cleanup)
-        # unittest cleanup 后进先出：必须先回收实际自有进程，再清临时证据。
+        # unittest cleanup 后进先出：要先回收实际自有进程，再清临时证据。
         self.addCleanup(self.cleanup_owned_children)
 
     def cleanup_owned_children(self):
@@ -68,7 +68,7 @@ class CPUParentDeathProbeFailures(unittest.TestCase):
         self.assertTrue(kwargs['start_new_session'])
         self.assertEqual(kwargs['stdin'], subprocess.PIPE)
         self.assertEqual({k: kwargs['env'].get(k) for k in P.U._CPU_ENV}, P.U._CPU_ENV)
-        # 仅等待 stdin：TERM 或关闭管道都能结束，绝不运行探针 Linux parent。
+        # 仅等待 stdin：TERM 或关闭管道都能结束，不运行探针 Linux parent。
         process = REAL_POPEN(
             [sys.executable, '-B', '-c', 'import sys; sys.stdin.buffer.read(1)'],
             **kwargs,
@@ -79,7 +79,7 @@ class CPUParentDeathProbeFailures(unittest.TestCase):
     def controlled_failure_environment(self, *, start_error=None, writer=None, spawn=None):
         stack = ExitStack()
         stack.enter_context(patch.object(P.sys, 'platform', 'linux'))
-        # Mac 不具备 pidfd；这里只让失败分支可达，且所有测试必须零调用。
+        # Mac 不具备 pidfd；这里只让失败分支可达，且所有测试都零调用。
         pidfd = stack.enter_context(patch.object(P.os, 'pidfd_open', create=True))
         sender = stack.enter_context(patch.object(P.signal, 'pidfd_send_signal', create=True))
         stack.enter_context(patch.object(P.subprocess, 'Popen', side_effect=spawn or self.spawn_owned_cpu_child))
@@ -132,7 +132,7 @@ class CPUParentDeathProbeFailures(unittest.TestCase):
             return original(path, value)
         def spawn(argv, **kwargs):
             process = self.spawn_owned_cpu_child(argv, **kwargs)
-            # 真 child 继续等待；本次 terminate 报错后必须靠关闭 stdin 和最终 wait 回收。
+            # 真 child 继续等待；本次 terminate 报错后要靠关闭 stdin 和最终 wait 回收。
             process.terminate = lambda: (_ for _ in ()).throw(OSError('injected terminate error'))
             return process
         context, pidfd, sender = self.controlled_failure_environment(writer=writer, spawn=spawn)

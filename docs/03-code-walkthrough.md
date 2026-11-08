@@ -2,9 +2,9 @@
 
 上一篇：[架构](02-architecture.md) · 下一篇：[训练流程](04-训练流程.md)
 
-这篇文档解决一个问题：**拿到一个文件，能不能在五分钟内弄清它负责什么、入口函数在哪、吃什么、吐什么、谁在调它、改了会影响谁。** 每个条目都给文件路径与行号区间；行号只对 2026-11-08 那次核对成立——**具体提交号不写死**，用 `git rev-parse --short HEAD` 查（或看 [STATUS 第 1 节](STATUS.md)），改代码后请以函数名重新定位。
+这篇文档解决一个问题：**拿到一个文件，能不能在五分钟内弄清它负责什么、入口函数在哪、吃什么、吐什么、谁在调它、改了会影响谁。** 每个条目都给文件路径与行号区间；行号只对 2026-11-08 那次核对成立——**具体提交号不写死**，用 `git rev-parse --short HEAD` 查（或看 [STATUS 第 1 节](STATUS.md)），改代码后按函数名重新定位。
 
-读法建议：先看第 1 节的入口清单确定“我在哪条链上”，再跳到对应小节；第 8 节是不可跳过的问题清单。
+读法：先看第 1 节的入口清单确定自己在哪条链上，再跳到对应小节；第 8 节是读代码时实际发现的问题清单，建议一并看。
 
 ---
 
@@ -50,7 +50,7 @@
 - `block_1d_type` 前缀编码：`v2_` 走 `TimeContextBlock1dV2`，`sdwm_` 走 `SymmetricalDWMixer`（`:183-189`）。
 - `stages_setup` 每项语义 `((sf,st), num_blocks, conv_exp, kernel_sizes, att_block_red)`；`att_block_red=None` 表示该 stage 不做 1D 块。
 
-**`build()`（`:208-394`）**：真正建层。输入 `F`（梅尔维数）、`C`（起始通道）、`out_channels`、`stages_setup` 等，输出挂到 `self` 上的 `stem`、`stage{i}`、`fin_wght1d`、`fin_to2d`、`head`。它同时算出两个关键属性：`self.time_stride`（所有 stage 时间步长的乘积）与 `self.freq_stride`（频率步长乘积）——这两个值被 `Wrap.forward` 用来对齐截断、被 `out_channels` 推导用来算池化输入维。
+**`build()`（`:208-394`）**：实际建层。输入 `F`（梅尔维数）、`C`（起始通道）、`out_channels`、`stages_setup` 等，输出挂到 `self` 上的 `stem`、`stage{i}`、`fin_wght1d`、`fin_to2d`、`head`。它同时算出两个关键属性：`self.time_stride`（所有 stage 时间步长的乘积）与 `self.freq_stride`（频率步长乘积）——这两个值被 `Wrap.forward` 用来对齐截断、被 `out_channels` 推导用来算池化输入维。
 
 **`run_stage()`（`:395-422`）**：跑一个 stage，返回“本 stage 新增的 1D 特征列表”。
 
@@ -77,7 +77,7 @@
 
 **被谁调用**：`models/speaker_model.py:32-36`（训练）、`scripts/checkpoint_utils.py:30-85`（评测）、`scripts/export_checkpoint.py:19-43`（导出）、`redimnet2/__init__.py:18-35`（推理）。
 
-**改动影响面**：默认路径（`lengths=None`）被 20 个已发布权重与官方数字依赖，**必须逐位不变**；任何改动都要用 `tests/test_mask_input_contract.py` 与 `tests/test_varlen_masking.py` 回归。
+**改动影响面**：默认路径（`lengths=None`）被 20 个已发布权重与官方数字依赖，**逐位不变**是前提；改动后用 `tests/test_mask_input_contract.py` 与 `tests/test_varlen_masking.py` 回归。
 
 ### 2.3 `ASTP` 与掩码
 
@@ -88,7 +88,7 @@
 | `x` | `(B,C,F,T)` 或 `(B,C·F,T)` | `(B, 2·in_dim)`；有掩码时额外返回掩码 |
 | `mask` | `(B,1,T)` 或 `(B,T)` | 同上 |
 
-三条实现细节：4 维输入先展平（`:188-190`）；`global_context_att=True` 时拼 `[x, 均值, 标准差]` 再算注意力（`:192-210`）；**无掩码支用 `torch.var`（无偏），有掩码支把有偏矩乘 `n/(n-1)` 对齐**（`:195-207` 的注释解释了为什么必须对齐，否则“只是传了个 `lengths`”就会改变输出）。
+三条实现细节：4 维输入先展平（`:188-190`）；`global_context_att=True` 时拼 `[x, 均值, 标准差]` 再算注意力（`:192-210`）；**无掩码支用 `torch.var`（无偏），有掩码支把有偏矩乘 `n/(n-1)` 对齐**（`:195-207` 的注释解释了两种算法为什么要对齐，否则“只是传了个 `lengths`”就会改变输出）。
 
 ---
 
@@ -103,7 +103,7 @@
 | torchrun 解析 | 107-113 | 优先用同一个环境里的 `torchrun`，找不到才用 PATH |
 | 启动 | 155-165 | `torchrun --nproc_per_node=$NUM_GPUS ... train.py --config ...` |
 
-**为什么值得单独讲**：这个脚本是“实际用哪个解释器”的唯一决定点。装了两份 torch 时，选错环境不会报错，只会静默跑在另一份上。
+这个脚本是“实际用哪个解释器”的唯一决定点。装了两份 torch 时，选错环境不会报错，只会静默跑在另一份上。
 
 ### 3.2 `wespeaker_lite/bin/train.py`（886 行）
 
@@ -138,7 +138,7 @@
 | `cos_sim_mat` | 563-573 | 两组向量 | 余弦矩阵 | 两个 eval |
 | `set_bn_eval` | 574-575 | 模块 + 标志 | 无 | 评测前 |
 
-`run_epoch` 的每步顺序（**改动时不要换**）：`cur_iter=(epoch-1)*epoch_iter+i` → `scheduler.step(cur_iter)` → `margin_scheduler.step(cur_iter)` → 取 `lengths` → 可选混合增强（变长时取两条真实长度的较大值，`:246-253`）→ 前向（带取证上下文）→ 投影头（可能自带损失）→ 数值检查 → 每 16 步记一次损失/准确率 → `zero_grad` / `scaler.scale(loss).backward()` / `step` / `update` → 到 `epoch_iter` 就 `break`。
+`run_epoch` 的每步顺序（顺序是语义的一部分）：`cur_iter=(epoch-1)*epoch_iter+i` → `scheduler.step(cur_iter)` → `margin_scheduler.step(cur_iter)` → 取 `lengths` → 可选混合增强（变长时取两条真实长度的较大值，`:246-253`）→ 前向（带取证上下文）→ 投影头（可能自带损失）→ 数值检查 → 每 16 步记一次损失/准确率 → `zero_grad` / `scaler.scale(loss).backward()` / `step` / `update` → 到 `epoch_iter` 就 `break`。
 
 ### 3.4 `wespeaker_lite/utils/schedulers.py`（320 行）
 
@@ -149,14 +149,14 @@
 | `ExponentialDecrease` | 200-223 | 同上 | 指数衰减 |
 | `ExponentialDecayPlateauWithWarmup` | 224-320 | 同上 + 预热轮数、平台轮数、衰减轮数/率 | 三语料 B6 用的就是这个（`official_repro_ptn.yaml:190`） |
 
-**注意**：这些类**没有** `state_dict()`/`load_state_dict()`，所以检查点里不存调度器状态（`utils/checkpoint.py:147-158` 的注释说明了这件事）。续训能复现轨迹，是因为它们只依赖绝对迭代数。
+这些类**没有** `state_dict()`/`load_state_dict()`，所以检查点里不存调度器状态（`utils/checkpoint.py:147-158` 的注释说明了这件事）。续训能复现轨迹，是因为它们只依赖绝对迭代数。
 
 ### 3.5 `wespeaker_lite/utils/checkpoint.py`（199 行）
 
 | 函数 | 行号 | 输入 | 输出 | 说明 |
 |---|---|---|---|---|
 | `select_resume_checkpoint` | 31-56 | `models/` 目录、可选显式路径 | 检查点路径或 `None` | 显式路径优先；否则按**轮数**取最大，不按 mtime（拷贝会改 mtime） |
-| `resume_start_epoch` | 57-77 | 路径 + 载荷里的 `epoch` | 起始轮 | 文件名与载荷轮数必须一致；跨阶段从 1 重新计 |
+| `resume_start_epoch` | 57-77 | 路径 + 载荷里的 `epoch` | 起始轮 | 文件名与载荷轮数两处都核；跨阶段从 1 重新计 |
 | `validate_same_stage_resume` | 78-102 | 状态字典、模型、检查点、说话人表 | 说话人表路径 | 同阶段续训前核“键集合与形状”与“映射未变” |
 | `is_training_checkpoint` | 110-120 | 任意对象 | 布尔 | 区分“训练检查点字典”与“纯状态字典” |
 | `extract_state_dict` | 121-133 | 检查点 | `(state_dict, extra)` | 两种格式都吃 |
@@ -290,17 +290,17 @@
 |---|---|---|
 | `ENGINE_MODULES` | 16-19 | 14 个引擎文件名元组（清单见 02 文档第 9.1 节） |
 | `NATIVE_BATCH_POLICY` / `ASR_B1_FEATURE_POLICY` / `NATIVE_FORMAL_DECLARATION` | 20-25 | 两种新策略的字符串标识与“正式声明默认关闭”的结构 |
-| `asr_batch_profile(contract)` | 27-52 | 校验合批声明：策略名、批大小只能 1/4/8、固定排序、`max_batch==1`（Ultra 必须单窗） |
+| `asr_batch_profile(contract)` | 27-52 | 校验合批声明：策略名、批大小只能 1/4/8、固定排序、`max_batch==1`（Ultra 走单窗） |
 | `asr_feature_profile(contract)` | 53-67 | 校验“官方 B1 特征再合批”声明 |
 | `engine_modules_for_contract(contract)` | 68-71 | 在 14 个基础上按合同追加 1–2 个文件，最多 16 |
 | `need` / `digest` / `canonical_bytes` / `native_json` | 73-108 | 断言、摘要、统一字节形式、JSON 规范化 |
 | `safe_join` / `relative_path` / `stat_identity` | 109-135 | 防路径穿越、相对路径校验、文件身份四元组 |
 | `atomic_new` | 136-161 | 不可覆盖发布，是全系统“不覆盖”的基础 |
 | `validate_execution_policy` / `asr_compute_profile` | 162-193 | 执行策略与精度/注意力实现的一致性 |
-| `read_contract` | 194-241 | 读合同 + 核 SHA + 核时间映射必须等于当前 `TIME_MAPPING`（否则要求重新冻结） |
+| `read_contract` | 194-241 | 读合同 + 核 SHA + 核时间映射与当前 `TIME_MAPPING` 相等（不等则要求重新冻结） |
 | `verify_models` / `model_provenance` / `job_key` | 242-270 | 模型文件核对、来源摘要、任务键 |
 
-**被谁调用**：几乎所有模块。**改动影响面**：它在 `ENGINE_MODULES` 里，改它必须重新打包 + 重新准入。
+**被谁调用**：几乎所有模块。**改动影响面**：它在 `ENGINE_MODULES` 里，改它要重新打包、重新准入。
 
 #### `freeze_contract.py`（167 行）——唯一的冻结入口
 
@@ -318,7 +318,7 @@
 | `process_group` | 113-232 | 一批来源 + 领取句柄 + 侧车库 + 缓存 + 后端 | 回执列表 |
 | `main` | 235-304 | 命令行参数 | `worker_summary.json` |
 
-`main` 的顺序值得记住：读合同 → 核用途与后端匹配 → 准备输出目录（必须新）→ 读运行准入（`bounded_speed_runtime.runtime_options`）→ 建队列/侧车库/阶段缓存 → 验资源票 → 核 `source_files` 摘要 → 验解码库 → 建后端 → 循环领取分片 → 写汇总。
+`main` 的顺序：读合同 → 核用途与后端匹配 → 准备输出目录（新目录）→ 读运行准入（`bounded_speed_runtime.runtime_options`）→ 建队列/侧车库/阶段缓存 → 验资源票 → 核 `source_files` 摘要 → 验解码库 → 建后端 → 循环领取分片 → 写汇总。
 
 **被谁调用**：`gpu_bootstrap.py` 在已准入的 GPU 上下文里以子进程方式启动它（命令行在 `gpu_launch.py:183-199` 拼装）。
 
@@ -331,7 +331,7 @@
 | `validate_output_paths` | 69-82 | 目录互斥规则（见 02 文档第 5.3 节） |
 | `selected_uuids` | 85-96 | `auto2`（仅试验）/`auto8`（正式八卡）/两个显式 UUID |
 | `_run` | 99-318 | 主流程：核成员清单与合同 → 资源双探针 → 持锁 → 逐卡起子进程 → 监控（挑战/模型/排空）→ 归还资源 → CPU 全量核对 |
-| `run` | 321-345 | 新 schema 入口：有界运行规格时必须持租约 |
+| `run` | 321-345 | 新 schema 入口：有界运行规格下需持租约才能跑 |
 | `main` | 348-359 | 命令行 |
 
 **被谁调用**：人工/平台入口。**它不 import torch**（`:115` 注释），所有模型动作都在子进程里。
@@ -356,7 +356,7 @@
 | `read_window` | 208-231 | 来源 + identity + 窗口 | 单声道 16 kHz 波形 + `input_pcm_sha256` |
 | `units_from_windows` | 232-257 | 窗口列表 + identity | `(字单元列表, 异常列表)` |
 
-**窗口规则**：核心窗 + 左右上下文，总长 ≤30 秒（`:190`）；VAD 静音点可以把切点往前挪最多 1 秒（`:186-190`）；窗口必须首尾相接铺满整段（`:202-204` 断言）。
+**窗口规则**：核心窗 + 左右上下文，总长 ≤30 秒（`:190`）；VAD 静音点可以把切点往前挪最多 1 秒（`:186-190`）；窗口首尾相接铺满整段（`:202-204` 断言）。
 
 #### `source_clock.py`（27 行）
 
@@ -377,7 +377,7 @@
 
 #### `native_transformers_batch.py`（240 行）——批次文件事务
 
-`NativeTransformersBatchStore`（100-240）：`identity.json` 定生产者/合同/模型/批大小 → `plan.json` 定 cohort 切分 → `batches/<cohort_sha>.json` 存整批结果 → `attempts/*.json` 存失败现场。`run_batch()`（192-238）是唯一入口：**先整批落盘并读回，才逐行返回**；未提交的 cohort 必须提供原全部行。
+`NativeTransformersBatchStore`（100-240）：`identity.json` 定生产者/合同/模型/批大小 → `plan.json` 定 cohort 切分 → `batches/<cohort_sha>.json` 存整批结果 → `attempts/*.json` 存失败现场。`run_batch()`（192-238）是唯一入口：**先整批落盘并读回，才逐行返回**；未提交的 cohort 提供原全部行，否则被拒。
 
 **被谁调用**：`qwen_backend.py`（合批路径）、`run_native_batch_pilot.py`、`audit_native_transformers_batch.py`、`native_batch_readback.py`、两个 `prepare_*` 脚本。
 
@@ -431,7 +431,7 @@
 
 #### `queue_handoff.py` 一族（471 / 380 / 423 / 362 / 406 行）
 
-四个交接实现，同一个套路：`check()` 只核固定输入 → `request_value()`/`observation()` 生成并核“请求/观察” → `publish()` 原子写 `runtime-spec.json` + `reply.json`。
+四个交接实现是同一套结构：`check()` 只核固定输入 → `request_value()`/`observation()` 生成并核“请求/观察” → `publish()` 原子写 `runtime-spec.json` + `reply.json`。
 
 | 文件 | 定位 |
 |---|---|
@@ -440,7 +440,7 @@
 | `bounded_speed_handoff.py` | 提速版的材料交接（按分片登记已封账、持有租约） |
 | `native_batch_queue_handoff.py` | 原生合批 v2 的交接（额外核 B1 特征依赖） |
 
-**注意**：这四个文件函数名高度重复，见第 8 节第 4 条。
+这四个文件函数名高度重复，见第 8 节第 4 条。
 
 #### 准入相关
 
@@ -490,13 +490,13 @@
 | `predecessor_gate.py` | 25 | 等同一控制面的稳定新材料 |
 | `launch.sh` | — | 容器内入口：`exec .../python -B "$PACKAGE_ROOT/runtime/entry.py"`（12 行） |
 
-**注意**：这些文件是**仓库侧源件**，冻结包里的同名文件由 spec 逐份钉 SHA 提供（`INTERFACE.md:19`）；两者内容未必相同，不要拿仓库里的当包里的。
+这些文件是**仓库侧源件**，冻结包里的同名文件由 spec 逐份钉 SHA 提供（`INTERFACE.md:19`）；两者内容未必相同，仓库里的文件不能当作包内同名文件的等价物。
 
 ### 5.4 `lm_launch/`（LM 启动门）
 
 | 文件 | 行数 | 作用 |
 |---|---:|---|
-| `run_lm.sh` | 132 | 唯一入口：7 项前置（目录必须新、不得放进代码目录、`model_115.pt` 名字与 SHA、`spk2id.json` 存在、关键环境变量不得被覆盖、不得设 `SKIP_*`）→ 真跑 `check_b6_lm_init.py --expected-epoch 115` → 写 `lm_initialization.json` → 交给 `train_b6_mix_cloud_8gpu.sh` |
+| `run_lm.sh` | 132 | 唯一入口：7 项前置检查（目录为新目录、不在代码目录内、`model_115.pt` 名字与 SHA、`spk2id.json` 存在、关键环境变量不被覆盖、未设 `SKIP_*`）→ 真跑 `check_b6_lm_init.py --expected-epoch 115` → 写 `lm_initialization.json` → 交给 `train_b6_mix_cloud_8gpu.sh` |
 | `lm_stage_gate.py` | 323 | 常量：`NUMBER=13075`、`BATCH=48`、`WORLD=8`、`MARGIN=0.3`、冷启动标记、禁止出现的日志行（37-51）；`verify`（119）、`verify_speaker_map`（170）、`verify_recipe`（217）、`run`（248）、`postflight`（280） |
 | `submit.conf.yaml` | 97 | 平台任务配置草案（镜像/队列/规格/挂载留 TODO） |
 | `env.template` | 49 | 环境模板 |
@@ -552,7 +552,7 @@
 
 ## 7. 一张“改这里会影响谁”的表
 
-| 你改的文件 | 直接影响 | 必须同步/重跑 |
+| 你改的文件 | 直接影响 | 需要同步/重跑 |
 |---|---|---|
 | `redimnet2/redimnet2.py` 默认路径 | 推理、训练、评测、所有已发布权重 | `tests/test_mask_input_contract.py`、`tests/test_varlen_masking.py`；已发布数字要重算 |
 | `redimnet2/layers/poolings.py` | 同上 | 同上 |
@@ -560,7 +560,7 @@
 | 训练栈 `utils/executor.py` 或 `numerical_failure.py` | 主训练；**接续包把这两个文件作为“允许的差异”** | `tools/ptn_resume` 的 spec 与审阅 |
 | 任一配方 yaml | 该实验 | 短测；若已被冻结包引用则重打包 |
 | `tools/open_annotation/` 的 16 个引擎文件之一 | 标注系统身份 | 重新冻结包 + 重跑 pilot + 重新准入 |
-| `tools/open_annotation/` 的 `REVIEWABLE_CONTROL` 四文件之一 | 只影响 CPU 辅助路径 | 附独立审阅原件，且必须引擎文件全等 |
+| `tools/open_annotation/` 的 `REVIEWABLE_CONTROL` 四文件之一 | 只影响 CPU 辅助路径 | 附独立审阅原件，且引擎文件全等 |
 | `tools/ptn_resume/contracts.py` 的身份常量 | 接续包与状态门 | 新版本包，旧包作废 |
 | `tools/ptn_resume/lm_launch/*` | LM 启动门 | 重新冻结 LM 包并更新两个哈希 |
 | `docs/*.md` | 无运行时影响 | `docs/reviews/check_document_links.py`、`check_report_tables.py` |
@@ -569,11 +569,11 @@
 
 ## 8. 可疑点与已知不一致（读代码时实际发现的）
 
-按“会不会害人”排序。前三条会让人得出错误结论，后几条只是维护负担。
+按对判断的影响排序。前三条会让人得出错误结论，后几条只是维护负担。
 
 ### 8.1 配方里的 `loss:` 在两个正式配方中不生效
 
-`official_repro_ptn.yaml:84-85` 写 `loss: CrossEntropyLoss`、`loss_args: {}`，`official_repro_lm.yaml` 同理；但 `project_type: sphereface2` 的投影头**自己算损失并返回元组**（`models/projections.py:201-211`），训练器见元组就取第二项（`utils/executor.py:263-268`），`criterion` 从头到尾没被调用（`train.py:596` 只是构造了它）。后果：改 `loss`/`loss_args` 不会有任何效果，也不会报错。读配方时不要以为损失是交叉熵。
+`official_repro_ptn.yaml:84-85` 写 `loss: CrossEntropyLoss`、`loss_args: {}`，`official_repro_lm.yaml` 同理；但 `project_type: sphereface2` 的投影头**自己算损失并返回元组**（`models/projections.py:201-211`），训练器见元组就取第二项（`utils/executor.py:263-268`），`criterion` 从头到尾没被调用（`train.py:596` 只是构造了它）。后果：改 `loss`/`loss_args` 不会有任何效果，也不会报错。读配方时容易误以为损失是交叉熵。
 
 ### 8.2 `_stage_inputs()` 有一个从未使用的参数
 
@@ -581,7 +581,7 @@
 
 ### 8.3 注释里明确标出的“地雷”分支，当前走不到
 
-`redimnet2.py:456-472` 注释说：骨干里的掩码截断写成了 `mask[:, :, :T_keep]`，切的是频率轴（长度 1）等于没切；因为 `Wrap.forward` 已经提前把两者一起截到 `time_stride` 整数倍（`:649-671`），今天走不到这里。注释自己写了“这是一颗留着的地雷，改成 `...` 才是对的”。**别把它当已修的代码读**。
+`redimnet2.py:456-472` 注释说：骨干里的掩码截断写成了 `mask[:, :, :T_keep]`，切的是频率轴（长度 1）等于没切；因为 `Wrap.forward` 已经提前把两者一起截到 `time_stride` 整数倍（`:649-671`），今天走不到这里。注释自己写了“这是一颗留着的地雷，改成 `...` 才是对的”。这段分支不属于已修代码。
 
 ### 8.4 四个交接模块是同构实现
 
@@ -594,7 +594,7 @@
 
 ### 8.6 仓库侧 `runtime/` 与包内 `runtime/` 不是同一份
 
-`tools/ptn_resume/runtime/` 是仓库维护的新执行器源件（`launch.sh:12` 指向 `$PACKAGE_ROOT/runtime/entry.py`），而冻结包里的同名文件由 spec 的 `runtime_files` 逐份提供并核 SHA（`INTERFACE.md:19`、`state_gate.py:62`）。比对时要用包的 `bundle_files.json`，不要用仓库里的文件当包内身份。
+`tools/ptn_resume/runtime/` 是仓库维护的新执行器源件（`launch.sh:12` 指向 `$PACKAGE_ROOT/runtime/entry.py`），而冻结包里的同名文件由 spec 的 `runtime_files` 逐份提供并核 SHA（`INTERFACE.md:19`、`state_gate.py:62`）。比对时以包的 `bundle_files.json` 为准；仓库里的文件不等于包内身份。
 
 ### 8.7 配方注释与字段的历史残留
 

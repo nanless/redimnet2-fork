@@ -1,40 +1,42 @@
-# 仓库状态（自动生成，请勿手改）
+# 仓库状态（自动生成，不手改）
 
-> 本文件由 `tools/gen_status.py` 生成。**正文里不要复制这里的数字**——正文写"见
-> [STATUS.md](STATUS.md) 第 N 节"或写复核命令，让读者自己查。
+> 本文件由 `tools/gen_status.py` 生成。正文不复制这里的数字：正文写“见
+> [STATUS.md](STATUS.md) 第 N 节”或复核命令，由读者自己查。
 > 重新生成：`python3 tools/gen_status.py`；校验是否过期：`python3 tools/gen_status.py --check`；
 > 检查文档有没有又把易变事实写死：`python3 tools/gen_status.py --lint`。
-> 为保证可 diff，本文件不含生成时间戳；"时间"只来自 git 提交与实验产物的文件时间。
+> 为保证可 diff，本文件不含生成时间戳；“时间”只来自 git 提交与实验产物的文件时间。
 
 ---
 
 ## 1. 仓库
 
-- 完整 HEAD：`9cc4a1239eb50372a9e10c1e0d442f2747a1b1c0`
+- 完整 HEAD：`d28b06dcb3a929967d425904534f7554a1f4b4d3`
 - 当前分支：`main`
-- 顶端提交：`9cc4a12 2026-11-07 18:25:23 +0000 标注 v4-r4 修复：prepare/resume 默认恢复严格 device 语义（portable 才放宽）；恢复真实诊断报文；夹具改 400 帧；预检仅 auto8 接线并打印跳过标记`
-- 未提交改动：19 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
+- 顶端提交：`d28b06d 2026-11-08 01:12:40 +0000 docs/13：补与官方结果表的完整对比（12 格实测，含校准证据与 SITW 缺列说明）`
+- 未提交改动：138 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
 
 ```
  M .agents/skills/redimnet2-reproduction-ops/SKILL.md
+ M .agents/skills/redimnet2-reproduction-ops/references/20261021-audit-baseline.md
+ M .agents/skills/redimnet2-reproduction-ops/references/asr-speed-and-continuation.md
+ M .agents/skills/redimnet2-reproduction-ops/references/boundary-selection-comparison-20261024.md
+ M .agents/skills/redimnet2-reproduction-ops/references/character-boundary-research.md
+ M .agents/skills/redimnet2-reproduction-ops/references/complete-word-experiments.md
+ M .agents/skills/redimnet2-reproduction-ops/references/comprehensive-audit-20261025.md
+ M .agents/skills/redimnet2-reproduction-ops/references/duration-finetuning.md
+ M .agents/skills/redimnet2-reproduction-ops/references/flac-seek-regressions.md
+ M .agents/skills/redimnet2-reproduction-ops/references/full-open-labeling-20261024.md
  M .agents/skills/redimnet2-reproduction-ops/references/lm-launch-20261106.md
- M .agents/skills/redimnet2-reproduction-ops/references/repository-and-evidence.md
- M .agents/skills/redimnet2-reproduction-ops/references/repository-and-recipes.md
- M .agents/skills/redimnet2-reproduction-ops/references/task-status-and-readonly-progress.md
- M .agents/skills/redimnet2-reproduction-ops/references/training-and-continuation.md
- M .agents/skills/volcengine-ml-ddp-submit/references/platform-ddp-workflow.md
- M docs/02-architecture.md
- M docs/03-code-walkthrough.md
- M docs/10-云端八卡训练.md
- M docs/12-三语料B6官方复现配方核查.md
- M docs/13-训练权重导出与评测.md
- M docs/15-三语料B6八卡短测与正式训练记录.md
- M docs/16-实验维护与验收边界.md
- M docs/17-脚本与入口总表.md
- M docs/18-文档索引与状态.md
- M docs/README.md
-?? docs/STATUS.md
-?? tools/gen_status.py
+ M .agents/skills/redimnet2-reproduction-ops/references/model-storage-20261023.md
+ M .agents/skills/redimnet2-reproduction-ops/references/monitoring-and-checkpoints.md
+ M .agents/skills/redimnet2-reproduction-ops/references/multicase-boundary-audit.md
+ M .agents/skills/redimnet2-reproduction-ops/references/open-annotation.md
+ M .agents/skills/redimnet2-reproduction-ops/references/production-sidecar-20261024.md
+ M .agents/skills/redimnet2-reproduction-ops/references/ptn-maintenance-stop-and-resume-20261024.md
+ M .agents/skills/redimnet2-reproduction-ops/references/ptn-resume-ordinary-entry-fix-20261024.md
+ M .agents/skills/redimnet2-reproduction-ops/references/ptn-resume-spawn-fix-20261024.md
+ M .agents/skills/redimnet2-reproduction-ops/references/ptn-resume-submission-20261024.md
+... 其余 118 项省略
 ```
 
 复核：`git rev-parse HEAD`、`git log -1 --format='%h %ad %s'`、`git status --porcelain | wc -l`
@@ -56,9 +58,9 @@
 命令：`/root/miniforge3/envs/USE/bin/python -m pytest tools/open_annotation/tests -q -p no:cacheprovider`
 
 - 退出码：0
-- 摘要行：`1085 passed, 18 skipped, 6 warnings`
+- 摘要行：`1094 passed, 18 skipped, 6 warnings`
 
-注意：这是**本次生成时**的观测。用例数、失败项都会变；把它当结论引用前先重跑。
+注意：这是本次生成时的观测。用例数、失败项都会变，引用前先重跑。
 
 ## 4. 已知产物
 
@@ -91,7 +93,7 @@ sha256 只给前 16 位，够 diff；要完整值用下面第 6 节的命令。
 
 ## 6. 说明
 
-- 本文件的**唯一**用途是承载易变事实。`docs/*.md` 正文里不要写死 HEAD、权限位、测试计数、产物 sha、"已修/已验证"、目录里有什么。
+- 本文件只用于承载易变事实。`docs/*.md` 正文不写死 HEAD、权限位、测试计数、产物 sha、“已修/已验证”、目录里有什么。
 - 复核全部产物 sha：
 
   ```bash

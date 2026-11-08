@@ -11,9 +11,9 @@ DATA_AUDIT_FILE="${DATA_AUDIT_FILE:?必须指定已完成完整数据检查的 d
 [[ "$MODE" == smoke || "$MODE" == formal ]] || { echo 'MODE 只接受 smoke 或 formal' >&2; exit 2; }
 [[ "$RUN_ROOT" == /* && "$RUN_ROOT" != / ]] || { echo 'RUN_ROOT 必须是专属绝对目录' >&2; exit 2; }
 [[ -x "$PYTHON_BIN" && -f "$SOURCE_CHECKSUM_FILE" && -f "$DATA_AUDIT_FILE" ]] || { echo 'Python、源码校验文件或数据检查报告不存在' >&2; exit 2; }
-# 专用流程不接受外部训练参数，防止平台环境悄悄改变正式配方。
+# 专用流程不接受外部训练参数，避免平台环境在无人察觉时改掉正式配方。
 for key in NUM_EPOCHS SAMPLE_NUM_PER_EPOCH BATCH_SIZE SAVE_EPOCH_INTERVAL RECIPE MODEL_CKPT STAGE EXP_DIR PTN_EXP_DIR REPRO NUM_GPUS RECIPE_DATA_PREFIX VOX1_TEST_DIR EXPECT_TRAIN_LINES; do
-    # 间接检查“是否定义”，空字符串也必须拒绝；不用仅Bash4.2支持的-v。
+    # 间接检查“是否定义”，空字符串也要拒绝；不用仅Bash4.2支持的-v。
     if [[ ${!key+x} ]]; then echo "专用流程拒绝外部训练覆盖: $key" >&2; exit 2; fi
 done
 export REPO_ROOT PYTHON_BIN MODE
@@ -22,7 +22,7 @@ export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
 export DATA_ROOT=/root/group-shared/voiceprint/data/wespeaker_data
 export SHARED_DATA_MOUNT="${SHARED_DATA_MOUNT:-/shared/group-shared}"
-# 禁止继承跳过检查的开关。
+# 清掉可能继承来的跳过检查开关：下面统一重置为 0。
 export SKIP_PREFLIGHT=0 SKIP_DATA_LIST_CHECK=0 SKIP_UTT2SPK_CHECK=0 SKIP_AUG_CHECK=0
 export SKIP_VOX1_CHECK=0 SKIP_GPU_CHECK=0 SKIP_DISK_CHECK=0 SKIP_LOCK_CHECK=0
 cd "$REPO_ROOT"
@@ -352,7 +352,7 @@ check_stage lm 1 "$ATTEMPT_DIR/lm.stdout.log" lm_final
 from pathlib import Path
 import sys
 text = Path(sys.argv[1]).read_text(errors='replace')
-# 同阶段 LM 恢复允许恢复自身优化器；首次 LM 必须只继承 PTN 模型。
+# 同阶段 LM 恢复允许恢复自身优化器；首次 LM 只继承 PTN 模型。
 if 'TRAIN_START epoch=1 ' in text:
     marker = 'cold start: model_ckpt loads model parameters only; optimizer/scaler start fresh'
     if marker not in text or 'resume: restored optimizer state from' in text or 'resume: restored GradScaler state from' in text:

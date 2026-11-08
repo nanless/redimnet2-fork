@@ -83,7 +83,7 @@ class BoundedPreparation(unittest.TestCase):
         self.assertFalse(list((self.root/'real-freeze').rglob('*.sqlite')))
 
     def test_deployed_preparer_real_freezes_sibling_output_not_arbitrary_ancestor(self):
-        """复现云端build-code部署；真正复制源码并在新解释器执行准备器。"""
+        """复现云端build-code部署；实际复制源码并在新解释器执行准备器。"""
         base=Path(self.spec['base_contract']['path']);base.write_bytes(C.canonical_bytes(external_contract()))
         self.spec['base_contract']['sha256']=C.sha_file(base)
         task=self.root/'experiments'/'redimnet2'/'bounded-pilot';task.mkdir(parents=True)

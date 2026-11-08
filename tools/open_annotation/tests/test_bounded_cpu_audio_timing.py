@@ -69,7 +69,7 @@ class BoundedTiming(unittest.TestCase):
         self.source['windows']=[dict(window_id='resample',context_start_sample=0,context_end_sample=len(data),input_pcm_sha256=sha(mono.tobytes()))]
         r=self.run_measure();self.assertTrue(r['passed']);self.assertEqual(r['sources'][0]['windows'][0]['model_frames'],16000)
     def test_repository_cpu_helpers_are_not_heavy_model_packages(self):
-        # 用真正的维护模块复现整套 discover 的导入顺序；不删模块躲守卫。
+        # 用实际的维护模块复现整套 discover 的导入顺序；不删模块躲守卫。
         import vllm_backend
         import vllm_live_probe
         self.assertIs(sys.modules['vllm_backend'],vllm_backend)

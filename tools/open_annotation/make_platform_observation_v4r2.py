@@ -3,12 +3,12 @@
 
 Shape required by native_batch_queue_handoff.observation():
   schema      annotation-bounded-speed-platform-observation/v1  (M.PLATFORM_SCHEMA)
-  old_task_id / old_queue_root      必须与 handoff-spec 一致
-  observed_utc                      带时区；<= now 且 < 3600s；且必须晚于新任务的 request.created_utc
+  old_task_id / old_queue_root      要与 handoff-spec 一致
+  observed_utc                      带时区；<= now 且 < 3600s；且要晚于新任务的 request.created_utc
   evidence_basis                    platform_terminal_and_current_shared_locks
   remote_proc_enumeration_performed False
   competing_successor_tasks         []
-  prior_attempts                    []（或列出的都必须终态且 active_workers=0）
+  prior_attempts                    []（或列出的都要是终态且 active_workers=0）
   terminal_observation              {"path","sha256"} —— 指向 writer terminal observation
   current_successor_task            新任务自己：state=Running、active_workers=1、
                                     workers=[{"name": <hostname>, "state": "Running"}]

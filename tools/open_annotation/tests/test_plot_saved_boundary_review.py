@@ -1,4 +1,4 @@
-"""离线绘图必须保留各自时钟/零长/FIX，并拒绝假原音身份。"""
+"""离线绘图要保留各自时钟/零长/FIX，并拒绝假原音身份。"""
 import hashlib
 import importlib.util
 import io

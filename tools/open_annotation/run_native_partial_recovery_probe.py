@@ -127,7 +127,7 @@ def checked_packet(root,plan,cohort):
     if not path.exists():return None
     physical(path);published=path.lstat();need(stat.S_ISREG(published.st_mode),'atomic packet must be a physical regular file')
     # atomic_new先link目标、fsync目录、最后unlink临时名；nlink2仍在发布过程中。
-    # 必须等到nlink1才主动中断，不能自己制造首包孤立tmp再把探针误判失败。
+    # 中断要等到nlink1，不能自己制造首包孤立tmp再把探针误判失败。
     if published.st_nlink==2:return None
     need(published.st_nlink==1,'atomic packet has unexpected external hardlinks')
     value=pin(dict(path=str(path),sha256=file_identity(path)['sha256']),64*1024**2);content=value.get('content',{})

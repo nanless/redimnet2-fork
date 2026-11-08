@@ -108,7 +108,7 @@ def interval_rows(record):
 
 
 def zoom_ranges(record, rows, duration):
-    """首尾、窗口接缝与有限异常点；合并重复，不把1采样点差伪装成声学分辨率。"""
+    """首尾、窗口接缝与有限异常点；合并重复，不把1采样点差当作声学分辨率。"""
     sr = record['source_identity']['sample_rate']
     points = [(0., '开头'), (duration, '结尾')]
     for w in record['windows'][1:]:
@@ -134,7 +134,7 @@ def zoom_ranges(record, rows, duration):
 
 
 def load_case(case, audio_root):
-    """兼容私有选择清单；编码原音须与侧车记录的原件SHA/时钟一致。"""
+    """兼容私有选择清单；编码原音要与侧车记录的原件SHA/时钟一致。"""
     rid = case['review_id']
     need(isinstance(rid, str) and ID.fullmatch(rid), 'review_id无效')
     row = case['row']

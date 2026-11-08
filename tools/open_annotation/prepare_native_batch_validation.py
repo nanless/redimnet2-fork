@@ -56,7 +56,7 @@ def prepare(spec_path, spec_sha, output):
              'explicit official B1 preprocessing source pins required')
     else:
         need(preprocessing_sources is None, 'preprocessing source pins require explicit feature policy')
-    # 先核片数及声明数量，避免标错总数的小索引偷偷列出全库分片。
+    # 先核片数及声明数量，避免标错总数的小索引把全库分片也列进来。
     index_path, finite_index = pinned(spec['index'])
     shards = finite_index.get('shards')
     need(isinstance(shards, list) and 1 <= len(shards) <= count and

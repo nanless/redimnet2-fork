@@ -50,7 +50,7 @@ class MaintenanceEntryTests(unittest.TestCase):
             frozen=importlib.util.module_from_spec(spec);spec.loader.exec_module(frozen)
             second=frozen.freeze(parent,C.sha_file(parent),root/'second-code','test-second')
             self.assertEqual(Path(second['frozen_copy']),(root/'second-code').resolve())
-            # 外部冻结和再次冻结都必须带共享helper；不能依赖仓库cwd或父目录同名模块。
+            # 外部冻结和再次冻结都要带共享helper；不能依赖仓库cwd或父目录同名模块。
             (root/'task_names.py').write_text('raise RuntimeError("foreign parent helper must not load")\n')
             env={**os.environ,'PYTHONPATH':'','PYTHONDONTWRITEBYTECODE':'1','CUDA_VISIBLE_DEVICES':''}
             for code in (root/'new-code',root/'second-code'):

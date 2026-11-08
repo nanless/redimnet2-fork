@@ -1,4 +1,4 @@
-"""P0-1 回归：单源确定性异常只拒绝该源，不杀 worker；白名单外异常仍必须上抛。
+"""P0-1 回归：单源确定性异常只拒绝该源，不杀 worker；白名单外异常仍然上抛。
 
 CPU 合成，无模型、无 GPU：真实 process_group 代码路径 + 假 store/backend，
 只把 inspect/plan/read/build 换成最小确定性桩。
@@ -87,7 +87,7 @@ class FakeStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b'{"synthetic":true}')
         self.published.append(source['source_id'])
-        # 2026-11-08：不要再硬编码 decision，否则测不到 build_record 的失败语义。
+        # 2026-11-08：不再硬编码 decision，否则测不到 build_record 的失败语义。
         # 真实 store.publish 返回的是记录自身的 decision.state。
         return {'source_id': source['source_id'],
                 'decision': (record.get('decision') or {}).get('state', 'unknown')}
@@ -147,13 +147,13 @@ class SourceRefusalTests(unittest.TestCase):
                    'src_bad_many': [window(bad_many, i) for i in range(257)],
                    'src_good_a': [window(good_a, 0)], 'src_good_b': [window(good_b, 0)]}
         receipts, observed, store, backend = self.run_group(sources, windows, refuse_lookup='src_bad_stat')
-        # 2026-11-08 P0-1b：被拒源也必须产回执（否则分片永远 cannot commit incomplete chunk）。
-        # 回执必须覆盖分片内全部源，坏源标 failed，好源照常产侧车。
+        # 2026-11-08 P0-1b：被拒源也要产回执（否则分片一直报 cannot commit incomplete chunk）。
+        # 回执要覆盖分片内全部源，坏源标 failed，好源照常产侧车。
         self.assertEqual(sorted(r['source_id'] for r in receipts),
                          ['src_bad_many', 'src_bad_stat', 'src_good_a', 'src_good_b'])
         self.assertEqual(len({r['source_id'] for r in receipts}), len(sources))
-        # 注意：本用例用 patch.object 替换了 worker.build_record，decision 由真实 build_record
-        # 计算，因此这里只断言"覆盖度"这一 P0-1b 真正的不变量；decision 语义另由
+        # 本用例用 patch.object 替换了 worker.build_record，decision 由真实 build_record
+        # 计算，因此这里只断言"覆盖度"这一 P0-1b 实际的不变量；decision 语义另由
         # test_refused_identity_maps_to_failed_decision 直接测 schema.build_record。
         refused_ids = {r['source_id'] for r in receipts} & {'src_bad_stat', 'src_bad_many'}
         self.assertEqual(refused_ids, {'src_bad_stat', 'src_bad_many'})
@@ -183,7 +183,7 @@ if __name__ == '__main__':
     unittest.main()
 
 class RefusedRecordSemantics(unittest.TestCase):
-    """被拒源在真实 build_record 下必须落成 decision=failed（P0-1b 的语义面）。"""
+    """被拒源在真实 build_record 下要落成 decision=failed（P0-1b 的语义面）。"""
 
     def test_refused_identity_maps_to_failed_decision(self):
         import sys

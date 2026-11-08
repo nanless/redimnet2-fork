@@ -204,7 +204,7 @@ if __name__ == "__main__":
     unittest.main(verbosity=2)
 
 class PostflightSemantics(unittest.TestCase):
-    """postflight 的 ok 必须同时要求训练退出码为 0（审计 P0，2026-11-08）。"""
+    """postflight 的 ok 要同时要求训练退出码为 0（审计 P0，2026-11-08）。"""
 
     def _run_root(self, marker=True, model=True):
         root = Path(tempfile.mkdtemp(prefix="lm-postflight-"))

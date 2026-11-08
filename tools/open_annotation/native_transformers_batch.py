@@ -87,7 +87,7 @@ def verify_pcm(row):
 
 
 def snapshot(value):
-    """异常证据保留非JSON类型的明确描述，不把未知值冒充有效模型输出。"""
+    """异常证据保留非JSON类型的明确描述，不把未知值当成有效模型输出。"""
     if value is None or type(value) in (str, int, bool): return value
     if type(value) is float:
         import math
@@ -98,7 +98,7 @@ def snapshot(value):
 
 
 class NativeTransformersBatchStore:
-    """每个明确claim／来源组一个稳定目录；严禁以剩余cache-miss列表另起根。"""
+    """每个明确claim／来源组一个稳定目录；不以剩余cache-miss列表另起根。"""
     def __init__(self, root, producer_sha256, *, synthetic_fixture, contract_sha256,
                  model_sha256, max_batch_rows, policy=POLICY):
         need(all(is_sha(v) for v in (producer_sha256, contract_sha256, model_sha256)), 'producer/contract/model SHA required')
@@ -190,10 +190,10 @@ class NativeTransformersBatchStore:
             no_per_position_retry=True, database_created=False))
 
     def run_batch(self, rows, *, infer_batch, after_durable_commit=None):
-        """返回逐row副本前，必须完成整批落盘及读回；异常整批保留并向外抛。
+        """返回逐row副本前，要先完成整批落盘及读回；异常整批保留并向外抛。
 
         首次提供此固定来源组全部未发布窗口。恢复可请求已提交批次的子集，
-        但未提交批次必须提供原cohort全部行与原顺序，不按剩余行重排。
+        但要提供原cohort全部行与原顺序，不按剩余行重排。
         """
         need(isinstance(rows,list) and 1 <= len(rows) <= MAX_PLAN_ROWS and callable(infer_batch), 'finite rows and explicit native callback required')
         identities = [request_identity(r) for r in rows]

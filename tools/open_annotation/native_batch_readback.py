@@ -35,7 +35,7 @@ def seal_admission_readback(track):
     need(0<value['source_count']<=4096,'only finite native pilot observations may be sealed')
     for source_ref in value['sources']:
         record=track['records'][source_ref['source_id']]
-        # 包含schema及未来未知顶层字段；原侧车canonical字节必须能完整重建。
+        # 包含schema及未来未知顶层字段；原侧车canonical字节要能完整重建。
         view=copy.deepcopy(record)
         view['windows']=[]
         for window in record.get('windows',[]):

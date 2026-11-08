@@ -1,4 +1,4 @@
-"""从已完整核验的联合消费索引按来源唯一读取；不按mtime猜版本。"""
+"""从已完整核验的联合消费索引按来源唯一读取；不按mtime推断版本。"""
 from __future__ import annotations
 import argparse
 import collections

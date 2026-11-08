@@ -47,7 +47,7 @@ def prepare(spec_path, spec_sha, output):
     need(base.get('purpose') in {'pilot_validation', 'silver_annotation'}, 'real offline parent contract required')
     need(base.get('model_API_calls_allowed') == 0 and base.get('release_training_labels') is False,
          'model API or automatic label release refused')
-    # 先核片数及声明数量，避免标错总数的小索引偷偷列出全库分片。
+    # 先核片数及声明数量，避免标错总数的小索引把全库分片也列进来。
     index_path, finite_index = pinned(spec['index'])
     shards = finite_index.get('shards')
     need(isinstance(shards, list) and 1 <= len(shards) <= count and
