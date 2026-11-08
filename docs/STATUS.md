@@ -10,34 +10,10 @@
 
 ## 1. 仓库
 
-- 完整 HEAD：`5c59a1cba7c516e07998a90732ca8492a8559e83`
+- 完整 HEAD：`821c9a985aae0eb2163f8d5cc439b63ce72254e4`
 - 当前分支：`main`
-- 顶端提交：`5c59a1c 2026-11-08 16:09:02 +0000 标注看板页面化：tools/annotation_dashboard_server.py`
-- 未提交改动：45 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
-
-```
- M .agents/skills/redimnet2-reproduction-ops/SKILL.md
- M .agents/skills/redimnet2-reproduction-ops/references/asr-speed-and-continuation.md
- M .agents/skills/redimnet2-reproduction-ops/references/lm-launch-20261106.md
- M .agents/skills/redimnet2-reproduction-ops/references/model-storage-20261023.md
- M .agents/skills/redimnet2-reproduction-ops/references/open-annotation.md
- M .agents/skills/redimnet2-reproduction-ops/references/repository-and-evidence.md
- M .agents/skills/redimnet2-reproduction-ops/references/repository-and-recipes.md
- M .agents/skills/redimnet2-reproduction-ops/references/stage-gates-and-provenance.md
- M .agents/skills/redimnet2-reproduction-ops/references/task-status-and-readonly-progress.md
- M .agents/skills/redimnet2-reproduction-ops/references/training-and-continuation.md
- M .agents/skills/volcengine-ml-ddp-submit/SKILL.md
- M .agents/skills/volcengine-ml-ddp-submit/references/artifact-locations.md
-RM .agents/skills/volcengine-ml-ddp-submit/references/console-clone-submission-20261106.md -> .agents/skills/volcengine-ml-ddp-submit/references/console-clone-submission.md
- M .agents/skills/volcengine-ml-ddp-submit/references/platform-ddp-workflow.md
- M .agents/skills/volcengine-ml-ddp-submit/references/pse-ddp-and-repository.md
- M .agents/skills/volcengine-ml-ddp-submit/references/tlive-omni-ddp.md
- M AGENTS.md
- M docs/01-background.md
- M docs/02-architecture.md
- M docs/03-code-walkthrough.md
-... 其余 25 项省略
-```
+- 顶端提交：`821c9a9 2026-11-08 16:46:15 +0000 全部技能与文档审查：五路并行核对现场、修过时结论、补缺失入口`
+- 未提交改动：0 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
 
 复核：`git rev-parse HEAD`、`git log -1 --format='%h %ad %s'`、`git status --porcelain | wc -l`
 
