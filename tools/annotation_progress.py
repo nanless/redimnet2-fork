@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""标注进度看板：从队列收据与运行目录直接算，不依赖平台接口。
+
+用法：
+    python3 tools/annotation_progress.py                       # 打印看板（markdown）
+    python3 tools/annotation_progress.py --out docs/ANNOTATION-PROGRESS.md
+    python3 tools/annotation_progress.py --run <run 目录> --window 60
+
+为什么不用 `find labels | wc -l`：GPFS 上几十万文件要十几分钟；分片收据只有几千个，
+秒级完成，而且统计的是"已提交分片"，不含正在写的半成品。
+"""
+import argparse
+import json
+import os
+import time
+from pathlib import Path
+
+TOTAL = 11_521_178
+RETAINED = 1_617_437          # 本 lineage 起算基数（1027 保留），见 todo 记忆
+TARGET_REMAINING = TOTAL - RETAINED
+
+
+def latest_run(root: Path):
+    cands = sorted(root.glob("*/run-*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return cands[0] if cands else None
+
+
+def read_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def collect(run: Path, window_minutes: int):
+    broker = read_json(run / "queue" / "broker.json") or {}
+    done_dir = run / "queue" / "completed"
+    now = time.time()
+    done_total = 0
+    done_window = 0
+    chunk_count = 0
+    if done_dir.is_dir():
+        for f in done_dir.glob("*.json"):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            n = int(d.get("source_count") or 0)
+            done_total += n
+            chunk_count += 1
+            if now - f.stat().st_mtime <= window_minutes * 60:
+                done_window += n
+    res = run / "resources-attempt1"
+    workers = len([p for p in res.glob("worker-*") if p.is_dir()]) if res.is_dir() else 0
+    return {
+        "done_total": done_total,
+        "done_window": done_window,
+        "chunks": chunk_count,
+        "next": broker.get("next"),
+        "completed": broker.get("completed_chunks"),
+        "leases": len(broker.get("leases") or {}),
+        "workers": workers,
+        "failure": (res / "failure.json").exists(),
+        "quarantine": (run / "queue" / "quarantine.json").exists(),
+        "run": run,
+    }
+
+
+def fmt(n):
+    return f"{n:,}"
+
+
+def render(m, window_minutes: int, task: str | None):
+    done = m["done_total"]
+    overall = RETAINED + done
+    pct = overall / TOTAL * 100
+    window_rate = m["done_window"] / (window_minutes / 60) if window_minutes else 0
+    left = TARGET_REMAINING - done
+    eta_h = left / window_rate if window_rate > 0 else None
+    lines = []
+    lines.append("# 标注进度看板（自动生成，不手改）")
+    lines.append("")
+    lines.append("> 生成：`python3 tools/annotation_progress.py --out docs/ANNOTATION-PROGRESS.md`。")
+    lines.append("> 数据来源：`queue/broker.json` 与 `queue/completed/*.json` 的 `source_count` 求和；")
+    lines.append("> 不用文件计数——GPFS 上几十万文件要十几分钟，而收据只有几千个。")
+    lines.append("")
+    lines.append("## 1. 总量")
+    lines.append("")
+    lines.append("| 项 | 值 |")
+    lines.append("|---|---|")
+    if task:
+        lines.append(f"| 任务 | `{task}` |")
+    lines.append(f"| 本轮目录 | `{m['run']}` |")
+    lines.append(f"| 分母（三域全量） | {fmt(TOTAL)} |")
+    lines.append(f"| 本 lineage 起算基数 | {fmt(RETAINED)}（1027 保留） |")
+    lines.append(f"| 本轮已完成 | **{fmt(done)}** 源 / {fmt(m['chunks'])} 分片 |")
+    lines.append(f"| 折算总进度 | {fmt(overall)} / {fmt(TOTAL)} = **{pct:.2f}%** |")
+    lines.append(f"| 本轮还剩 | {fmt(max(left, 0))} 源 |")
+    lines.append("")
+    lines.append("## 2. 速率与预计")
+    lines.append("")
+    lines.append("| 项 | 值 |")
+    lines.append("|---|---|")
+    lines.append(f"| 最近 {window_minutes} 分钟 | {fmt(m['done_window'])} 源 → **{fmt(int(window_rate))} 源/小时** |")
+    if eta_h:
+        lines.append(f"| 按此速率跑完本轮 | **{eta_h/24:.1f} 天**（{eta_h:.0f} 小时） |")
+    else:
+        lines.append("| 按此速率跑完本轮 | 未能计算（窗口内无新增） |")
+    lines.append("")
+    lines.append("## 3. 队列与进程")
+    lines.append("")
+    lines.append("| 项 | 值 |")
+    lines.append("|---|---|")
+    lines.append(f"| broker next / completed_chunks | {m['next']} / {m['completed']} |")
+    lines.append(f"| 正在处理的分片（leases） | {m['leases']} |")
+    lines.append(f"| worker 目录数 | {m['workers']} |")
+    lines.append(f"| 失败记录 `failure.json` | {'**存在**' if m['failure'] else '无'} |")
+    lines.append(f"| 隔离片 `quarantine.json` | {'**存在**' if m['quarantine'] else '无'} |")
+    lines.append("")
+    lines.append("## 4. 怎么读这张表")
+    lines.append("")
+    lines.append("- **折算总进度**用 1,617,437 作基数，因为新生产者的 lineage 从 1027 保留量起算；")
+    lines.append("  1028-v1 已完成的 4,447,318 源不在本 lineage 内，会被重算，所以不能算进 52.64% 那个口径。")
+    lines.append("- **速率**只看最近一个窗口：整体平均会把早期的低速和现在的稳态混在一起，")
+    lines.append("  判断“还要多久”用窗口速率更准。")
+    lines.append("- 出现 `failure.json` 或 `quarantine.json` 时不等于停跑，先看内容：")
+    lines.append("  隔离片是失败超阈值的分片被移出候选，其他片照常推进。")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append(f"采样时刻：{time.strftime('%Y-%m-%d %H:%M:%S %z')}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--root", default="/root/experiments/redimnet2/open-annotation-ultra-20261025")
+    ap.add_argument("--run", help="直接指定 run 目录；省略则取最新")
+    ap.add_argument("--window", type=int, default=60, help="速率窗口（分钟，默认 60）")
+    ap.add_argument("--task", help="任务 ID（可选，仅用于展示）")
+    ap.add_argument("--out", help="写入文件；省略则打印到标准输出")
+    args = ap.parse_args()
+
+    run = Path(args.run) if args.run else latest_run(Path(args.root))
+    if run is None or not (run / "queue").is_dir():
+        raise SystemExit("找不到可读的 run 目录，用 --run 指定一个含 queue/ 的目录")
+    text = render(collect(run, args.window), args.window, args.task)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(f"已写入 {args.out}（{len(text.splitlines())} 行）")
+    else:
+        print(text)
+
+
+if __name__ == "__main__":
+    main()
