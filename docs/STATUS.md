@@ -10,34 +10,10 @@
 
 ## 1. 仓库
 
-- 完整 HEAD：`d28b06dcb3a929967d425904534f7554a1f4b4d3`
+- 完整 HEAD：`41af297102887612d4a58867f8d56549637591c9`
 - 当前分支：`main`
-- 顶端提交：`d28b06d 2026-11-08 01:12:40 +0000 docs/13：补与官方结果表的完整对比（12 格实测，含校准证据与 SITW 缺列说明）`
-- 未提交改动：138 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
-
-```
- M .agents/skills/redimnet2-reproduction-ops/SKILL.md
- M .agents/skills/redimnet2-reproduction-ops/references/20261021-audit-baseline.md
- M .agents/skills/redimnet2-reproduction-ops/references/asr-speed-and-continuation.md
- M .agents/skills/redimnet2-reproduction-ops/references/boundary-selection-comparison-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/character-boundary-research.md
- M .agents/skills/redimnet2-reproduction-ops/references/complete-word-experiments.md
- M .agents/skills/redimnet2-reproduction-ops/references/comprehensive-audit-20261025.md
- M .agents/skills/redimnet2-reproduction-ops/references/duration-finetuning.md
- M .agents/skills/redimnet2-reproduction-ops/references/flac-seek-regressions.md
- M .agents/skills/redimnet2-reproduction-ops/references/full-open-labeling-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/lm-launch-20261106.md
- M .agents/skills/redimnet2-reproduction-ops/references/model-storage-20261023.md
- M .agents/skills/redimnet2-reproduction-ops/references/monitoring-and-checkpoints.md
- M .agents/skills/redimnet2-reproduction-ops/references/multicase-boundary-audit.md
- M .agents/skills/redimnet2-reproduction-ops/references/open-annotation.md
- M .agents/skills/redimnet2-reproduction-ops/references/production-sidecar-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/ptn-maintenance-stop-and-resume-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/ptn-resume-ordinary-entry-fix-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/ptn-resume-spawn-fix-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/ptn-resume-submission-20261024.md
-... 其余 118 项省略
-```
+- 顶端提交：`41af297 2026-11-08 09:25:33 +0000 写作规范整改：四路并行改写（文档、AGENTS.md、技能、代码注释）`
+- 未提交改动：0 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
 
 复核：`git rev-parse HEAD`、`git log -1 --format='%h %ad %s'`、`git status --porcelain | wc -l`
 
