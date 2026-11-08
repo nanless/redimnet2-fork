@@ -10,13 +10,33 @@
 
 ## 1. 仓库
 
-- 完整 HEAD：`9993fcb2bd4f712d74e2f670417d267d4912d0e2`
+- 完整 HEAD：`5c59a1cba7c516e07998a90732ca8492a8559e83`
 - 当前分支：`main`
-- 顶端提交：`9993fcb 2026-11-08 09:27:16 +0000 STATUS.md 在提交后重新生成（工作树已干净，未提交清单归零）`
-- 未提交改动：1 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
+- 顶端提交：`5c59a1c 2026-11-08 16:09:02 +0000 标注看板页面化：tools/annotation_dashboard_server.py`
+- 未提交改动：45 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
 
 ```
- M tools/gen_status.py
+ M .agents/skills/redimnet2-reproduction-ops/SKILL.md
+ M .agents/skills/redimnet2-reproduction-ops/references/asr-speed-and-continuation.md
+ M .agents/skills/redimnet2-reproduction-ops/references/lm-launch-20261106.md
+ M .agents/skills/redimnet2-reproduction-ops/references/model-storage-20261023.md
+ M .agents/skills/redimnet2-reproduction-ops/references/open-annotation.md
+ M .agents/skills/redimnet2-reproduction-ops/references/repository-and-evidence.md
+ M .agents/skills/redimnet2-reproduction-ops/references/repository-and-recipes.md
+ M .agents/skills/redimnet2-reproduction-ops/references/stage-gates-and-provenance.md
+ M .agents/skills/redimnet2-reproduction-ops/references/task-status-and-readonly-progress.md
+ M .agents/skills/redimnet2-reproduction-ops/references/training-and-continuation.md
+ M .agents/skills/volcengine-ml-ddp-submit/SKILL.md
+ M .agents/skills/volcengine-ml-ddp-submit/references/artifact-locations.md
+RM .agents/skills/volcengine-ml-ddp-submit/references/console-clone-submission-20261106.md -> .agents/skills/volcengine-ml-ddp-submit/references/console-clone-submission.md
+ M .agents/skills/volcengine-ml-ddp-submit/references/platform-ddp-workflow.md
+ M .agents/skills/volcengine-ml-ddp-submit/references/pse-ddp-and-repository.md
+ M .agents/skills/volcengine-ml-ddp-submit/references/tlive-omni-ddp.md
+ M AGENTS.md
+ M docs/01-background.md
+ M docs/02-architecture.md
+ M docs/03-code-walkthrough.md
+... 其余 25 项省略
 ```
 
 复核：`git rev-parse HEAD`、`git log -1 --format='%h %ad %s'`、`git status --porcelain | wc -l`
@@ -54,6 +74,7 @@ sha256 只给前 16 位，够 diff；要完整值用下面第 6 节的命令。
 | v4-r2 冻结包清单 | `$EXP/open-annotation-ultra-20261025/native-speed-successor-20261028-v4-r2/frozen-native-reviewed-v4-r2/bundle_files.json` | 10.6 KiB | `e47d88f51834605f` | 2026-11-06 10:45:53Z |
 | v4-r2 准入副本清单 | `$EXP/open-annotation-ultra-20261025/native-speed-successor-20261028-v4-r2/admission-20261108/formal-code/bundle_files.json` | 11.1 KiB | `342fdb9b90912608` | 2026-11-07 14:49:02Z |
 | v4-r2 v4 pilot 副本清单 | `$EXP/open-annotation-ultra-20261025/native-speed-successor-20261028-v4-r2/pilot-20261108/prepared-v6/native-fp32-sdpa-b8/code/bundle_files.json` | 11.1 KiB | `914a1da53c7811b6` | 2026-11-07 17:59:19Z |
+| v4-r6 生产包清单（20261109 准入） | `$EXP/open-annotation-ultra-20261025/native-speed-successor-20261028-v4-r2/admission-20261109/formal-code/bundle_files.json` | 11.1 KiB | `69f009e255bd9248` | 2026-11-08 06:03:52Z |
 | LM 受控包 r3 | `$EXP/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/package-r3` | 208 members | package `08a34b68ec26515b` / contract `bf437dc8fffe6982` | 2026-11-06 10:46:12Z |
 | v4-r3 冻结包 | 无此目录 | missing | — | — |
 
@@ -61,13 +82,13 @@ sha256 只给前 16 位，够 diff；要完整值用下面第 6 节的命令。
 
 ## 5. 最近三次标注提交
 
-任务号从目录名与 `publish-work/*.json` 的文件名取；平台侧终态本地**没有**留档，`terminal-*.json` 里的 `task_id` 字段已知会错绑旧任务，不能当新任务的终态用。
+任务号从 `publish-work/*.json` 的文件名取；平台侧终态本地**没有**留档，`terminal-*.json` 里的 `task_id` 字段已知会错绑旧任务，不能当新任务的终态用。运行中的代次不数侧车：labels 树现在有上百万个文件，`find` 一次要几分钟，而失败代次的 0 侧车才是有用的证据。
 
-| 代次 | 交接目录 | 任务号（取文件名） | 失败原因一句话 | 侧车条数 |
+| 代次 | 交接目录 | 任务号（取文件名） | 状态 / 失败原因一句话 | 侧车条数 |
 |---|---|---|---|---|
-| v2 | `handoff-v4r2-20261107-v2` | `t-20261107191026-bwfgm` | 无本地留档（run 目录为空） | 0 |
-| v3 | `handoff-v4r2-20261108-v3` | `t-20261108000732-jrrg2` | 无本地留档（run 目录为空） | 0 |
 | v4 | `handoff-v4r2-20261108-v4` | `t-20261108005758-s9w6f` | `gpu_common.Refused: worker initialization or CUDA allocation phase timed out`（resources-attempt1/failure.json） | 0 |
+| v5 | `handoff-v4r2-20261108-v5` | `t-20261108141622-9fkcm` | 无本地留档（run 目录为空） | 0 |
+| v6 | `handoff-v4r2-20261108-v6` | `t-20261108144507-mrvsh` | 运行中（按 `queue/` 推进） | 运行中不计数 |
 
 复核：`ls /root/experiments/redimnet2/open-annotation-ultra-*/handoff-*`；`find <run> -path '*labels*' -type f | wc -l`；`cat <run>/resources-attempt1/failure.json`
 

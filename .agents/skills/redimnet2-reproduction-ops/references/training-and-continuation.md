@@ -67,6 +67,8 @@ torchrun 退出不代表 rank 也退出了：各 rank 可能各有独立的 PG/S
 
 ## LM 受控包（2026-11-06，已提交）
 
+包、命令、首屏自检和失败特征都在[LM 受控启动](lm-launch-20261106.md)，这里只留会影响“能不能复用”的几条；两处冲突时以 lm-launch 的实测表为准。
+
 PTN 完成后，LM 走“冻结包 + 合同”，不再走`run_b6_mix_reproduction.sh`：那条 formal 分支会**先重训 PTN 120 轮**，还要求同源码的八卡 smoke 成功件。
 
 - 包目录`/root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/package-r3/`，208 个成员：190 成员的冻结源码树，加 14 个 runtime（12 个从 PTN 包原样继承，2 个新增）。

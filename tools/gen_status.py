@@ -83,14 +83,20 @@ ARTIFACTS = [
     ("v4-r2 冻结包清单", V4R2 / "frozen-native-reviewed-v4-r2" / "bundle_files.json"),
     ("v4-r2 准入副本清单", V4R2 / "admission-20261108" / "formal-code" / "bundle_files.json"),
     ("v4-r2 v4 pilot 副本清单", V4R2 / "pilot-20261108" / "prepared-v6" / "native-fp32-sdpa-b8" / "code" / "bundle_files.json"),
+    ("v4-r6 生产包清单（20261109 准入）", V4R2 / "admission-20261109" / "formal-code" / "bundle_files.json"),
 ]
 
-# 最近三次标注提交（v2/v3/v4）。目录名固定，任务号取 publish-work 下的文件名。
-ANNOT_SUBMISSIONS = [
-    ("v2", "handoff-v4r2-20261107-v2", "run-v2"),
-    ("v3", "handoff-v4r2-20261108-v3", "run-v3"),
-    ("v4", "handoff-v4r2-20261108-v4", "run-v4"),
-]
+# 最近三次标注提交：从交接目录自动发现，避免代次一多就写死漏项。
+# 任务号取 publish-work 下文件名；terminal-*.json 里的 task_id 字段已知会错绑旧任务，不读。
+def discover_submissions(limit=3):
+    dirs = sorted(ANNOT_ROOT.glob("handoff-v4r2-*"), key=lambda p: p.name)
+    out = []
+    for base in dirs[-limit:]:
+        gen = base.name.rsplit("-", 1)[-1]
+        runs = sorted((p for p in base.glob("run-*") if p.is_dir()), key=lambda p: p.name)
+        run = runs[-1] if runs else (base / ("run-" + gen))
+        out.append((gen, base.name, run.name))
+    return out
 
 SECTION_ORDER = [
     "1. 仓库",
@@ -349,13 +355,14 @@ def failure_one_liner(run_dir: Path):
 
 def section_submissions():
     lines = ["## 5. 最近三次标注提交", ""]
-    lines.append("任务号从目录名与 `publish-work/*.json` 的文件名取；"
+    lines.append("任务号从 `publish-work/*.json` 的文件名取；"
                  "平台侧终态本地**没有**留档，`terminal-*.json` 里的 `task_id` 字段已知会"
-                 "错绑旧任务，不能当新任务的终态用。")
+                 "错绑旧任务，不能当新任务的终态用。运行中的代次不数侧车：labels 树现在有"
+                 "上百万个文件，`find` 一次要几分钟，而失败代次的 0 侧车才是有用的证据。")
     lines.append("")
-    lines.append("| 代次 | 交接目录 | 任务号（取文件名） | 失败原因一句话 | 侧车条数 |")
+    lines.append("| 代次 | 交接目录 | 任务号（取文件名） | 状态 / 失败原因一句话 | 侧车条数 |")
     lines.append("|---|---|---|---|---|")
-    for gen, dirname, rundir in ANNOT_SUBMISSIONS:
+    for gen, dirname, rundir in discover_submissions():
         base = ANNOT_ROOT / dirname
         if not base.exists():
             lines.append("| %s | `%s` | 无本地留档 | 目录不存在 | — |" % (gen, dirname))
@@ -364,6 +371,11 @@ def section_submissions():
             if (base / "publish-work").is_dir() else []
         task = ids[0] if ids else "无本地留档"
         run_dir = base / rundir
+        live = (run_dir / "queue" / "broker.json").exists() \
+            and not (run_dir / "resources-attempt1" / "failure.json").exists()
+        if live:
+            lines.append("| %s | `%s` | `%s` | 运行中（按 `queue/` 推进） | 运行中不计数 |" % (gen, dirname, task))
+            continue
         reason = failure_one_liner(run_dir)
         sidecars = len(list(run_dir.rglob("labels/*.json"))) if run_dir.exists() else 0
         lines.append("| %s | `%s` | `%s` | %s | %d |" % (gen, dirname, task, reason, sidecars))

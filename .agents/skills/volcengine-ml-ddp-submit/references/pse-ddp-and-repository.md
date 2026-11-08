@@ -12,13 +12,13 @@ PSE 静态 launcher 从平台读下面五个变量：
 | `MLP_WORKER_0_HOST` | master address |
 | `MLP_WORKER_0_PORT` | master port |
 
-两个 8-GPU worker 的配置拓扑是 `2/8/16`：平台表单选 PyTorch DDP、worker 数填 2，并在当前资源命名仍有效时选 `ml.hpcpni2l.28xlarge`（每 worker 8 张 A800）。规格每次都从实时控制台重新核实；资源目录调整后，历史名称会失效。
+两个 8-GPU worker 的配置拓扑是 `2/8/16`：平台表单选 PyTorch DDP、worker 数填 2，规格选 `ml.pni2l.28xlarge`（GPU 型 112 vC，每 worker 8 张 A800-SXM4-80GB）。规格每次都从实时控制台重新核实；资源目录调整后，历史名称会失效。历史文档写过的 `ml.hpcpni2l.28xlarge` 在 2026-11-09 的实际任务详情里查不到，以详情页显示为准。
 
 代码开发机的 GPU 数不改变平台任务规格，只限制本地预检能做到什么程度。一张 GPU 的开发机无法验证 2×8 launcher 的启动行为，本地结果也就不能写成已验证。
 
 ## 入口命令不变量
 
-入口命令的五个固定部分：
+平台入口是一行 `/bin/bash <脚本绝对路径>`（网页编辑器对长命令会丢首字符，写法见[控制台复制任务提交](console-clone-submission.md) 第 4.1 节）。下面五件事由那个脚本承担，不在入口里展开：
 
 1. 使用 `set -Eeuo pipefail`；
 2. 验证仓库和所有中性存储源路径存在；

@@ -2,7 +2,7 @@
 
 上一篇：[架构](02-architecture.md) · 下一篇：[训练流程](04-训练流程.md)
 
-这篇文档解决一个问题：**拿到一个文件，能不能在五分钟内弄清它负责什么、入口函数在哪、吃什么、吐什么、谁在调它、改了会影响谁。** 每个条目都给文件路径与行号区间；行号只对 2026-11-08 那次核对成立——**具体提交号不写死**，用 `git rev-parse --short HEAD` 查（或看 [STATUS 第 1 节](STATUS.md)），改代码后按函数名重新定位。
+这篇文档解决一个问题：**拿到一个文件，能不能在五分钟内弄清它负责什么、入口函数在哪、吃什么、吐什么、谁在调它、改了会影响谁。** 每个条目都给文件路径与行号区间；行号只对 2026-11-09 那次核对成立——**具体提交号不写死**，用 `git rev-parse --short HEAD` 查（或看 [STATUS 第 1 节](STATUS.md)），改代码后按函数名重新定位。
 
 读法：先看第 1 节的入口清单确定自己在哪条链上，再跳到对应小节；第 8 节是读代码时实际发现的问题清单，建议一并看。
 
@@ -13,9 +13,9 @@
 | 入口 | 命令/调用方式 | 落在哪个文件 | 属于哪条链 |
 |---|---|---|---|
 | 推理取向量 | `torch.hub.load('PalabraAI/redimnet2', 'redimnet2', ...)` 或 `import redimnet2; redimnet2.load_custom(...)` | `hubconf.py:10-26` → `redimnet2/__init__.py:18-47` | 推理 |
-| 训练 | `applications/speaker_rec/launch.sh <yaml> [卡数] [覆盖项…]` | `applications/speaker_rec/launch.sh:1-170` → `wespeaker_lite/bin/train.py:885` | 主训练 / 大间隔微调 |
+| 训练 | `applications/speaker_rec/launch.sh <yaml> [卡数] [覆盖项…]` | `applications/speaker_rec/launch.sh:1-168` → `wespeaker_lite/bin/train.py:885` | 主训练 / 大间隔微调 |
 | 仓库级评测 | `python scripts/eval_vox1_checkpoints.py …`、`python scripts/eval_ood_checkpoints.py …` | `scripts/eval_vox1_checkpoints.py:182`、`scripts/eval_ood_checkpoints.py` | 评测 |
-| 标注 | `python tools/open_annotation/gpu_launch.py --execute --bundle-sha … --contract …` | `tools/open_annotation/gpu_launch.py:348-359` | 标注 |
+| 标注 | `python tools/open_annotation/gpu_launch.py --execute --bundle-sha … --contract …` | `tools/open_annotation/gpu_launch.py:349-375` | 标注 |
 | 接续包 | `python -B -m tools.ptn_resume.build --spec … --output-dir …` | `tools/ptn_resume/build.py:167-172` | 主训练接续 |
 | LM 启动 | 平台入口执行包内 `runtime/lm_launch.sh` | `tools/ptn_resume/lm_launch/run_lm.sh:1-132` | 大间隔微调 |
 
@@ -61,19 +61,19 @@
 
 | 输入 | 处理 | 输出 |
 |---|---|---|
-| `inp`：`(B, C, F, T)`；`mask`：`(B,1,1,T)` 或 `(B,1,T)` | 非子网模式先截时间到 `time_stride` 整数倍（`:451-472`）；`stem` → 逐 stage → `fin_wght1d` 融合 → `fin_to2d` → `head` | 默认 `(B, C·F, T)`；`return_all_outputs=True` 时再加全部 1D 特征 |
+| `inp`：`(B, C, F, T)`；`mask`：`(B,1,1,T)` 或 `(B,1,T)` | 非子网模式先截时间到 `time_stride` 整数倍（`:456-472`）；`stem` → 逐 stage → `fin_wght1d` 融合 → `fin_to2d` → `head` | 默认 `(B, C·F, T)`；`return_all_outputs=True` 时再加全部 1D 特征 |
 
-**`ReDimNet2Wrap.forward()`（`:611-686`）**：外部只调这一个。
+**`ReDimNet2Wrap.forward()`（`:611-685`）**：外部只调这一个。
 
 | 步骤 | 行号 | 说明 |
 |---|---|---|
-| 生成掩码 | 620-627 | `lengths` 为 `None` 时 `mask=None`，与旧行为逐位一致 |
-| 可选右侧补零 | 628-634 | `pad_right_samples` 不为 `None` 时补波形**并给掩码补 0** |
-| 声学前端 | 635-651 | `self.spec(x)` 或 `self.spec(x, mask)`；3 维输出补一个通道维 |
-| 对齐截断 | 649-671 | 把 `(x, mask)` 一起截到 `time_stride` 整数倍；太短（`T_keep==0`）则保留原样 |
-| 骨干 | 670-674 | `self.backbone(x, mask)` |
-| 池化前整形 | 676-681 | 4 维输出展平为 `(B, C·F, T)`；`before_pool_offset` 可裁掉头部若干帧 |
-| 池化与投影 | 682-686 | `bn(pool(out))` → `linear` → 可选 `bn2` |
+| 生成掩码 | 622-628 | `lengths` 为 `None` 时 `mask=None`，与旧行为逐位一致 |
+| 可选右侧补零 | 629-634 | `pad_right_samples` 不为 `None` 时补波形**并给掩码补 0** |
+| 声学前端 | 635-643 | `self.spec(x)` 或 `self.spec(x, mask)`；3 维输出补一个通道维 |
+| 对齐截断 | 644-659 | 把 `(x, mask)` 一起截到 `time_stride` 整数倍；太短（`T_keep==0`）则保留原样 |
+| 骨干 | 661-664 | `self.backbone(x, mask)` |
+| 池化前整形 | 666-672 | 4 维输出展平为 `(B, C·F, T)`；`before_pool_offset` 可裁掉头部若干帧 |
+| 池化与投影 | 673-681 | `bn(pool(out))` → `linear` → 可选 `bn2` |
 
 **被谁调用**：`models/speaker_model.py:32-36`（训练）、`scripts/checkpoint_utils.py:30-85`（评测）、`scripts/export_checkpoint.py:19-43`（导出）、`redimnet2/__init__.py:18-35`（推理）。
 
@@ -81,27 +81,27 @@
 
 ### 2.3 `ASTP` 与掩码
 
-`ASTP.forward(x, mask=None)`（`poolings.py:181-241`）：
+`ASTP.forward(x, mask=None)`（`poolings.py:176-241`）：
 
 | 输入 | 形状 | 输出 |
 |---|---|---|
 | `x` | `(B,C,F,T)` 或 `(B,C·F,T)` | `(B, 2·in_dim)`；有掩码时额外返回掩码 |
 | `mask` | `(B,1,T)` 或 `(B,T)` | 同上 |
 
-三条实现细节：4 维输入先展平（`:188-190`）；`global_context_att=True` 时拼 `[x, 均值, 标准差]` 再算注意力（`:192-210`）；**无掩码支用 `torch.var`（无偏），有掩码支把有偏矩乘 `n/(n-1)` 对齐**（`:195-207` 的注释解释了两种算法为什么要对齐，否则“只是传了个 `lengths`”就会改变输出）。
+三条实现细节：4 维输入先展平（`:183-184`）；`global_context_att=True` 时拼 `[x, 均值, 标准差]` 再算注意力（`:193-210`）；**无掩码支用 `torch.var`（无偏），有掩码支把有偏矩乘 `n/(n-1)` 对齐**（`:194-211` 的注释解释了两种算法为什么要对齐，否则“只是传了个 `lengths`”就会改变输出）。
 
 ---
 
 ## 3. `applications/speaker_rec/`：训练栈（32 个文件，12,012 行）
 
-### 3.1 `launch.sh`（170 行）
+### 3.1 `launch.sh`（168 行）
 
 | 段 | 行号 | 做什么 |
 |---|---|---|
 | 参数解析 | 4-17 | 第 1 个参数是配方 yaml，第 2 个（可选、纯数字）是卡数，其余透传给 `train.py` |
 | 解释器解析 | 34-60 | 优先级：`REDIMNET2_PYTHON` → `REDIMNET2_ENV` 指定的 conda 环境 → 名为 `redimnet2` 的环境 → PATH 上的 `python`（并告警） |
 | torchrun 解析 | 107-113 | 优先用同一个环境里的 `torchrun`，找不到才用 PATH |
-| 启动 | 155-165 | `torchrun --nproc_per_node=$NUM_GPUS ... train.py --config ...` |
+| 启动 | 160-163 | `torchrun --nproc_per_node=$NUM_GPUS ... train.py --config ...` |
 
 这个脚本是“实际用哪个解释器”的唯一决定点。装了两份 torch 时，选错环境不会报错，只会静默跑在另一份上。
 
@@ -183,10 +183,10 @@
 | `is_varlen_enabled` / `get_varlen_length_bounds` | 181-233 | `dataset_args` | 布尔 / `(min,max)` 秒 | `train.py`、`Dataset()` |
 | `is_vad_segments_enabled` / `get_vad_segment_config` | 234-309 | `dataset_args` | 布尔 / 配置字典 | `Dataset()` |
 | `rttm_path_for_audio` | 277-309 | 音频路径 | RTTM 路径 | `vad_select_segment` |
-| `Dataset` | 325-510 | `data_type`、清单、`dataset_args`、`spk2id` | 处理链 | `train.py:288` |
+| `Dataset` | 325-510 | `data_type`、清单、`dataset_args`、`spk2id` | 处理链 | `train.py:294` |
 | `collate_func_single` / `collate_func_mult` | 511-515 / 595-599 | 样本批 | 批字典 | 验证加载器 |
 | `collate_varlen` | 600-681 | 样本批 + 最大批秒数 + 采样率 | `{'key','label','wav','lengths'}` | 训练加载器（变长时） |
-| `PreBatched` / `BucketedLengthDataset` | 693-722 / 723-898 | 数据集 + 批大小 + 桶参数 | 已按长度分桶的整批 | `train.py:340` |
+| `PreBatched` / `BucketedLengthDataset` | 693-722 / 723-898 | 数据集 + 批大小 + 桶参数 | 已按长度分桶的整批 | `train.py:338` |
 | `Vox1TestEvalDataset(Simple)` | 516-594 / 899-943 | 试验根目录、`eval_dur` | 评测样本 | `train.py` 验证段 |
 
 **`Dataset()` 的处理链顺序**（`:325-510`，顺序是语义的一部分）：读清单并洗牌 → `parse_raw_fast_varlen`/`parse_raw_fast_and_filter`（逐条读音频）→ 样本级洗牌 → `spk_to_id` → `resample` → 可选 `vad_select_segment` → 可选 `speed_perturb` → 定长/变长裁剪 → 可选增强（新格式 `augs.deserialize_augmentor`，旧格式 `add_reverb_noise_gain`）。
@@ -264,27 +264,27 @@
 
 ---
 
-## 4. `tools/open_annotation/`：标注系统（顶层 90 个文件，21,431 行）
+## 4. `tools/open_annotation/`：标注系统（顶层 90 个文件，21,623 行）
 
 ### 4.1 按层归类（顶层文件与行数）
 
 | 层 | 文件（行数） |
 |---|---|
 | ① 来源与清单 | `source_registry.py`(191)、`manifest_builder.py`(288)、`source_filter.py`(90)、`audit_source_filter.py`(35)、`source_clock.py`(27)、`collect_sample_audio.py`(76)、`portable_source_identity.py`(306) |
-| ② 合同与记录 | `contracts.py`(270)、`engine_protocol.py`(231)、`schema.py`(413)、`sidecar.schema.json`、`freeze_contract.py`(167)、`freeze_legacy_successor.py`(166) |
-| ③ 执行与资源 | `gpu_launch.py`(367)、`gpu_bootstrap.py`(134)、`gpu_challenge.py`(131)、`gpu_common.py`(216)、`gpu_vendor/resources.py`(250)、`gpu_vendor/topology.py`(47)、`worker.py`(310)、`device_preflight.py`(127)、`validate_two_gpu.py`(340)、`probe_known_worker_cpu_io.py`(96)、`probe_retained_process_parent_death.py`(202)、`diagnose_cpu_stack_capture.py`(93) |
-| ④ 模型与解码 | `audio_windows.py`(257)、`qwen_backend.py`(553)、`alignment_observer.py`(148)、`normalization.py`(83)、`native_transformers_batch.py`(240)、`native_b1_feature_padding.py`(238)、`vllm_backend.py`(365)、`vllm_live_probe.py`(362)、`asr_stage_store.py`(196) |
-| ⑤ 队列与证据 | `sidecar.py`(106)、`work_queue.py`(263)、`report.py`(193)、`audit_outputs.py`(194)、`quality_axes.py`(165)、`union_coverage.py`(778)、`union_consumer.py`(85)、`readonly_progress.py`(187)、`bounded_metadata_progress.py`(121)、`finalize_remaining_roles.py`(208) |
-| ⑥ 准入与交接 | `cloud_gate.py`(249)、`make_admission_spec.py`(45)、`make_cloud_launcher.py`(90)、`make_platform_observation_v4r2.py`(115)、`verify_cloud_mounts.py`(34)、`verify_portable_successor_mounts.py`(168)、`native_batch_admission.py`(484)、`native_batch_readback.py`(214)、`native_batch_queue_handoff.py`(406)、`queue_handoff.py`(471)、`bounded_speed_handoff.py`(380)、`bounded_speed_queue.py`(423)、`bounded_speed_queue_handoff.py`(362)、`bounded_speed_runtime.py`(715)、`run_portable_successor.py`(480)、`resume_existing_annotation.py`(422) |
-| ⑦ 试验与对照 | `run_native_batch_pilot.py`(233)、`run_native_partial_recovery_probe.py`(304)、`run_native_cpu_sealer.py`(271)、`run_bounded_speed_pilot.py`(366)、`prepare_native_batch_validation.py`(173)、`prepare_native_partial_recovery_control.py`(138)、`prepare_bounded_speed_validation.py`(156)、`prepare_speed_validation.py`(127)、`prepare_speed_continuation.py`(526)、`prepare_vllm_live_inputs.py`(158)、`prepare_normalization_ab.py`(162)、`prepare_sample_audio_review.py`(85)、`prepare_boundary_context_review.py`(70)、`audit_native_transformers_batch.py`(673)、`audit_normalization_ab.py`(288)、`audit_speed_comparison.py`(391)、`audit_engine_comparison.py`(262)、`compare_native_b1_bridge.py`(249)、`benchmark_retained_reads.py`(109)、`bounded_cpu_audio_timing.py`(169)、`measure_native_startup_cost.py`(228)、`estimate_speed_capacity.py`(92)、`sample_audio_review.py`(620) |
+| ② 合同与记录 | `contracts.py`(291)、`engine_protocol.py`(231)、`schema.py`(413)、`sidecar.schema.json`、`freeze_contract.py`(167)、`freeze_legacy_successor.py`(166) |
+| ③ 执行与资源 | `gpu_launch.py`(375)、`gpu_bootstrap.py`(134)、`gpu_challenge.py`(131)、`gpu_common.py`(216)、`gpu_vendor/resources.py`(250)、`gpu_vendor/topology.py`(47)、`worker.py`(383)、`device_preflight.py`(127)、`validate_two_gpu.py`(340)、`probe_known_worker_cpu_io.py`(96)、`probe_retained_process_parent_death.py`(202)、`diagnose_cpu_stack_capture.py`(93) |
+| ④ 模型与解码 | `audio_windows.py`(257)、`qwen_backend.py`(559)、`alignment_observer.py`(148)、`normalization.py`(83)、`native_transformers_batch.py`(240)、`native_b1_feature_padding.py`(238)、`vllm_backend.py`(365)、`vllm_live_probe.py`(362)、`asr_stage_store.py`(196) |
+| ⑤ 队列与证据 | `sidecar.py`(108)、`work_queue.py`(263)、`report.py`(193)、`audit_outputs.py`(194)、`quality_axes.py`(165)、`union_coverage.py`(778)、`union_consumer.py`(85)、`readonly_progress.py`(187)、`bounded_metadata_progress.py`(121)、`finalize_remaining_roles.py`(208) |
+| ⑥ 准入与交接 | `cloud_gate.py`(249)、`make_admission_spec.py`(45)、`make_cloud_launcher.py`(90)、`make_platform_observation_v4r2.py`(115)、`verify_cloud_mounts.py`(34)、`verify_portable_successor_mounts.py`(168)、`native_batch_admission.py`(484)、`native_batch_readback.py`(214)、`native_batch_queue_handoff.py`(406)、`queue_handoff.py`(471)、`bounded_speed_handoff.py`(380)、`bounded_speed_queue.py`(482)、`bounded_speed_queue_handoff.py`(362)、`bounded_speed_runtime.py`(720)、`run_portable_successor.py`(480)、`resume_existing_annotation.py`(423) |
+| ⑦ 试验与对照 | `run_native_batch_pilot.py`(233)、`run_native_partial_recovery_probe.py`(304)、`run_native_cpu_sealer.py`(271)、`run_bounded_speed_pilot.py`(366)、`prepare_native_batch_validation.py`(173)、`prepare_native_partial_recovery_control.py`(138)、`prepare_bounded_speed_validation.py`(156)、`prepare_speed_validation.py`(127)、`prepare_speed_continuation.py`(543)、`prepare_vllm_live_inputs.py`(158)、`prepare_normalization_ab.py`(162)、`prepare_sample_audio_review.py`(85)、`prepare_boundary_context_review.py`(70)、`audit_native_transformers_batch.py`(673)、`audit_normalization_ab.py`(288)、`audit_speed_comparison.py`(391)、`audit_engine_comparison.py`(262)、`compare_native_b1_bridge.py`(249)、`benchmark_retained_reads.py`(109)、`bounded_cpu_audio_timing.py`(169)、`measure_native_startup_cost.py`(228)、`estimate_speed_capacity.py`(92)、`sample_audio_review.py`(620) |
 | ⑧ 绘图与文档产物 | `quality_figures.py`(304)、`plot_saved_boundary_review.py`(301)、`plot_normalization_ab.py`(80)、`plot_native_feature_benchmark.py`(87)、`plot_synthetic_feature_padding.py`(57)、`plot_annotation_stage_timing.py`(66)、`plot_annotation_eight_gpu_window.py`(76)、`diagnose_native_feature_padding.py`(149) |
 | ⑨ 其它 | `__init__.py`(1)、`word_adapter.py`(384)、`launch_portable_successor.sh`、`launch_queue_handoff.sh`、`parent_sources.json`、`README.md`、若干中文说明 md |
 
-`tests/` 76 个文件 13,221 行，是这套系统的回归网；`legacy_snapshots/production_20261025/` 20 个文件 3,689 行是历史生产包的只读快照（**不是**现行代码）。
+`tests/` 78 个文件 13,707 行，是这套系统的回归网；`legacy_snapshots/production_20261025/` 20 个文件 3,689 行是历史生产包的只读快照（**不是**现行代码）。
 
 ### 4.2 重点模块逐个
 
-#### `contracts.py`（270 行）——所有身份的来源
+#### `contracts.py`（291 行）——所有身份的来源
 
 | 定义 | 行号 | 作用 |
 |---|---|---|
@@ -295,10 +295,11 @@
 | `engine_modules_for_contract(contract)` | 68-71 | 在 14 个基础上按合同追加 1–2 个文件，最多 16 |
 | `need` / `digest` / `canonical_bytes` / `native_json` | 73-108 | 断言、摘要、统一字节形式、JSON 规范化 |
 | `safe_join` / `relative_path` / `stat_identity` | 109-135 | 防路径穿越、相对路径校验、文件身份四元组 |
-| `atomic_new` | 136-161 | 不可覆盖发布，是全系统“不覆盖”的基础 |
-| `validate_execution_policy` / `asr_compute_profile` | 162-193 | 执行策略与精度/注意力实现的一致性 |
-| `read_contract` | 194-241 | 读合同 + 核 SHA + 核时间映射与当前 `TIME_MAPPING` 相等（不等则要求重新冻结） |
-| `verify_models` / `model_provenance` / `job_key` | 242-270 | 模型文件核对、来源摘要、任务键 |
+| `CONTENT_STAT_KEYS` / `identity_matches` | 136-156 | 文件身份四元组（inode/字节/mtime/ctime）与“身份是否未变”的判定 |
+| `atomic_new` | 157-182 | 不可覆盖发布，是全系统“不覆盖”的基础 |
+| `validate_execution_policy` / `asr_compute_profile` | 183-214 | 执行策略与精度/注意力实现的一致性 |
+| `read_contract` | 215-262 | 读合同 + 核 SHA + 核时间映射与当前 `TIME_MAPPING` 相等（不等则要求重新冻结） |
+| `verify_models` / `model_provenance` / `job_key` | 263-291 | 模型文件核对、来源摘要、任务键 |
 
 **被谁调用**：几乎所有模块。**改动影响面**：它在 `ENGINE_MODULES` 里，改它要重新打包、重新准入。
 
@@ -306,35 +307,39 @@
 
 `freeze()`（32-107）：核基础合同 SHA 与用途 → 复制源码到仓库外 → 补 `task_names.py` → 覆盖 `boundary_mapping`、`normalization_profile` → 重算 `engine_source_files` → 生成两份合同 → 生成成员清单与收据。`make_native_formal_contract()`（110-132）只生成“正式合同数据”，`default_enabled=False`、`formal_runtime_admitted=False`。
 
-**调用方**：人工命令行（`main`，135-164）。**输出**：`contracts/*.json`、`bundle_files.json`、`freeze_receipt.json`。
+**调用方**：人工命令行（`main`，135-167）。**输出**：`contracts/*.json`、`bundle_files.json`、`freeze_receipt.json`。
 
-#### `worker.py`（310 行）——单卡单进程的主循环
+#### `worker.py`（383 行）——单卡单进程的主循环
 
 | 函数 | 行号 | 输入 | 输出 |
 |---|---|---|---|
-| `timed_call` / `progress_performance` | 27-63 | 计数器 + 阶段 + 函数 | 阶段耗时 / 性能快照 |
-| `authenticate_resource` | 71-93 | 资源票、证明、合同/索引 SHA | 已核验的票（含 `bundle_sha256`） |
-| `_descriptor` / `_stage_inputs` | 96-110 | 合同 + 窗口 | 侧车里的来源描述 / 阶段输入摘要 |
-| `process_group` | 113-232 | 一批来源 + 领取句柄 + 侧车库 + 缓存 + 后端 | 回执列表 |
-| `main` | 235-304 | 命令行参数 | `worker_summary.json` |
+| `refuse_short_window` | 32-50 | 窗口、帧数、上下文、计数器 | 把过短窗口写成失败窗（不抛异常、不丢源） |
+| `timed_call` / `progress_performance` | 53-90 | 计数器 + 阶段 + 函数 | 阶段耗时 / 性能快照 |
+| `authenticate_resource` | 98-121 | 资源票、证明、合同/索引 SHA | 已核验的票（含 `bundle_sha256`） |
+| `_descriptor` / `_stage_inputs` | 123-138 | 合同 + 窗口 | 侧车里的来源描述 / 阶段输入摘要 |
+| `refused_receipt` | 140-145 | 来源、合同 SHA、拒绝原因 | 不带侧车的 `failed` 回执 |
+| `process_group` | 147-306 | 一批来源 + 领取句柄 + 侧车库 + 缓存 + 后端 | 回执列表 |
+| `main` | 307-383 | 命令行参数 | `worker_summary.json` |
 
-`main` 的顺序：读合同 → 核用途与后端匹配 → 准备输出目录（新目录）→ 读运行准入（`bounded_speed_runtime.runtime_options`）→ 建队列/侧车库/阶段缓存 → 验资源票 → 核 `source_files` 摘要 → 验解码库 → 建后端 → 循环领取分片 → 写汇总。
+`main` 的顺序：读合同 → 核用途与后端匹配 → 准备输出目录（新目录）→ 读运行准入（`bounded_speed_runtime.runtime_options`）→ 建队列/侧车库/阶段缓存 → 验资源票 → 核 `source_files` 摘要（`:332`）→ 验解码库（`:333`）→ 建后端（`:335` 才 import `qwen_backend`，`:339` 实例化）→ 循环领取分片 → 写汇总。
+
+2026-11-07 起多了一道短窗护栏：模型输入不足 `MIN_WINDOW_FRAMES = 400` 帧（`:29`）的窗口不进 ASR，直接写成 `preprocessing_status: failed`、`alignment.reason: asr_input_too_short` 的失败窗（`refuse_short_window`，`:32-50`），源本身不丢，计数进 `short_window_refused`。下限取 400 帧而不是 201，是因为 12.5–25 ms 的窗口即使不崩也没有标注价值。
 
 **被谁调用**：`gpu_bootstrap.py` 在已准入的 GPU 上下文里以子进程方式启动它（命令行在 `gpu_launch.py:183-199` 拼装）。
 
-#### `gpu_launch.py`（367 行）——GPU 父进程
+#### `gpu_launch.py`（375 行）——GPU 父进程
 
 | 函数 | 行号 | 职责 |
 |---|---|---|
-| `worker_ready` | 28-56 | 核 worker 的终态就绪文件与汇总，写 `terminal_ack.json` |
-| `ensure_alias` | 59-66 | 建立/校验 `/root/group-shared` 别名 |
-| `validate_output_paths` | 69-82 | 目录互斥规则（见 02 文档第 5.3 节） |
-| `selected_uuids` | 85-96 | `auto2`（仅试验）/`auto8`（正式八卡）/两个显式 UUID |
-| `_run` | 99-318 | 主流程：核成员清单与合同 → 资源双探针 → 持锁 → 逐卡起子进程 → 监控（挑战/模型/排空）→ 归还资源 → CPU 全量核对 |
-| `run` | 321-345 | 新 schema 入口：有界运行规格下需持租约才能跑 |
-| `main` | 348-359 | 命令行 |
+| `worker_ready` | 29-57 | 核 worker 的终态就绪文件与汇总，写 `terminal_ack.json` |
+| `ensure_alias` | 60-69 | 建立/校验 `/root/group-shared` 别名 |
+| `validate_output_paths` | 70-83 | 目录互斥规则（见 02 文档第 5.3 节） |
+| `selected_uuids` | 86-99 | `auto2`（仅试验）/`auto8`（正式八卡）/两个显式 UUID |
+| `_run` | 100-321 | 主流程：核成员清单与合同 → 资源双探针 → 持锁 → 逐卡起子进程 → 监控（挑战/模型/排空）→ 归还资源 → CPU 全量核对 |
+| `run` | 322-348 | 新 schema 入口：有界运行规格下需持租约才能跑 |
+| `main` | 349-375 | 命令行 |
 
-**被谁调用**：人工/平台入口。**它不 import torch**（`:115` 注释），所有模型动作都在子进程里。
+**被谁调用**：人工/平台入口。**它不 import torch**（`:116` 注释），所有模型动作都在子进程里。
 
 #### `gpu_bootstrap.py` / `gpu_challenge.py` / `gpu_common.py` / `gpu_vendor/`
 
@@ -362,18 +367,18 @@
 
 `sample_bounds(start_seconds, end_seconds, sample_rate, mapping)`：v2 映射用 `Fraction(str(x))` 把十进制秒当有理数，起点向下取整、终点向上取整；v1 保留仅为复核历史坐标。**被谁调用**：`audio_windows.units_from_windows`、`schema` 的几何检查。
 
-#### `qwen_backend.py`（553 行）——模型侧唯一入口
+#### `qwen_backend.py`（559 行）——模型侧唯一入口
 
 | 函数/类 | 行号 | 职责 |
 |---|---|---|
-| `native_token_rows` | 25-51 | 纯 CPU 核多行生成的 token 几何（提示矩形、EOS 位置、EOS 后 token 是否只有填充） |
-| `length_batches` | 53-62 | 按长度排序后分批，控制批内最长/最短比 |
-| `model_configurations` / `apply_asr_compute` / `loaded_compute_facts` | 64-105 | 递归找子配置并设置精度/注意力；读回实际生效值 |
-| `ASRAttentionTrace` | 110-183 | 观测实际用了哪种注意力实现 |
-| `QwenBackend` | 185-538 | `__init__`（加载分词器/模型，187-330）、`transcribe`（373-392）、`_transcribe_original_rows`（397-443）、`align`（444-491）、`snapshot_stats`/`metrics`（492-538） |
-| `FixtureBackend` | 539-553 | CPU 夹具后端，合成数据用 |
+| `native_token_rows` | 31-58 | 纯 CPU 核多行生成的 token 几何（提示矩形、EOS 位置、EOS 后 token 是否只有填充） |
+| `length_batches` | 59-69 | 按长度排序后分批，控制批内最长/最短比 |
+| `model_configurations` / `apply_asr_compute` / `loaded_compute_facts` | 70-111 | 递归找子配置并设置精度/注意力；读回实际生效值 |
+| `ASRAttentionTrace` | 116-190 | 观测实际用了哪种注意力实现 |
+| `QwenBackend` | 191-544 | `__init__`（加载分词器/模型，193-336）、`transcribe`（379-398）、`_transcribe_original_rows`（403-449）、`align`（450-497）、`snapshot_stats`/`metrics`（498-544） |
+| `FixtureBackend` | 545-559 | CPU 夹具后端，合成数据用 |
 
-**被谁调用**：`worker.py:263-267` 选后端；`worker.py:164,182` 调 `transcribe`/`align`。
+**被谁调用**：`worker.py:335` 选后端；`worker.py:223`、`:241` 调 `transcribe`/`align`。
 
 #### `native_transformers_batch.py`（240 行）——批次文件事务
 
@@ -396,11 +401,11 @@
 | `Claim` | 199-258 | 上下文管理器：`assert_current`、`sources`、`journal`、`finish` |
 | `prepare_queue` | 260-263 | 首次建队列（只能由父进程调用） |
 
-**被谁调用**：`worker.py:253-256`（正常路径）、`gpu_launch.py:140-141`（建队列）、`bounded_speed_queue.py`（提速路径）。
+**被谁调用**：`worker.py:324-329`（正常路径）、`gpu_launch.py:141-142`（建队列）、`bounded_speed_queue.py`（提速路径）。
 
-#### `sidecar.py`（106 行）
+#### `sidecar.py`（108 行）
 
-`SidecarStore`（10-69）：`path()` 强制镜像映射（`dataset/相对路径.annotation.json`）；`publish()` 不可覆盖 + 回读 + 补 commit；`lookup()` 语义回读 + 源 stat 复核。`StageCache`（77-106）按输入摘要寻址，命中即重验。
+`SidecarStore`（10-72）：`path()` 强制镜像映射（`dataset/相对路径.annotation.json`）；`publish()` 不可覆盖 + 回读 + 补 commit；`lookup()` 语义回读 + 源 stat 复核。`StageCache`（79-108）按输入摘要寻址，命中即重验。
 
 #### `schema.py`（413 行）
 
@@ -425,11 +430,11 @@
 
 `validate_union(spec_path, spec_sha, mode='plan', …)`（735-770）：核心是 `_validate()`（550-734），用磁盘索引保证“每个来源只被读一次、不重不漏”。内部 `_select_old_source`（537-549）决定某源该用旧结果还是该重算，`_terminal`（334-373）核终态。**调用方**：`cloud_gate.py:209-212`、`union_consumer.py`、`finalize_remaining_roles.py`。
 
-#### `bounded_speed_runtime.py`（715 行）
+#### `bounded_speed_runtime.py`（720 行）
 
-新提速生产者的运行准入。关键：`runtime_options`（250-257）解析命令行里的运行规格；`guard_native_formal_route`（258-276）拦“用试验身份跑正式路径”；`compile_runtime`（400-509）把规格编译成带文件钉子的运行上下文；`RuntimeLease`（568-700）在进程内持租约并用密封内存文件（memfd）传递证明。**调用方**：`worker.py:248-250`、`gpu_launch.py:328-343`。
+新提速生产者的运行准入。关键：`runtime_options`（250-257）解析命令行里的运行规格；`guard_native_formal_route`（258-277）拦“用试验身份跑正式路径”；`compile_runtime`（400-509）把规格编译成带文件钉子的运行上下文；`RuntimeLease`（568-720）在进程内持租约并用密封内存文件（memfd）传递证明。**调用方**：`worker.py:320-322`、`gpu_launch.py:328-343`。
 
-#### `queue_handoff.py` 一族（471 / 380 / 423 / 362 / 406 行）
+#### `queue_handoff.py` 一族（471 / 380 / 482 / 362 / 406 行）
 
 四个交接实现是同一套结构：`check()` 只核固定输入 → `request_value()`/`observation()` 生成并核“请求/观察” → `publish()` 原子写 `runtime-spec.json` + `reply.json`。
 
@@ -450,11 +455,11 @@
 | `make_admission_spec.py` | 45 行全文 | 生成 30/3000/512 三段规格 |
 | `make_cloud_launcher.py` | 90 行全文 | 渲染可审阅的八卡启动脚本（不部署） |
 | `verify_cloud_mounts.py` | 34 行全文 | 只核持久挂载，不建目录 |
-| `native_batch_admission.py` | `check_quality`（180-206）、`check_formal_bundle`（210-232）、`_full_check_native_selected_pilot`（234-313）、`check_native_selected_pilot`（400-431）、`prepare_formal_code`（432-474） | 正式准入的唯一判定处；`REVIEWABLE_CONTROL` 在 207 行 |
+| `native_batch_admission.py` | `check_quality`（180-206）、`check_formal_bundle`（210-232）、`_full_check_native_selected_pilot`（234-330）、`check_native_selected_pilot`（400-431）、`prepare_formal_code`（432-474） | 正式准入的唯一判定处；`REVIEWABLE_CONTROL` 在 207 行 |
 
 ---
 
-## 5. `tools/ptn_resume/`：接续与 LM（27 个文件，6,658 行）
+## 5. `tools/ptn_resume/`：接续与 LM（27 个文件，6,700 行）
 
 ### 5.1 构建侧
 
@@ -488,7 +493,7 @@
 | `epoch_guard.py` | 34 | 每轮核来源与 192 个加载进程 |
 | `loader_worker_audit.py` | 71 | 只读采集 fork worker 证据（在任何批次交给训练器之前） |
 | `predecessor_gate.py` | 25 | 等同一控制面的稳定新材料 |
-| `launch.sh` | — | 容器内入口：`exec .../python -B "$PACKAGE_ROOT/runtime/entry.py"`（12 行） |
+| `launch.sh` | 14 | 容器内入口：第 12 行 `exec .../python -B "$PACKAGE_ROOT/runtime/entry.py"` |
 
 这些文件是**仓库侧源件**，冻结包里的同名文件由 spec 逐份钉 SHA 提供（`INTERFACE.md:19`）；两者内容未必相同，仓库里的文件不能当作包内同名文件的等价物。
 
@@ -497,9 +502,9 @@
 | 文件 | 行数 | 作用 |
 |---|---:|---|
 | `run_lm.sh` | 132 | 唯一入口：7 项前置检查（目录为新目录、不在代码目录内、`model_115.pt` 名字与 SHA、`spk2id.json` 存在、关键环境变量不被覆盖、未设 `SKIP_*`）→ 真跑 `check_b6_lm_init.py --expected-epoch 115` → 写 `lm_initialization.json` → 交给 `train_b6_mix_cloud_8gpu.sh` |
-| `lm_stage_gate.py` | 323 | 常量：`NUMBER=13075`、`BATCH=48`、`WORLD=8`、`MARGIN=0.3`、冷启动标记、禁止出现的日志行（37-51）；`verify`（119）、`verify_speaker_map`（170）、`verify_recipe`（217）、`run`（248）、`postflight`（280） |
+| `lm_stage_gate.py` | 328 | 常量：`NUMBER=13075`、`BATCH=48`、`WORLD=8`、`MARGIN=0.3`、冷启动标记、禁止出现的日志行（37-51）；`verify`（119）、`verify_speaker_map`（170）、`verify_recipe`（217）、`run`（248）、`postflight`（280） |
 | `submit.conf.yaml` | 97 | 平台任务配置草案（镜像/队列/规格/挂载留 TODO） |
-| `env.template` | 49 | 环境模板 |
+| `package_launch.sh` | 25 | LM 包内的启动包装（`run_lm.sh` 的同族入口） |
 | `README.md` | 89 | 为什么是这层包装、怎么用、还缺哪些输入 |
 
 ### 5.5 `tools/` 其余目录
@@ -508,7 +513,7 @@
 |---|---:|---|
 | `lm_continuation/readiness.py` | 203 | 历史两段接续的 CPU 准备判据；**保持原判据，继续拒绝失败任务**（`README.md:85`） |
 | `ptn_reference/audit_reference.py` | 107 | 只核参考源码字节与语法 |
-| `ptn_reference/archive/` 5 个文件 | 344 | 旧启动文件只读归档（`epoch_guard`/`loader_worker_audit`/`predecessor_gate`/`strict_restore`/`worker`） |
+| `ptn_reference/archive/` 10 个文件 | 1,090 | 旧启动文件只读归档（`entry`/`cpu_check`/`epoch_guard`/`loader_worker_audit`/`predecessor_gate`/`strict_restore`/`worker`/`launch.sh` 等） |
 | `ptn_diagnostics/inspect_numeric_cpu.py` | 182 | 检查点量级 CPU 扫描，不建模型 |
 | `tools/task_names.py` | 27 | 任务命名（`zhounan_` 前缀） |
 | `tools/ptn_forward_probe.py` | 213 | 前向探针 |
@@ -577,11 +582,11 @@
 
 ### 8.2 `_stage_inputs()` 有一个从未使用的参数
 
-`worker.py:104-110` 的签名是 `_stage_inputs(stage, window, context, contract, contract_sha, models)`，函数体完全没用到 `context`；两个调用点（`:158`、`:178`）都传了它。这是死参数，不会出错，但会让人误以为阶段输入摘要包含来源上下文。
+`worker.py:131-138` 的签名是 `_stage_inputs(stage, window, context, contract, contract_sha, models)`，函数体完全没用到 `context`；两个调用点（`:217`、`:237`）都传了它。这是死参数，不会出错，但会让人误以为阶段输入摘要包含来源上下文。
 
 ### 8.3 注释里明确标出的“地雷”分支，当前走不到
 
-`redimnet2.py:456-472` 注释说：骨干里的掩码截断写成了 `mask[:, :, :T_keep]`，切的是频率轴（长度 1）等于没切；因为 `Wrap.forward` 已经提前把两者一起截到 `time_stride` 整数倍（`:649-671`），今天走不到这里。注释自己写了“这是一颗留着的地雷，改成 `...` 才是对的”。这段分支不属于已修代码。
+`redimnet2.py:456-472` 注释说：骨干里的掩码截断写成了 `mask[:, :, :T_keep]`，切的是频率轴（长度 1）等于没切；因为 `Wrap.forward` 已经提前把两者一起截到 `time_stride` 整数倍（`:650-670`），今天走不到这里。注释自己写了“这是一颗留着的地雷，改成 `...` 才是对的”。这段分支不属于已修代码。
 
 ### 8.4 四个交接模块是同构实现
 
@@ -612,7 +617,7 @@
 |---|---|
 | 任何显卡上的实际行为 | 未验证。本次只读源码与仓库内记录，没有执行训练或标注 |
 | 各配方的实际数据规模与说话人数 | 未验证。需要读 `data.list` / `utt2spk` 并统计 |
-| `tools/open_annotation/tests/`（76 个文件）是否全部通过 | 未运行；只读了测试清单与目录结构 |
+| `tools/open_annotation/tests/`（78 个文件）是否全部通过 | 未运行；只读了测试清单与目录结构 |
 | `docs/` 其余文档（04/05/08/09/10/12/13/15/16）与代码的一致性 | 未逐条复核 |
 | `applications/speaker_rec/scripts/cloud/*.sh` 的完整分支 | 只读了作用与入口，未逐行审 |
 | `word_ft/`、`word_ft_v3/`、`duration_ft/` 的内部实现 | 只看入口与文件清单，未逐函数读 |

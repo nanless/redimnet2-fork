@@ -9,20 +9,41 @@
 为什么不用 `find labels | wc -l`：GPFS 上几十万文件要十几分钟；分片收据只有几千个，
 秒级完成，而且统计的是"已提交分片"，不含正在写的半成品。
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
+import re
 import time
 from pathlib import Path
 
 TOTAL = 11_521_178
-RETAINED = 1_617_437          # 本 lineage 起算基数（1027 保留），见 todo 记忆
+RETAINED = 1_617_437          # 本 lineage 起算基数（1027 保留）
 TARGET_REMAINING = TOTAL - RETAINED
+TASK_RE = re.compile(r"t-\d{14}-[a-z0-9]+")
 
 
 def latest_run(root: Path):
     cands = sorted(root.glob("*/run-*"), key=lambda p: p.stat().st_mtime, reverse=True)
     return cands[0] if cands else None
+
+
+def detect_task(run: Path):
+    """从 publish-work 的文件名取任务号。
+
+    不读 terminal-*.json 里的 task_id 字段：那个字段已知会错绑旧任务
+    （t-20261025054739-4kzhp），只有文件名是真的。
+    """
+    work = run.parent / "publish-work"
+    if not work.is_dir():
+        return None
+    found = set()
+    for p in work.glob("*.json"):
+        m = TASK_RE.search(p.name)
+        if m:
+            found.add(m.group(0))
+    return sorted(found)[-1] if found else None
 
 
 def read_json(path: Path):
@@ -119,12 +140,17 @@ def render(m, window_minutes: int, task: str | None):
     lines.append("")
     lines.append("## 4. 怎么读这张表")
     lines.append("")
-    lines.append("- **折算总进度**用 1,617,437 作基数，因为新生产者的 lineage 从 1027 保留量起算；")
-    lines.append("  1028-v1 已完成的 4,447,318 源不在本 lineage 内，会被重算，所以不能算进 52.64% 那个口径。")
+    lines.append("- **折算总进度**用 1,617,437 作基数：新生产者的 lineage 从 1027 保留量起算，")
+    lines.append("  1028-v1 的 4,447,318 源不在本 lineage 内、会被重算。所以 52.64% 与本表的百分比")
+    lines.append("  不是同一分母口径，不能直接相减。")
+    lines.append("- **重启的代次**：11-08 的 v2–v5 四代都没产出侧车（v5 的 `run-v5` 是空目录），")
+    lines.append("  v6 才重新开始计数；本表只算当前 run 目录里的分片收据。")
     lines.append("- **速率**只看最近一个窗口：整体平均会把早期的低速和现在的稳态混在一起，")
     lines.append("  判断“还要多久”用窗口速率更准。")
     lines.append("- 出现 `failure.json` 或 `quarantine.json` 时不等于停跑，先看内容：")
     lines.append("  隔离片是失败超阈值的分片被移出候选，其他片照常推进。")
+    lines.append("- 任务号默认从 `publish-work/observation-t-*.json` 的文件名取；")
+    lines.append("  `terminal-*.json` 里的 `task_id` 字段会错绑旧任务，不读它。")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -138,14 +164,15 @@ def main():
     ap.add_argument("--root", default="/root/experiments/redimnet2/open-annotation-ultra-20261025")
     ap.add_argument("--run", help="直接指定 run 目录；省略则取最新")
     ap.add_argument("--window", type=int, default=60, help="速率窗口（分钟，默认 60）")
-    ap.add_argument("--task", help="任务 ID（可选，仅用于展示）")
+    ap.add_argument("--task", help="任务 ID（省略则从 publish-work 文件名自动取）")
     ap.add_argument("--out", help="写入文件；省略则打印到标准输出")
     args = ap.parse_args()
 
     run = Path(args.run) if args.run else latest_run(Path(args.root))
     if run is None or not (run / "queue").is_dir():
         raise SystemExit("找不到可读的 run 目录，用 --run 指定一个含 queue/ 的目录")
-    text = render(collect(run, args.window), args.window, args.task)
+    task = args.task or detect_task(run)
+    text = render(collect(run, args.window), args.window, task)
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")
         print(f"已写入 {args.out}（{len(text.splitlines())} 行）")

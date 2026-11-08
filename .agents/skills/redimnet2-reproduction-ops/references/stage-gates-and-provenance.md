@@ -20,7 +20,7 @@
 
 ## LM 阶段门（2026-11-06 实现并用于 r3）
 
-LM 不是“PTN 之后再跑一次同样的训练”。它的门和 PTN 恢复门方向相反：PTN 要**恢复**优化器与 scaler，LM 要**丢掉**它们。当前实现见仓库 `tools/ptn_resume/lm_launch/lm_stage_gate.py`（包内 `runtime/`）与 `tools/ptn_resume/three_segment_lm_check.py`（三段证据检查器，单文件纯标准库）。
+LM 不是“PTN 之后再跑一次同样的训练”。它的门和 PTN 恢复门方向相反：PTN 要**恢复**优化器与 scaler，LM 要**丢掉**它们。当前实现见仓库 `tools/ptn_resume/lm_launch/lm_stage_gate.py`（包内 `runtime/`）与 `tools/ptn_resume/three_segment_lm_check.py`（三段证据检查器，单文件纯标准库）。启动命令与 11-06 的 `--execute` 事故见[LM 受控启动](lm-launch-20261106.md)，本页只写门的语义。
 
 - **`spk2id.json` 是执行门，不是参考文件。** 映射缺失或不可读时，`train.py` 会从“按名字重组分类头”退回“按索引切片”：357,822 → 前 115,362 行，形状刚好合法，又带着 `strict=False`，于是静默训错而不报错。gate 的判定顺序是：文件存在 → sha256 等于合同 `speaker_map.sha256` → 非空 → 编号为整数 → 人数等于合同 `ptn_speakers`（119,274）→ 读 LM 标签重数 115,362 → 每个 LM 说话人都在映射里。任一步不符的结果是 `LM_GATE_REFUSED`，任务不会以这份映射启动。
 - **`RECIPE` 要显式绑定到包内 `resume.yaml`。** `train_b6_mix_cloud_8gpu.sh` 里 `RECIPE` 的优先级高于 `REPRO=1` 的默认配方；不显式传，就出现“gate 验包内配方、训练跑仓库配方”的分叉。gate 的做法是传 `RECIPE=<包>/resume.yaml`，并断言 `env["RECIPE"]==recipe`。
