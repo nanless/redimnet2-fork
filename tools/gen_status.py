@@ -433,7 +433,22 @@ def cmd_check():
     current = STATUS_PATH.read_text(encoding="utf-8")
     cached_tests = split_sections(current).get(TEST_SECTION)
     fresh = build_status(use_cached_test_text=cached_tests)
-    if fresh == current:
+
+    # 2026-11-08：HEAD 与工作树两节天然随提交变化——生成时记的 HEAD 一旦提交就会变，
+    # 未提交清单在生成瞬间也必然包含 STATUS.md 自己。把它们从比对里剔除，
+    # --check 才可能成为可用的门（否则每次提交后必红，等于不能用）。
+    def _stable(text):
+        """剔除“仓库”一节：HEAD、顶端提交、未提交清单都随每次提交变化，
+        留在比对里会让 --check 永远过期（提交后必红），等于没有这道门。"""
+        keep, skip = [], False
+        for line in text.splitlines():
+            if line.startswith("## "):
+                skip = line.startswith("## 1.")
+            if not skip:
+                keep.append(line)
+        return keep
+
+    if _stable(fresh) == _stable(current):
         print("STATUS.md 与现场一致（测试节按已存内容比较，未重跑 pytest）。")
         return 0
     diff = list(difflib.unified_diff(

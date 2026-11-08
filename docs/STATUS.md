@@ -10,10 +10,14 @@
 
 ## 1. 仓库
 
-- 完整 HEAD：`41af297102887612d4a58867f8d56549637591c9`
+- 完整 HEAD：`9993fcb2bd4f712d74e2f670417d267d4912d0e2`
 - 当前分支：`main`
-- 顶端提交：`41af297 2026-11-08 09:25:33 +0000 写作规范整改：四路并行改写（文档、AGENTS.md、技能、代码注释）`
-- 未提交改动：0 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
+- 顶端提交：`9993fcb 2026-11-08 09:27:16 +0000 STATUS.md 在提交后重新生成（工作树已干净，未提交清单归零）`
+- 未提交改动：1 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
+
+```
+ M tools/gen_status.py
+```
 
 复核：`git rev-parse HEAD`、`git log -1 --format='%h %ad %s'`、`git status --porcelain | wc -l`
 
