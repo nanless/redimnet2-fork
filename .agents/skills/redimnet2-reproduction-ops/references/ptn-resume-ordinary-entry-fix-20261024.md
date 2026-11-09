@@ -16,7 +16,7 @@
 
 后继bundle/run是独立v3，仍用原formal-main model35的SHA fdaa88b963720ccdc35708c3ca9d18e56296edd8711eb9309772afacc92beb84，不选待审的wb58x checkpoint。总120轮、起轮36/iter525035、15001批、8×96、24workers、LR.72/margin.2、全模型/SGD/AMP及私有decoder合同都不变；也不声称恢复了完整RNG/轮内游标。
 
-切换门有三步：先提交正确的P6新任务并读回唯一ID/入口/资源，再只停止本轮自建的wb58x，等平台task与worker Terminated/active0之后发布一个小型外置的root-owned终态receipt。固定路径 `/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-control-20261024/predecessor-wb58x-terminal.json`，schema ptn-predecessor-terminal/v1、完整task/run/唯一worker0/UTC新鲜≤1h；root700目录/600 regular，临时fsync后原子不覆盖发布。缺receipt最多等1800秒，其间不启动torchrun/GPU，也不伪造终态；在原子逻辑锁与旧锁EX准入下复读SHA/stat，活的孤儿SH仍然阻止启动。外置receipt的内容被采纳后，SHA存入parent_admission，不改冻结manifest。15项门禁的正负例已在CPU通过。
+切换门有三步：先提交正确的P6新任务并读回唯一ID/入口/资源，再只停止本轮自建的wb58x，等平台task与worker Terminated/active0之后发布一个小型外置的root-owned终态receipt。固定路径 `/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-control-20261024/predecessor-wb58x-terminal.json`（历史路径），schema ptn-predecessor-terminal/v1、完整task/run/唯一worker0/UTC新鲜≤1h；root700目录/600 regular，临时fsync后原子不覆盖发布。缺receipt最多等1800秒，其间不启动torchrun/GPU，也不伪造终态；在原子逻辑锁与旧锁EX准入下复读SHA/stat，活的孤儿SH仍然阻止启动。外置receipt的内容被采纳后，SHA存入parent_admission，不改冻结manifest。15项门禁的正负例已在CPU通过。
 
 最新提交、终态和云端192worker/8restore/8update/持续批次验收，都在本机主报告与状态JSON里按实际时间记录；只有这些真实凭证通过，才称最终恢复。新model36/验证指标要等轮末真正完成后再另验，不把初始化或GPU吞吐当成新检查点。其他训练不干预，PAUSED heartbeat不恢复，报告和日志快照仍留在本机保存。
 

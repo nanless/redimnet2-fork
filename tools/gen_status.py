@@ -45,10 +45,19 @@ REPO = Path(__file__).resolve().parent.parent
 STATUS_PATH = REPO / "docs" / "STATUS.md"
 
 # 仓库外的只读证据根（本机不存在时各节写"无本地留档"，不报错）
+#
+# 存储规范（2026-11-09 起，用户硬性要求）：大数据默认写在
+# /root/group-shared/voiceprint 下——实验产物进 experiments/redimnet2/<实验名>/，
+# 准入材料、账本、评测进 artifacts/redimnet2/<用途>/，开源标注侧车进
+# open_annotation/redimnet2-silver-<日期>/。下面这些 /root/experiments/... 根是
+# 2026-11-09 之前的实验产物，只读，用来生成历史记录；新产物不再写这里。
 EXP_ROOT = Path("/root/experiments/redimnet2")
 B6_ROOT = EXP_ROOT / "b6-mix-official-20261019"
 ANNOT_ROOT = EXP_ROOT / "open-annotation-ultra-20261025"
 V4R2 = ANNOT_ROOT / "native-speed-successor-20261028-v4-r2"
+# 新侧车基址：redimnet2-silver-<日期>/handoff-v4r2-*/。旧基址只读历史，迁移期两处可能同时存在。
+SILVER_ROOT = Path("/root/group-shared/voiceprint/open_annotation")
+HIST_ANNOT_ROOT = ANNOT_ROOT
 
 PYTEST_PY = "/root/miniforge3/envs/USE/bin/python"
 PYTEST_DIR = "tools/open_annotation/tests"
@@ -88,15 +97,45 @@ ARTIFACTS = [
 
 # 最近三次标注提交：从交接目录自动发现，避免代次一多就写死漏项。
 # 任务号取 publish-work 下文件名；terminal-*.json 里的 task_id 字段已知会错绑旧任务，不读。
+# 新侧车基址（open_annotation/redimnet2-silver-<日期>/）优先，旧基址只读历史；
+# 迁移期两处可能同时存在，取 publish-work 已到位的那一份，避免读到半棵树。
+def _handoff_bases():
+    """按存储规范找 handoff 目录：新侧车基址优先，旧基址只读历史。
+
+    2026-11-09 起侧车写在 /root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/；
+    迁移期间两处可能同时存在，所以返回每个代次能看到的全部目录，由调用方分别取
+    publish-work（任务号）与 run 目录（状态），避免读到搬了一半的树。
+    """
+    roots = sorted(SILVER_ROOT.glob("redimnet2-silver-*"), reverse=True)
+    roots.append(HIST_ANNOT_ROOT)
+    seen = {}
+    for root in roots:
+        for base in sorted(root.glob("handoff-v4r2-*")):
+            gen = base.name.rsplit("-", 1)[-1]
+            seen.setdefault(gen, []).append(base)
+    return seen
+
+
 def discover_submissions(limit=3):
-    dirs = sorted(ANNOT_ROOT.glob("handoff-v4r2-*"), key=lambda p: p.name)
+    bases_by_gen = _handoff_bases()
     out = []
-    for base in dirs[-limit:]:
-        gen = base.name.rsplit("-", 1)[-1]
-        runs = sorted((p for p in base.glob("run-*") if p.is_dir()), key=lambda p: p.name)
-        run = runs[-1] if runs else (base / ("run-" + gen))
-        out.append((gen, base.name, run.name))
+    for gen in sorted(bases_by_gen)[-limit:]:
+        bases = bases_by_gen[gen]
+        task = None
+        for base in bases:
+            work = base / "publish-work"
+            if not work.is_dir():
+                continue
+            ids = sorted(p.stem.replace("terminal-", "") for p in work.glob("terminal-*.json"))
+            if ids:
+                task = ids[0]
+                break
+        runs = [p for base in bases for p in base.glob("run-*") if p.is_dir()]
+        # 迁移期同一个 run 可能在两处各有一份；优先取带 queue/broker.json 的那份。
+        runs.sort(key=lambda p: (p.name, 1 if (p / "queue" / "broker.json").exists() else 0))
+        out.append((gen, bases[0].name, runs[-1] if runs else None, task))
     return out
+
 
 SECTION_ORDER = [
     "1. 仓库",
@@ -289,6 +328,11 @@ def section_artifacts():
     lines = ["## 4. 已知产物", ""]
     lines.append("sha256 只给前 16 位，够 diff；要完整值用下面第 6 节的命令。")
     lines.append("")
+    lines.append("路径里的 `$EXP` = `/root/experiments/redimnet2`，是 2026-11-09 之前的实验产物根"
+                 "（**历史路径**，只读）。2026-11-09 起新产物写 "
+                 "`/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/`，"
+                 "准入材料、账本、评测写 `.../artifacts/redimnet2/<用途>/`。")
+    lines.append("")
     lines.append("| 产物 | 路径 | 大小 | 摘要 | 文件时间 |")
     lines.append("|---|---|---|---|---|")
     for label, path in ARTIFACTS:
@@ -324,25 +368,37 @@ def section_artifacts():
     return lines
 
 
+def _first_json(files):
+    for f in files:
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
 def failure_one_liner(run_dir: Path):
-    """从 run 目录里的 failure.json / receipt 读一句话失败原因。"""
+    """从 run 目录里的 failure.json / receipt 读一句话失败原因。
+
+    只查已知的两层位置，不 rglob 整棵树：v6 的 labels 树有上百万个文件，
+    逐文件 stat 在 GPFS 上要几十分钟，而迁移大目录时更慢。
+    """
     if not run_dir.exists():
         return "无本地留档（目录不存在）"
-    fails = sorted(run_dir.rglob("failure.json"))
+    fails = [p for p in (run_dir / "failure.json",
+                         run_dir / "resources-attempt1" / "failure.json")
+             if p.is_file()]
     for f in fails:
-        try:
-            tb = json.loads(f.read_text(encoding="utf-8")).get("traceback", "")
-        except Exception:  # noqa: BLE001
-            continue
+        d = _first_json([f]) or {}
+        tb = d.get("traceback", "")
         tail = [ln.strip() for ln in tb.strip().splitlines() if ln.strip()]
         if tail:
-            return "`%s`（%s）" % (tail[-1], f.relative_to(run_dir))
-    receipts = sorted(run_dir.rglob("*receipt*.json"))
+            rel = f.relative_to(run_dir)
+            return "`%s`（%s）" % (tail[-1], rel)
+    receipts = list(run_dir.glob("*receipt*.json")) + \
+        list(run_dir.glob("resources-attempt1/*receipt*.json"))
     for f in receipts:
-        try:
-            d = json.loads(f.read_text(encoding="utf-8"))
-        except Exception:  # noqa: BLE001
-            continue
+        d = _first_json([f]) or {}
         code = d.get("training_exit_code", d.get("exit_code"))
         if code is not None:
             return "回执 `%s` 记退出码 %s" % (f.relative_to(run_dir), code)
@@ -353,34 +409,51 @@ def failure_one_liner(run_dir: Path):
     return "无本地留档（没有 failure.json / 回执）"
 
 
+def sidecar_evidence(run_dir: Path):
+    """侧车只判有无，不逐个数：labels 树上百万文件，数一次要几十分钟。"""
+    labels = run_dir / "labels"
+    if not labels.is_dir():
+        return "0"
+    return "0" if not any(labels.iterdir()) else "有侧车（不逐个数）"
+
+
 def section_submissions():
     lines = ["## 5. 最近三次标注提交", ""]
     lines.append("任务号从 `publish-work/*.json` 的文件名取；"
                  "平台侧终态本地**没有**留档，`terminal-*.json` 里的 `task_id` 字段已知会"
-                 "错绑旧任务，不能当新任务的终态用。运行中的代次不数侧车：labels 树现在有"
-                 "上百万个文件，`find` 一次要几分钟，而失败代次的 0 侧车才是有用的证据。")
+                 "错绑旧任务，不能当新任务的终态用。侧车只判有无、不逐个数：labels 树现在有"
+                 "上百万个文件，`find` 一次要几十分钟，而失败代次的 0 侧车才是有用的证据。")
+    lines.append("")
+    lines.append("状态按 `queue/` 与 `failure.json` 判，不探测进程；生产已停但队列文件还在时，"
+                 "这里仍可能显示“运行中”，实时状态以任务页与 `docs/19` 第 2 节为准。")
+    lines.append("")
+    lines.append("2026-11-09 起交接目录按存储规范写在 "
+                 "`/root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/` 下；"
+                 "`20261109` 已就位，更早三代仍在 `/root/experiments/redimnet2/open-annotation-ultra-*/`（历史路径）、迁移中；旧基址只读。归档与跳过规则见 `docs/20-标注结果归档与跳过规则.md`。")
     lines.append("")
     lines.append("| 代次 | 交接目录 | 任务号（取文件名） | 状态 / 失败原因一句话 | 侧车条数 |")
     lines.append("|---|---|---|---|---|")
-    for gen, dirname, rundir in discover_submissions():
-        base = ANNOT_ROOT / dirname
-        if not base.exists():
-            lines.append("| %s | `%s` | 无本地留档 | 目录不存在 | — |" % (gen, dirname))
+    for gen, dirname, run_dir, task in discover_submissions():
+        task = task or "无本地留档"
+        if run_dir is None:
+            lines.append("| %s | `%s` | `%s` | 无本地留档（目录不存在） | — |" % (gen, dirname, task))
             continue
-        ids = sorted(p.stem.replace("terminal-", "") for p in (base / "publish-work").glob("terminal-*.json")) \
-            if (base / "publish-work").is_dir() else []
-        task = ids[0] if ids else "无本地留档"
-        run_dir = base / rundir
-        live = (run_dir / "queue" / "broker.json").exists() \
-            and not (run_dir / "resources-attempt1" / "failure.json").exists()
-        if live:
+        if not (run_dir / "queue" / "broker.json").exists():
+            if not any(run_dir.iterdir()):
+                state = "无本地留档（run 目录为空）"
+            else:
+                state = "队列不在本机（迁移中或未开始）"
+            lines.append("| %s | `%s` | `%s` | %s | — |" % (gen, dirname, task, state))
+            continue
+        if not (run_dir / "resources-attempt1" / "failure.json").exists():
             lines.append("| %s | `%s` | `%s` | 运行中（按 `queue/` 推进） | 运行中不计数 |" % (gen, dirname, task))
             continue
         reason = failure_one_liner(run_dir)
-        sidecars = len(list(run_dir.rglob("labels/*.json"))) if run_dir.exists() else 0
-        lines.append("| %s | `%s` | `%s` | %s | %d |" % (gen, dirname, task, reason, sidecars))
+        sidecars = sidecar_evidence(run_dir)
+        lines.append("| %s | `%s` | `%s` | %s | %s |" % (gen, dirname, task, reason, sidecars))
     lines.append("")
-    lines.append("复核：`ls /root/experiments/redimnet2/open-annotation-ultra-*/handoff-*`；"
+    lines.append("复核：`ls /root/group-shared/voiceprint/open_annotation/redimnet2-silver-*/handoff-*`（新基址）；"
+                 "旧代次用 `ls /root/experiments/redimnet2/open-annotation-ultra-*/handoff-*`（历史路径）；"
                  "`find <run> -path '*labels*' -type f | wc -l`；`cat <run>/resources-attempt1/failure.json`")
     return lines
 
@@ -391,9 +464,18 @@ def section_notes():
         "",
         "- 本文件只用于承载易变事实。`docs/*.md` 正文不写死 HEAD、权限位、"
         "测试计数、产物 sha、“已修/已验证”、目录里有什么。",
-        "- 复核全部产物 sha：",
+        "- **存储规范（2026-11-09 起，用户硬性要求）**：大数据默认位置一律在 "
+        "`/root/group-shared/voiceprint` 下——实验产物 `experiments/redimnet2/<实验名>/`，"
+        "准入材料、账本、评测 `artifacts/redimnet2/<用途>/`，开源标注侧车 "
+        "`open_annotation/redimnet2-silver-<日期>/`；`/root` 只放代码仓库与临时日志。"
+        "`/root` 与 `/root/group-shared` 是两个不同挂载点，跨挂载点 `mv` 会退化成"
+        "“复制 + 删除”（几十万小文件按小时计），所以新数据一开始就写最终位置。"
+        "详见 `docs/19-今日工作与后续入口.md` 第 6 节；标注按代次归档、建索引与跳过规则见 `docs/20-标注结果归档与跳过规则.md`。",
+        "- 复核全部产物 sha（下面三条是 2026-11-09 之前的旧基址，**历史路径**；"
+        "新产物按上面的规范写新基址）：",
         "",
         "  ```bash",
+        "  # 历史路径（2026-11-09 前的产物仍在这里）",
         "  sha256sum /root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm/models/model_1.pt \\",
         "            /root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn/models/model_{115,120}.pt",
         "  ```",

@@ -23,9 +23,24 @@ RETAINED = 1_617_437          # 本 lineage 起算基数（1027 保留）
 TARGET_REMAINING = TOTAL - RETAINED
 TASK_RE = re.compile(r"t-\d{14}-[a-z0-9]+")
 
+# 存储规范（2026-11-09 起）：侧车与 run 目录写在
+# /root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/ 下；
+# 老代次留在 /root/experiments/... 的旧基址，只读历史。新基址优先。
+SILVER_ROOT = Path("/root/group-shared/voiceprint/open_annotation")
+HIST_ROOT = Path("/root/experiments/redimnet2/open-annotation-ultra-20261025")
+
+
+def candidate_roots(root=None):
+    if root:
+        return [Path(root)]
+    return [SILVER_ROOT, HIST_ROOT]
+
 
 def latest_run(root: Path):
+    # 旧布局 <root>/<handoff>/run-*；新布局 <root>/redimnet2-silver-<日期>/<handoff>/run-*
     cands = sorted(root.glob("*/run-*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    cands += sorted(root.glob("*/*/run-*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    cands.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return cands[0] if cands else None
 
 
@@ -104,6 +119,10 @@ def render(m, window_minutes: int, task: str | None):
     lines.append("> 生成：`python3 tools/annotation_progress.py --out docs/ANNOTATION-PROGRESS.md`。")
     lines.append("> 数据来源：`queue/broker.json` 与 `queue/completed/*.json` 的 `source_count` 求和；")
     lines.append("> 不用文件计数——GPFS 上几十万文件要十几分钟，而收据只有几千个。")
+    lines.append("> 存储规范（2026-11-09 起）：新 run 根写 "
+                 "`/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/`，侧车写 "
+                 "`.../open_annotation/redimnet2-silver-<日期>/`；更早的标注代次也迁往该归档目录，迁移期间旧基址可能还在（历史路径），"
+                 "见 `docs/20-标注结果归档与跳过规则.md`。")
     lines.append("")
     lines.append("## 1. 总量")
     lines.append("")
@@ -161,14 +180,18 @@ def render(m, window_minutes: int, task: str | None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", default="/root/experiments/redimnet2/open-annotation-ultra-20261025")
+    ap.add_argument("--root", help="侧车或旧实验根；省略时先找新基址"
+                    "（/root/group-shared/voiceprint/open_annotation），找不到再回退旧基址")
     ap.add_argument("--run", help="直接指定 run 目录；省略则取最新")
     ap.add_argument("--window", type=int, default=60, help="速率窗口（分钟，默认 60）")
     ap.add_argument("--task", help="任务 ID（省略则从 publish-work 文件名自动取）")
     ap.add_argument("--out", help="写入文件；省略则打印到标准输出")
     args = ap.parse_args()
 
-    run = Path(args.run) if args.run else latest_run(Path(args.root))
+    if args.run:
+        run = Path(args.run)
+    else:
+        run = next((r for r in (latest_run(x) for x in candidate_roots(args.root)) if r), None)
     if run is None or not (run / "queue").is_dir():
         raise SystemExit("找不到可读的 run 目录，用 --run 指定一个含 queue/ 的目录")
     task = args.task or detect_task(run)

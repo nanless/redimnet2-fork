@@ -215,11 +215,11 @@ train_data: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/data.list
 train_label: /root/group-shared/voiceprint/data/wespeaker_data/vox2_dev/utt2spk
 validation:
   vox1: /root/group-shared/voiceprint/data/wespeaker_data/vox1-test
-exp_dir: /root/group-shared/voiceprint/data/wespeaker_data/exp/vox2/b0_ptn
+exp_dir: /root/group-shared/voiceprint/experiments/redimnet2/vox2-b0-ptn
 ```
 
-> **`exp_dir` 落在容器根上会把盘写满**：本机 `/` 余量不大（2026-11-09 实测可用 14 GB，会随任务变化），训练日志和权重可能把它填满。（本仓库自己在共享盘上，所以配方默认的 `exp_dir: exp/...` 写在共享盘上；只有把它设成 `/` 或 `/tmp` 下的绝对路径才会占容器根。）
-> 写到共享盘，或写到 `/dev/shm`（本机约 325 GB 可用）。
+> **`exp_dir` 落在容器根上会把盘写满**：本机 `/` 余量不大（2026-11-09 实测可用 14 GB，会随任务变化），训练日志和权重可能把它填满。
+> 按 2026-11-09 存储规范，`exp_dir` 写 `/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/`；仓库默认的 `exp/...` 落在代码目录里，属于历史路径，不要再用。临时实验可以写 `/dev/shm`（本机约 325 GB 可用），跑完把要留的权重按基址归档。
 
 改增强路径时，整段带上 `aug_setup`（列表是整段替换，只改一半容易指到旧 MUSAN）。
 
@@ -241,7 +241,7 @@ exp_dir: /root/group-shared/voiceprint/data/wespeaker_data/exp/vox2/b0_ptn
   1 \
   --config_overrides /tmp/vox2-b0-local.yaml \
   --num_epochs 1 \
-  --exp_dir exp/vox2/smoke
+  --exp_dir /root/group-shared/voiceprint/experiments/redimnet2/vox2-b0-smoke
 ```
 
 PTN 跑完后，"把 `lm.yaml` 的 `model_ckpt` 改成 PTN 的 `model_*.pt` 再启 LM"这条老办法在本仓库不适用。这次的大间隔微调不是改个配置直接跑 `train.py`，而是走**冻结包 + 合同**的专用入口，三条硬规矩（详见 `AGENTS.md` §9.2）：
@@ -359,7 +359,7 @@ flowchart TB
 **vox2**
 
 - 配方里的路径已经是本机真实位置，本机可直接启动；换机器时用覆盖文件改路径（见第 2 节）。  
-- `exp_dir` 落在容器根上，几个轮次就把盘写满 → 改到共享盘或 `/dev/shm`。  
+- `exp_dir` 落在容器根上，几个轮次就把盘写满 → 改到 `/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/` 或 `/dev/shm`。  
 - HF 下载失败 → 准备本地 archive/source，跳过 download。  
 - Vox2 缺卷导致计数断言失败。  
 - 若你显式跑了可选的 `--stages lmdb` 且中途中断 → 用 `--stages lmdb --rebuild-lmdb` 重建。  

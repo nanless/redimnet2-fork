@@ -53,6 +53,7 @@
 1. 该任务 2026-11-03 已跑完 120/120 轮、八卡归还（`docs/10-云端八卡训练.md` 状态段）。复制一个已结束任务的**表单**仍然有效，因为它带的是配置而不是运行状态；但复制不等于“重试”，也不要顺手点“重新运行”。
 2. 空白表单或复制自优先级 4 的表单，点 `6` 后仍显示 `4`（2026-09-28 MMS 案例）。所以起点必须是已确认优先级 6 的任务，提交后再从详情页核一次。
 3. 规格名称会随资源目录调整失效。`ml.pni2l.28xlarge` 是当前有效写法；历史文档里出现过 `ml.hpcpni2l.28xlarge`，那个型号名在实际任务详情里查不到，提交前以详情页显示为准。
+4. 上表的 group-shared 只读是 2026-11-03 那次任务的挂载。2026-11-09 起新产物写 `/root/group-shared/voiceprint` 下（实验产物 `experiments/redimnet2/<实验名>/`，工具与评测材料 `artifacts/redimnet2/<用途>/`），复制的表单要先把该挂载改成读写再提交；只读时停在提交前，不把输出改回 `/root` 本地盘。
 
 ---
 
@@ -78,8 +79,10 @@
 网页代码编辑器对长命令不可靠：粘贴或自动化写入多行命令时，首字符会丢（用户观测，2026-11-08 至 11-09 多次复现），丢掉的往往是 `/` 或 `e`，命令于是从“路径”或 `exec` 变成不存在的命令，任务启动即失败。因此入口只写一行：
 
 ```
-/bin/bash /root/codex_artifacts/repo-handover-20261107/run_handoff_v7.sh
+/bin/bash /root/group-shared/voiceprint/artifacts/redimnet2/repo-handover-<日期>/run_handoff_v7.sh
 ```
+
+脚本按硬规则放 `/root/group-shared/voiceprint/artifacts/redimnet2/repo-handover-<日期>/`；迁移前现存副本仍在 `/root/codex_artifacts/repo-handover-20261107/run_handoff_v7.sh`（历史路径），还没搬时入口照旧指向它。
 
 这行只有“解释器 + 脚本绝对路径”两个成分，没有引号、没有换行、没有需要转义的特殊字符，丢首字符时也会立刻表现为 `/bin/bash` 不存在而不是静默跑错。脚本本体放在共享盘上，可以正常编辑、`bash -n` 校验、按需换版本（v2…v7 的差别只在 CTRL 路径、blueprint 路径与 sha 三行）。
 

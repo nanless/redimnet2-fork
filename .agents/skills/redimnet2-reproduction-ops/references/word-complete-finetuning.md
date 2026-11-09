@@ -4,7 +4,7 @@
 
 ## 入口与保护范围
 
-独立源码`/root/code/github_repos/redimnet2-duration-finetune-20261023`，独立输出`/root/experiments/redimnet2/duration-finetune-20261023`。原`redimnet2-fork`、现有八卡任务、LM冻结资料、FLAC历史证据、音频与VAD原件都按只读保护。独立树的AGENTS同样适用；该次独立实现按当时要求没有提交或推送Git，也没有升级原训练环境。后续维护是否提交按最新任务决定：Mac仍不允许写GitHub，已授权的推送只由服务器自己的仓库和进程执行，原训练及冻结材料的保护不变。先后文件摘要比对保护343项；实时八卡状态要另取新证据，开发机两卡代替不了。
+独立源码`/root/code/github_repos/redimnet2-duration-finetune-20261023`，独立输出`/root/experiments/redimnet2/duration-finetune-20261023`（历史路径）。原`redimnet2-fork`、现有八卡任务、LM冻结资料、FLAC历史证据、音频与VAD原件都按只读保护。独立树的AGENTS同样适用；该次独立实现按当时要求没有提交或推送Git，也没有升级原训练环境。后续维护是否提交按最新任务决定：Mac仍不允许写GitHub，已授权的推送只由服务器自己的仓库和进程执行，原训练及冻结材料的保护不变。先后文件摘要比对保护343项；实时八卡状态要另取新证据，开发机两卡代替不了。
 
 公开官方骨干SHA256=`287365f6f485b19e65e5176554f8f7123bfa8d85185f3d2c040eab51acec9868`，严格按原配置加载821个状态键、192维输出。权重里只有model_config/state_dict；新SphereFace2头配冷SGD，不存在的官方头或动量不恢复。私有libsndfile1.2.2只作用于新进程，旧FLAC许可继承不过来。
 

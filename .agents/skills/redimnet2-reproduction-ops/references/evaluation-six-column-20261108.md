@@ -6,7 +6,7 @@
 
 六列指 Vox1-O、Vox1-E、Vox1-H、Vox1-B、VOICES、CN-Celeb。前四列是 VoxCeleb1 的官方清洗协议，后两列是域外。另有一列 `Vox1-O-8s` 只读前 8 秒、短音频 tail-wrap，是训练期验证口径，**不能**和整段 O 的 0.26% 对减。
 
-协议文件与实测规模（`/root/codex_artifacts/eval-official-20261108/provenance.json`）：
+协议文件与实测规模（`/root/codex_artifacts/eval-official-20261108/provenance.json`，历史路径；新评测按仓库 `AGENTS.md` 的硬规则写 `/root/group-shared/voiceprint/artifacts/redimnet2/eval-official-<日期>/`）：
 
 | 列 | 协议 | 对数 | 不同音频 |
 |---|---|---|---|
@@ -65,9 +65,13 @@ SITW 在 `cells.csv` 里标的是 `DATA_MISSING`（`n/a (dataset absent)`），�
 ## 复现入口
 
 ```bash
-cd /root/codex_artifacts/eval-official-20261108
+# 新评测按仓库 AGENTS.md 的硬规则建 /root/group-shared/voiceprint/artifacts/redimnet2/eval-official-<日期>/，
+# 把 run_eval.sh、build_summary2.py 与该轮分片脚本复制过去后，在这个新目录里运行。
+cd /root/group-shared/voiceprint/artifacts/redimnet2/eval-official-<日期>
 bash run_eval.sh          # 两卡、按 part 串行，写 ledger.csv 与 csv/
 /root/miniforge3/envs/redimnet2/bin/python build_summary2.py
 ```
+
+2026-11-08 那轮的原件在 `/root/codex_artifacts/eval-official-20261108/`（历史路径），只读复核旧结果时仍去那里。
 
 导出与评测的格式语义见仓库 `docs/13-训练权重导出与评测.md`；本轮四个权重的 sha256 在 `provenance.json` 的 `weights` 里，引用时连 sha 一起写。

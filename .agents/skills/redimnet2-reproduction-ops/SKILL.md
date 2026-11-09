@@ -15,15 +15,25 @@ description: Inspect and maintain the nanless/redimnet2-fork reproduction projec
 - **标注 pilot 9/9 通过**：3000 源主阶段 b4/b8 相对 b1 的冷启动端到端比 1.7427× / 1.99397×（实测），512 源恢复三轨 0 新增调用；token 槽差异 2,623 窗、有效文字/字界差异 0，质量复核仍标 `ABSENT`。
 - 以上都是**带日期的观测**，再查询前要取新快照。「已提交」只说明提交动作完成，不说明训练已开始，所以这一段不能当实时状态用。**易变事实（HEAD、权限位、pytest 摘要、产物 sha、最近几次提交）以仓库 `docs/STATUS.md` 为准**：它由 `tools/gen_status.py` 生成，`--check` 判是否过期、`--lint` 查正文硬编码。本技能正文不抄这些数字，抄了就会和生成结果对不上。
 
+## 数据落点（2026-11-09 起硬规则）
+
+用户规定原文：“大数据默认一律 `/root/group-shared/voiceprint` 下，不许写 `/root` 其他目录。” 仓库根 `AGENTS.md` 顶部《大数据落点硬规则》写了完整条款与自检命令，动手前先读。三类落点：
+
+- 实验产物（训练 run、检查点、日志、评测输入与导出、批量推理输出）写 `/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/`。
+- 工具产物、准入材料、账本、评测原件写 `/root/group-shared/voiceprint/artifacts/redimnet2/<用途>/`（如 `eval-official-<日期>/`、`controls/`、`retired-claims-<日期>/`、`device-locks/`、`repo-handover-<日期>/`、`volcengine-submission/<task_id_or_run_id>/`）。
+- 开源标注侧车写 `/root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/`。
+
+`/root` 只放代码仓库（`/root/code/github_repos/...`）与临时日志。旧根 `/root/experiments`、`/root/codex_artifacts` 里的既有数据原样保留、只读引用，文档里标“历史路径”；不往里写新批，也不建别名。不先写 `/root` 再 `mv`：容器里那是跨挂载点，`mv` 退化为复制，大检查点占双份空间且中途失败会留半份。运行中的任务不因这条规则重启或迁移。
+
 ## 找到实际仓库
 
 维护对象是 `nanless/redimnet2-fork`，地址 `https://github.com/nanless/redimnet2-fork`。已知服务器仓库为 `dev_a800_2gpus:/root/code/github_repos/redimnet2-fork`，每次仍按用户指定位置核对主机、仓库根、remote、branch、HEAD 和已有修改。开发机与实际八卡 worker 分开记录：一台上的进程或 GPU 说明不了另一台。
 
-2026-11-09 只读核对：服务器该路径 HEAD `5c59a1c`（2026-11-08 16:09 UTC，「标注看板页面化」）；工作树是否干净用 `git status --porcelain | wc -l` 现查（<!-- volatile-ok: 快照式核对记录，随提交失效，已同时给出命令 -->）；`.agents/skills/redimnet2-reproduction-ops/` 与 `docs/16-实验维护与验收边界.md` 都在这份检出里。此前的说法（2026-11-05：服务器检出 `0a3f6dd`、没有技能目录和 docs/16，维护源只在 Mac 工作副本）已经过时，按旧说法会去读一个不存在的位置。
+2026-11-09 只读核对：服务器该路径分支 `main`、HEAD `00bf836`（2026-11-08T16:47:58Z，「STATUS 在提交后重新生成（工作树归零）」）。HEAD 和工作树干净程度都现查，不要引用这里的哈希：`git rev-parse --short HEAD`、`git status --porcelain | wc -l`（<!-- volatile-ok: 快照式核对记录，随提交失效，已同时给出命令 -->）；`.agents/skills/redimnet2-reproduction-ops/` 与 `docs/16-实验维护与验收边界.md` 都在这份检出里。此前的说法（2026-11-05：服务器检出 `0a3f6dd`、没有技能目录和 docs/16，维护源只在 Mac 工作副本）已经过时，按旧说法会去读一个不存在的位置。
 
-本机“声纹降噪”资料根可能另有 `redimnet2-fork/` 副本。先跑只读的 `git rev-parse --show-toplevel` 并核对远端：不然 Git 会向父目录查找，写进另一个空仓库。历史临时工作树、别名或软链接不为迁就旧路径而恢复。
+2026-11-09 实测：本机没有该仓库的工作副本。`/Users/zhounan/Documents/声纹降噪` 这个资料根还在，但它下面的 `redimnet2-fork` 已不存在（`test -e` 失败），只剩 `ReDimNet2*` 等资料与证据目录和 `skill_updates*/`；`find /Users/zhounan -maxdepth 4 -type d -name redimnet2-fork` 零命中。要读仓库就读服务器那份检出。真要在本机新建副本时先跑只读的 `git rev-parse --show-toplevel` 并核对远端：不然 Git 会向父目录查找，写进另一个空仓库。历史临时工作树、别名或软链接不为迁就旧路径而重建。
 
-进入确认的仓库后，完整读根 `AGENTS.md` 和 `docs/16-实验维护与验收边界.md`。技能维护源就是仓库里的 `.agents/skills/redimnet2-reproduction-ops`，改完再把安装副本（`~/.codex/skills/redimnet2-reproduction-ops`）同步过去，不在安装目录单独发展唯一实现。2026-11-09 比对：两边都是 29 个文件（28 份正文加 `agents/openai.yaml`），但安装副本停在 11-08 写作规范整改之前，多份正文比仓库旧；同步前先 `diff -rq`，不要假定两边一样，也不要拿旧安装副本当现行说明。仓库内文档和程序路径都以实际仓库根为基准，从安装技能目录用 `../` 猜回仓库会指错地方。
+进入确认的仓库后，完整读根 `AGENTS.md` 和 `docs/16-实验维护与验收边界.md`。技能维护源是服务器仓库 `dev_a800_2gpus:/root/code/github_repos/redimnet2-fork` 里的 `.agents/skills/redimnet2-reproduction-ops`（origin `nanless/redimnet2-fork`）。本机没有该仓库的工作副本，所以 `~/.codex/skills/redimnet2-reproduction-ops` 这份安装态副本就是本机唯一可改的一处：改动直接在这里做，动手前先 `tar czf` 打包整个目录以便回滚，改完需要回仓库时再同步进服务器那份检出，不在本机另养第二份实现。当前安装副本 32 个文件（`find ~/.codex/skills/redimnet2-reproduction-ops -type f | wc -l` 实测：`SKILL.md`、`agents/openai.yaml`、30 份 `references/*.md`）；2026-11-09 核对时它与服务器 `.agents/skills/` 逐文件 sha256 全同，同步前后仍用 `diff -rq` 重核，别假定两边一致。仓库内文档和程序路径都以实际仓库根为基准，从安装技能目录用 `../` 猜回仓库会指错地方。
 
 ## 选择需要的参考
 

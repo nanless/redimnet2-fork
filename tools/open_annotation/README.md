@@ -10,6 +10,51 @@
 
 新薄索引实时查询只用[纯元数据进度](仅元数据的标注进度.md)及`bounded_metadata_progress.py`；它不构造来源reader、不重读旧JSONL／commit／侧车，不拿锁、不创建队列或数据库，也不授运行或人工质量资格。旧`readonly_progress --bounded`仍进行来源闭包读取，不能代称本次轻量接口。新图由`plot_annotation_eight_gpu_window.py`只读公开聚合数字生成。
 
+## 跑标注前先建索引再过滤队列（2026-11-09）
+
+以后每次跑标注前，先从各代 `queue/completed/*.json` 建一份完成索引，再从待跑队列里剔除已完成的源；不要重标已有结果。`annotation_inventory.py` 只读收据：不读音频和侧车正文、不启动模型、不改判据，也不改任何既有队列。索引每行固定 7 个字段（`source_id`、`sidecar_relpath`、`sidecar_sha256`、`sidecar_bytes`、`decision`、`lineage`、`committed_utc`），按 `source_id` 去重并保留 `committed_utc` 最新的一行；重复跑输出字节不变。
+
+注册表（`--registry`）是 JSON；`optional: true` 只用于确实没有任何收据的空代，普通根缺少 `queue/completed` 会直接报错：
+
+```json
+{"schema":"annotation-inventory-registry/v1","runs":[
+  {"path":"<FORMAL_RUN_ROOT>"},
+  {"path":"<PORTABLE_RUN_ROOT>"},
+  {"path":"<NATIVE_RUN_ROOT>"},
+  {"path":"<V6_RUN_ROOT>"}
+]}
+```
+
+实际注册表在 `/root/group-shared/voiceprint/artifacts/redimnet2/annotation-inventory/registry.json`，里面填的是各代真实的 run 根（旧数据根属于历史路径，本文不重复抄写）。
+
+完整命令（建索引并打印各代计数、去重后唯一源、数据集分布）：
+
+```bash
+cd /root/code/github_repos/redimnet2-fork
+PYTHONDONTWRITEBYTECODE=1 /root/miniforge3/envs/USE/bin/python \
+  tools/open_annotation/annotation_inventory.py \
+  --registry /root/group-shared/voiceprint/artifacts/redimnet2/annotation-inventory/registry.json \
+  --output /root/group-shared/voiceprint/artifacts/redimnet2/annotation-inventory/done-index.jsonl \
+  --report
+```
+
+跑新标注之前过滤待跑队列。`--check-files` 逐条核对命中的侧车是否存在（大小也要与 `sidecar_bytes` 一致），缺失或大小不符的源会保留在输出队列里，不会被误删。它只适合抽样或小批量：命中数超过 `--check-max`（默认 5000）直接拒绝，避免对十万级文件逐个 stat。侧车核对要由 `--roots` 给出各代 run 根来定位 `labels/<profile>/`；只用 `--index` 时也要带上这些根：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 /root/miniforge3/envs/USE/bin/python \
+  tools/open_annotation/annotation_inventory.py \
+  --index /root/group-shared/voiceprint/artifacts/redimnet2/annotation-inventory/done-index.jsonl \
+  --roots "<FORMAL_RUN_ROOT>" "<PORTABLE_RUN_ROOT>" "<NATIVE_RUN_ROOT>" "<V6_RUN_ROOT>" \
+  --filter-queue /path/to/queue.json --out /path/to/filtered.json \
+  --check-files --check-max 5000
+
+四个 `<..._RUN_ROOT>` 从注册表各条的 `path` 原样填入；只用 `--index` 时它们只用于 `--check-files` 定位侧车，不重新扫收据。
+```
+
+输出是 JSON 汇总：`queue_items`、`removed`、`remaining`、`missing_sidecar_kept`、`size_mismatch_kept`。队列支持 JSON（顶层源列表，或 `sources`/`items`/`records`/`queue`/`rows` 之一）和 JSONL；分片索引（`shards` 指向 JSONL 分片）不在本工具范围内。
+
+2026-11-09 只读首跑：28,061 份收据、7,029,291 条源行、去重后 6,062,771 个唯一源；重叠的 966,520 个源全部来自 v6（它只是在续跑已经做过的分片，没有新增唯一源）。注意 formal 代其实有 4,624 份收据，文件名为 `three-train-*.json`，只数 `partial-*` 会误报为 0。数字随新收据变化，以当次 `--report` 为准。诊断批（`annotation-clock-ab-20261026-v1`、`native-feature-recovery-20261028-v1`）不是生产 run 根，没有并入上面的注册表；前者 32 行（16 个唯一源，全部已在主索引内），后者 60 行（30 个唯一源，其中 12 个不在主索引内）；要不要跳过这批诊断结果需要单独确认。
+
 ## 先做不需要模型的检查
 
 在仓库根目录执行：
@@ -34,6 +79,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/open_annotation/
 | `normalization.py`、`quality_axes.py`、`schema.py` | 保存文字规范化中间步骤，分别记录文字、边界、语言、来源和身份的待审状态 |
 | `work_queue.py`、`sidecar.py` | 单父进程锁、分片领取、并发代次、不可覆盖发布、缓存身份和中断恢复 |
 | `readonly_progress.py`、`bounded_metadata_progress.py` | 前者旧v1只读完成下界；新薄索引用后者只读元数据，旧--bounded闭包reader另有来源读取。均不替代文字／边界审核 |
+| `annotation_inventory.py` | 扫各代完成收据建 done-index（按 source_id 去重取最新），过滤待跑队列；可选核侧车存在，不读音频、不改判据 |
 | `union_coverage.py`、`union_consumer.py` | 核旧结果与真正剩余输入的精确联合覆盖，完整终验后按固定来源唯一读取；不授运行或训练资格 |
 | `engine_protocol.py`、`audit_engine_comparison.py` | 固定输入、模型、窗口和质量规则，核跨引擎文字、字界、原生结束信息和恢复；区别新计算与缓存 |
 | `vllm_backend.py`、`asr_stage_store.py` | 官方 Qwen 提示与解析的最小离线桥接、稳定请求映射和整批持久化；实际模型兼容及速度未测 |

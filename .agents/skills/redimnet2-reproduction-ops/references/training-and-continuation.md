@@ -71,7 +71,7 @@ torchrun 退出不代表 rank 也退出了：各 rank 可能各有独立的 PG/S
 
 PTN 完成后，LM 走“冻结包 + 合同”，不再走`run_b6_mix_reproduction.sh`：那条 formal 分支会**先重训 PTN 120 轮**，还要求同源码的八卡 smoke 成功件。
 
-- 包目录`/root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/package-r3/`，208 个成员：190 成员的冻结源码树，加 14 个 runtime（12 个从 PTN 包原样继承，2 个新增）。
+- 包目录`/root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/package-r3/`（历史路径），208 个成员：190 成员的冻结源码树，加 14 个 runtime（12 个从 PTN 包原样继承，2 个新增）。
 - 两个身份靠**外部注入**，包里不自证：`LM_PACKAGE_SHA=08a34b68ec26515bbb424f258498b2bc8a3bc0451ce1601f99fade79b99aa003`（`bundle_files.json`）、`LM_CONTRACT_SHA=bf437dc8fffe69822401c2f3f6b70205fec569a32d0a4d1bba3ec0bbd69230d0`（`resume-contract.json`）。
 - 入口`runtime/lm_launch.sh`（`7fc15817…`）先用`sha256sum -c`验包与合同，再交给`runtime/lm_stage_gate.py`；gate 只做校验、委托和事后回读，**训练逻辑一行没重写**。它调用包内`source/…/train_b6_mix_cloud_8gpu.sh`（`STAGE=lm REPRO=1 NUM_GPUS=8`）。
 - 合同语义：`runtime_admission:false`、`LM_started:false`；`clock`固定为`stage=lm, start_epoch=1, target_epoch=1, epoch_iter=13075, batch_size_per_gpu=48, margin=0.3, optimizer:"new", scaler:"new", rng_restored:false`；`checkpoint=model_115.pt`（`65497b6a…`）。**冷启动**指只加载模型参数，SGD 动量和 GradScaler 全新，因此恢复不了 PTN 的同阶段状态。

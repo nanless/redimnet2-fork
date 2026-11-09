@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-/root/miniforge3/envs/redimnet2/bin/python}"
 MODE="${MODE:?必须明确 MODE=smoke 或 MODE=formal}"
+# 本脚本不设默认：RUN_ROOT 必须显式给出。按 2026-11-09 存储新规，新的正式 run 请写到
+# /root/group-shared/voiceprint/experiments/redimnet2/<实验名>/（常量见 tools/ptn_resume/storage_policy.py）。
 RUN_ROOT="${RUN_ROOT:?必须指定本次任务的持久输出 RUN_ROOT}"
 SOURCE_CHECKSUM_FILE="${SOURCE_CHECKSUM_FILE:?必须指定冻结源码的 SHA-256 校验文件}"
 DATA_AUDIT_FILE="${DATA_AUDIT_FILE:?必须指定已完成完整数据检查的 data_audit.json}"

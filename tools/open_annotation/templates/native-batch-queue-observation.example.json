@@ -1,12 +1,12 @@
 {
   "schema": "annotation-bounded-speed-platform-observation/v1",
   "old_task_id": "t-20261028005420-h6675",
-  "old_queue_root": "/root/experiments/redimnet2/open-annotation-ultra-20261025/portable-successor-20261027-v1/run-v1/queue",
+  "old_queue_root": "/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261027/portable-successor-20261027-v1/run-v1/queue",
   "competing_successor_tasks": [],
   "remote_proc_enumeration_performed": false,
   "evidence_basis": "platform_terminal_and_current_shared_locks",
   "observed_utc": "REPLACE_ACTUAL_FRESH_UTC_AFTER_REQUEST",
-  "terminal_observation": {"path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/actual-old-terminal.json", "sha256": "REPLACE_ACTUAL_TERMINAL_FILE_SHA256"},
+  "terminal_observation": {"path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/controls/actual-old-terminal.json", "sha256": "REPLACE_ACTUAL_TERMINAL_FILE_SHA256"},
   "prior_attempts": [],
   "current_successor_task": {
     "task_id": "REPLACE_ACTUAL_REQUEST_TASK_ID",

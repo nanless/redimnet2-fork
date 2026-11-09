@@ -19,8 +19,64 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from annotation_progress import RETAINED, TOTAL, TARGET_REMAINING, collect, fmt, latest_run  # noqa: E402
 
 
+# 缓存：分片收据会持续增长（最终四万多个），每次请求全量解析在 GPFS 上会拖到几十秒，
+# 页面就变成“转圈不出数”。这里按文件名做增量：只解析新出现的收据，其余复用上次结果。
+_CHUNK_CACHE = {"run": None, "counts": {}, "mtime": 0.0}
+_TTL_SECONDS = 15.0
+
+
+def cached_counts(run: Path, done_dir: Path):
+    if _CHUNK_CACHE["run"] != str(run):
+        _CHUNK_CACHE.update({"run": str(run), "counts": {}, "mtime": 0.0})
+    now = time.time()
+    if _CHUNK_CACHE["counts"] and now - _CHUNK_CACHE["mtime"] < _TTL_SECONDS:
+        return _CHUNK_CACHE["counts"]
+    counts = _CHUNK_CACHE["counts"]
+    try:
+        for f in done_dir.glob("*.json"):
+            key = f.name
+            if key in counts:
+                continue
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                counts[key] = (0, f.stat().st_mtime)
+                continue
+            counts[key] = (int(d.get("source_count") or 0), f.stat().st_mtime)
+    except FileNotFoundError:
+        pass
+    _CHUNK_CACHE["mtime"] = now
+    return counts
+
+
+def collect_cached(run: Path, window: int):
+    done_dir = run / "queue" / "completed"
+    counts = cached_counts(run, done_dir)
+    now = time.time()
+    done_total = sum(v[0] for v in counts.values())
+    done_window = sum(v[0] for v in counts.values() if now - v[1] <= window * 60)
+    broker = {}
+    try:
+        broker = json.loads((run / "queue" / "broker.json").read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    res = run / "resources-attempt1"
+    return {
+        "done_total": done_total,
+        "done_window": done_window,
+        "chunks": len(counts),
+        "next": broker.get("next"),
+        "completed": broker.get("completed_chunks"),
+        "leases": len(broker.get("leases") or {}),
+        "workers": len([q for q in res.glob("worker-*") if q.is_dir()]) if res.is_dir() else 0,
+        "failure": (res / "failure.json").exists(),
+        "quarantine": (run / "queue" / "quarantine.json").exists(),
+        "run": run,
+    }
+
+
 def snapshot(run: Path, window: int, task: str | None):
-    m = collect(run, window)
+    m = collect_cached(run, window)
     done = m["done_total"]
     overall = RETAINED + done
     rate = m["done_window"] / (window / 60) if window else 0

@@ -4,6 +4,11 @@ import unicodedata
 
 POLICY = "nfkc_punctuation_to_space_whitespace_collapse/v1"
 APOSTROPHE_PROFILE = "nfkc_preserve_ascii_word_apostrophe_punctuation_space/v2"
+# The 10-25/10-27 trees recorded only this free-text description, not the
+# policy id.  Map that exact known text explicitly; do not fall back to the
+# current POLICY for an unrecognised profile.
+LEGACY_PROFILE_TEXT = "NFKC punctuation-to-space collapse-whitespace/v1; preserve raw; no invented spoken forms"
+LEGACY_TEXT_PROFILES = {LEGACY_PROFILE_TEXT: POLICY}
 SUPPORTED_POLICIES = (POLICY, APOSTROPHE_PROFILE)
 # An uppercase English word is not evidence of an initialism. Keep this small,
 # explicit vocabulary auditable rather than guessing from typography alone.

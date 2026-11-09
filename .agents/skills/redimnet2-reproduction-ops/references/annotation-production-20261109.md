@@ -8,7 +8,7 @@
 |---|---|
 | 平台任务 | `t-20261108144507-mrvsh`，名称 `zhounan_redimnet2_ultra_native_feature_b8_handoff_8a800_p6_20261107_v1` |
 | 创建时间 | 2026-11-08 14:45:07 北京（06:45 UTC） |
-| 交接目录 | `/root/experiments/redimnet2/open-annotation-ultra-20261025/handoff-v4r2-20261108-v6/` |
+| 交接目录 | `/root/experiments/redimnet2/open-annotation-ultra-20261025/handoff-v4r2-20261108-v6/`（历史路径；2026-11-09 起侧车新根为 `/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261109/handoff-v4r2-20261108-v6/`，核对字节后再切换引用，运行中的任务仍写旧根） |
 | 运行目录 | 同目录下 `run-v6`（`queue/`、`labels/`、`resources-attempt1/`） |
 | 引擎 | `admission-20261109/formal-code`，bundle sha256 `69f009e2…4a2a`；与 pilot 同一份字节 |
 | 合同 | `contracts/zhounan-speed-native-fp32-sdpa-b8-silver_annotation-20261109.json`，sha256 `d6431fec…727d` |

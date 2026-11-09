@@ -62,7 +62,7 @@ volc ml_task submit -c tools/ptn_resume/lm_launch/submit.conf.yaml
 | `ImageUrl` | `volc ml_task export --task t-20261026074833-ctjsk --config`（只读）或控制台 | 镜像决定 torch/CUDA/私有解码库；换镜像等于换环境 |
 | `ResourceQueueName` | 同上 | 队列决定调度与配额 |
 | `TaskRoleSpecs.Flavor` | 同上 | 必须是 8×A800-80GB 同型 |
-| `Storages`（VepfsId/SubPath） | 同上 | 挂错就看不到 `/shared/group-shared` 与 `/root/experiments`，训练会当场失败 |
+| `Storages`（VepfsId/SubPath） | 同上 | 挂错就看不到 `/shared/group-shared` 与历史产物所在的 `/root/experiments`，训练会当场失败 |  <!-- storage-policy-allow: 挂载核对需同时覆盖历史产物盘与新默认盘，两者缺一即失败 -->
 | `tools/ptn_resume/lm_launch/` 已部署到该镜像的仓库路径 | 一次显式部署（写服务器，需授权） | 该 commit（`0a3f6dd`）没有 `tools/` 目录 |
 | 三段证据里的两项 unsupported | 见 `redimnet-review/launch/impl-lm.md` | 原 95 份清单无原件；第三段平台终态未观测 |
 

@@ -7,37 +7,37 @@
     "purpose": "production",
     "task_name": "zhounan_redimnet2_ultra_native_batch_successor_8a800_p6",
     "previous_runtime_spec": {
-      "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/portable-successor-20261027-v1/queue-handoff-prepared-v1/request-v1/publication-v1/runtime-spec.json",
+      "path": "/root/group-shared/voiceprint/artifacts/redimnet2/portable-successor-20261027-v1/queue-handoff-prepared-v1/request-v1/publication-v1/runtime-spec.json",
       "sha256": "37391c5d719627b5c341453ab9215b2b46e5057b468568c231d0d72cc1feb496"
     },
     "new_contract": {
-      "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-formal-contract.json",
+      "path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/controls/native-formal-contract.json",
       "sha256": "REPLACE_NEW_SILVER_SHA256"
     },
     "selected_pilot_admission": {
-      "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/selected-pilot-admission.json",
+      "path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/controls/selected-pilot-admission.json",
       "sha256": "REPLACE_SELECTED_REAL_PILOT_SHA256"
     },
-    "new_run_root": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/run-v1",
-    "new_code_root": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/frozen-native-reviewed-v1",
+    "new_run_root": "/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261028/native-speed-successor-20261028-v1/run-v1",
+    "new_code_root": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/frozen-native-reviewed-v1",
     "new_bundle": {
-      "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/frozen-native-reviewed-v1/bundle_files.json",
+      "path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/frozen-native-reviewed-v1/bundle_files.json",
       "sha256": "REPLACE_FORMAL_NATIVE_BUNDLE_SHA256"
     },
-    "device_lock_root": "/root/experiments/redimnet2/REPLACE_ORIGINAL_UUID_LOCK_ROOT",
+    "device_lock_root": "/root/group-shared/voiceprint/artifacts/redimnet2/device-locks/REPLACE_ORIGINAL_UUID_LOCK_ROOT",
     "model_API_calls_allowed": 0,
     "release_training_labels": false
   },
   "handoff_spec": {
-    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/handoff-spec.json",
+    "path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/controls/handoff-spec.json",
     "sha256": "REPLACE_FIXED_HANDOFF_SPEC_SHA256"
   },
-  "final_handoff_root": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/remaining-final-v1",
-  "handoff_root": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/queue-handoff-v1",
+  "final_handoff_root": "/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261028/native-speed-successor-20261028-v1/remaining-final-v1",
+  "handoff_root": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/queue-handoff-v1",
   "outer_controller": {
-    "root": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/outer-native-reviewed-v1",
+    "root": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/outer-native-reviewed-v1",
     "manifest": {
-      "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/outer-native-reviewed-v1/controller-files.json",
+      "path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/outer-native-reviewed-v1/controller-files.json",
       "sha256": "REPLACE_OUTER_SOURCE_SHA256"
     }
   },

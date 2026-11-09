@@ -64,15 +64,21 @@
 # -----------------------------------------------------------------------------
 # 用法
 # -----------------------------------------------------------------------------
-#   NUM_GPUS=8 DATA_ROOT=/mnt/vepfs/wespeaker_data \
-#   EXP_DIR=/mnt/vepfs/exp/b6_cloud/ptn \
+#   NUM_GPUS=8 DATA_ROOT=/root/group-shared/voiceprint/data/wespeaker_data \
+#   EXP_DIR=/root/group-shared/voiceprint/experiments/redimnet2/b6-mix-ptn \
 #   applications/speaker_rec/scripts/cloud/train_b6_mix_cloud_8gpu.sh
 #
 # 大间隔微调阶段：先跑完主训练，再
-#   STAGE=lm NUM_GPUS=8 DATA_ROOT=... EXP_DIR=/mnt/vepfs/exp/b6_cloud/lm \
-#   PTN_EXP_DIR=/mnt/vepfs/exp/b6_cloud/ptn \
+#   STAGE=lm NUM_GPUS=8 DATA_ROOT=/root/group-shared/voiceprint/data/wespeaker_data \
+#   EXP_DIR=/root/group-shared/voiceprint/experiments/redimnet2/b6-mix-lm \
+#   PTN_EXP_DIR=/root/group-shared/voiceprint/experiments/redimnet2/b6-mix-ptn \
 #   applications/speaker_rec/scripts/cloud/train_b6_mix_cloud_8gpu.sh
 # 也可以用等价的包装脚本 train_b6_mix_cloud_8gpu_lm.sh（它只是把 STAGE 设成 lm）。
+#
+# 不传 EXP_DIR 时的默认值（2026-11-09 存储新规）：
+#   /root/group-shared/voiceprint/experiments/redimnet2/b6-mix-ptn
+#   /root/group-shared/voiceprint/experiments/redimnet2/b6-mix-lm
+# 常量同 tools/ptn_resume/storage_policy.py。旧默认 $REPO_ROOT/exp/... 属于历史路径。
 #
 # 本机历史2卡小样验证（已完成，不代表八卡测试）：
 #   NUM_GPUS=2 SAMPLE_NUM_PER_EPOCH=576 NUM_EPOCHS=2 \
@@ -94,15 +100,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../../../.." && pwd)}"
 
 STAGE="${STAGE:-ptn}"
+
+# 训练产物（run、权重、train.log、val_log.csv、spk2id.json）的根目录。
+# 2026-11-09 存储新规：大数据只写共享盘 group-shared；/root 只留代码与临时日志。
+# 旧默认是 $REPO_ROOT/exp/...（写在代码目录里），属于历史路径，不再作为缺省。
+# 常量同 tools/ptn_resume/storage_policy.py。
+EXPERIMENT_ROOT="${EXPERIMENT_ROOT:-/root/group-shared/voiceprint/experiments/redimnet2}"
+
 case "$STAGE" in
     ptn)
         DEFAULT_RECIPE="$REPO_ROOT/applications/speaker_rec/examples/vb2_vox2_cnc2/recipes/redimnet2/b6/ptn.yaml"
-        DEFAULT_EXP_DIR="$REPO_ROOT/exp/vox2_vb2_cnc2/b6_cloud/ptn"
+        DEFAULT_EXP_DIR="$EXPERIMENT_ROOT/b6-mix-ptn"
         DEFAULT_TRAIN_LINES=11521178
         ;;
     lm)
         DEFAULT_RECIPE="$REPO_ROOT/applications/speaker_rec/examples/vb2_vox2_cnc2/recipes/redimnet2/b6/lm.yaml"
-        DEFAULT_EXP_DIR="$REPO_ROOT/exp/vox2_vb2_cnc2/b6_cloud/lm"
+        DEFAULT_EXP_DIR="$EXPERIMENT_ROOT/b6-mix-lm"
         DEFAULT_TRAIN_LINES=5021010
         ;;
     *)
@@ -162,7 +175,8 @@ SAVE_EPOCH_INTERVAL="${SAVE_EPOCH_INTERVAL:-}"
 VOX1_TEST_DIR="${VOX1_TEST_DIR:-}"
 
 # 大间隔微调阶段专用：从哪个主训练结果继续。
-PTN_EXP_DIR="${PTN_EXP_DIR:-$REPO_ROOT/exp/vox2_vb2_cnc2/b6_cloud/ptn}"
+# 缺省跟随主训练的新默认目录（共享盘 experiments 下），不再指向代码目录里的 exp/。
+PTN_EXP_DIR="${PTN_EXP_DIR:-$EXPERIMENT_ROOT/b6-mix-ptn}"
 MODEL_CKPT="${MODEL_CKPT:-}"
 
 # 各项检查的开关（小样测试时可以逐项关掉；1 = 跳过）

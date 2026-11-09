@@ -17,6 +17,7 @@ else:
 
 SCHEMA='annotation-portable-successor-run/v1'
 SCHEMA_V2='annotation-portable-successor-run/v2'
+# storage-policy-allow: 既有 Ultra 原任务根身份；只校验历史根，不是新默认落盘位置（新基址见 storage_policy.py）。
 ROOT='/root/experiments/redimnet2/open-annotation-ultra-20261025'
 
 

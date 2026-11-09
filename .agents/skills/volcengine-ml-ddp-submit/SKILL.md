@@ -7,7 +7,7 @@ description: 检查、准备、提交、修复和诊断火山引擎机器学习�
 
 按“代码与配置检查 → 平台任务准备/提交 → 运行证据诊断”三步做，每一步都留下可复现的证据。通用 PyTorch DDP 自定义任务和 `se_train` 的 PSE 专项流程都走这套流程。
 
-本技能的维护源是 ReDimNet2 仓库的 `.agents/skills/volcengine-ml-ddp-submit/`，安装副本从该目录同步。项目特定的训练和数据合同归对应项目技能，本次状态或授权不外推到其他项目。
+本技能的维护源在服务器仓库 `dev_a800_2gpus:/root/code/github_repos/redimnet2-fork` 的 `.agents/skills/volcengine-ml-ddp-submit/`（origin `nanless/redimnet2-fork`，进目录先用 `git rev-parse --show-toplevel` 与 `git remote -v` 核对）。本机没有该仓库的工作副本，所以 `~/.codex/skills/volcengine-ml-ddp-submit` 这份安装态副本就是本机唯一可改的一处：改动直接在这里做，动手前先 `tar czf` 打包整个目录以便回滚，改完需要回仓库时再同步进服务器那份检出。当前安装副本 17 个文件（`find ~/.codex/skills/volcengine-ml-ddp-submit -type f | wc -l` 实测：`SKILL.md`、`agents/openai.yaml`、12 份 `references/*.md`、3 个 `scripts/*.py`），两边是否一致用 `diff -rq` 现查。项目特定的训练和数据合同归对应项目技能，本次状态或授权不外推到其他项目。
 
 **GitHub 写入限制（2026年10月28日起）**：本机 Mac 对 GitHub 只读，可以浏览、下载、clone、fetch、pull；上传文件、代码、文档、数据、提交或分支都不行，git push、网页/API/gh 写入和自动同步同样不走。落地方式是保留本机 `disabled://github-push-blocked-by-policy`，改 remote、URL、端口，或走代理、隧道，效果上都是绕过这条限制。用户明确允许把任务所需仓库同步到 `dev_a800_2gpus`，由服务器自身仓库和进程实际连接 GitHub 提交／推送；本机可以 SSH 发起远程命令，本机 push 透传仍不行。已删除的 `nanless/redimnet2-fork:codex/repository-audit-20261025` 分支不恢复，也不重新审计 26 个本机禁推仓库。GitLab 操作按其独立授权，GitLab 端口故障处理不构成本机 GitHub 禁写的例外。
 
@@ -71,7 +71,7 @@ description: 检查、准备、提交、修复和诊断火山引擎机器学习�
 2. **检查真实代码源。** 在目标开发机读取分支、commit、工作区状态、launcher、配置及完整继承链；搜索所有数据、输出、checkpoint 和挂载路径。远端拉取代码时确认所需 commit 已推送；共享 vePFS 直接提供代码时，核对任务实际可见的 checkout 和关键文件身份。无关项目不加 `asset_contract` 或通用 preflight；已有的数据摘要按各自的实验合同核验。
 3. **审计有效配置。** 对 PSE 用仓库自己的 `load_config` 读取合并结果，打印关键 `[meta]`、`[distributed]`、梯度累积和保存间隔。对 VAD 同时核对 train/valid/test DataLoader、模型 chunk、batch、LR 和拓扑。只读子 TOML 或只改一处分区，看到的都不是最终生效值。
 4. **验证 checkpoint 和启动契约。** 核对 checkpoint 可读性、索引引用的全部分片、文件写入稳定性、模型键和形状、speaker vocabulary、DDP rank/world-size 变量、所有节点可见的代码/数据/输出路径，以及选中 launcher 实际使用的 resume/lease 行为。没有 lease 的专用 launcher 不补一个。运行与目标拓扑相称的聚焦测试、`git diff --check` 和 launcher 的 `bash -n`；单节点任务不需要两个 node-rank dry-run。云端没验证过的镜像/挂载/rank，提交后继续核，开发机 smoke 代替不了。
-5. **设计非重叠挂载。** 先做“开发机源 → 任务容器目标 → 读写模式 → 代码用途”映射。容器目标不能互相包含（平台会拒绝嵌套挂载）。按现有路径从平台资料里选一种中性挂载方案，只创建必要、可验证、不会覆盖非空目录的兼容软链接。
+5. **设计非重叠挂载。** 先做“开发机源 → 任务容器目标 → 读写模式 → 代码用途”映射。容器目标不能互相包含（平台会拒绝嵌套挂载）。按现有路径从平台资料里选一种中性挂载方案，只创建必要、可验证、不会覆盖非空目录的兼容软链接。输出根按《大数据落点硬规则》放共享组盘（`/root/group-shared/voiceprint/experiments/...` 或 `.../artifacts/...`）：该挂载在表单里是只读时先改成读写，不把输出降级到 `/root` 本地盘。
 6. **审计完整任务表单。** 核对区域、私有镜像、代码来源、入口命令、环境变量、PyTorch DDP 框架、worker 数、单机 GPU、队列/AZ、优先级 `6`、运行时、重试、挂载、任务名和描述。仓库由共享 PFS 提供时，不再同时使用陈旧的网页上传代码快照。
 7. **执行提交前闸门。** 按平台资料中的清单逐项复核。入口、配置、commit、镜像、必需挂载或权限有一项无法证实，就停在提交按钮之前并说明缺口。入口这一项还要看两件事：它是一行短脚本而不是长命令；编辑器的 `AXValue` 读回与预期逐字相同（丢失或追加都能在这一步发现）。
 8. **按授权执行外部写入。** 代码改动只提交确切的新文件或修改；任务只提交一次。运行中任务的配置变更生成可追溯的后继版本；任务从远端 Git 拉代码就先提交并推送，从共享 vePFS 读代码就核对容器将读到的文件身份。后继任务先提交优先级 `6` 的新任务并核对其 ID/详情，只有已有授权明确覆盖停止操作时才停精确目标旧任务。用户指定保留旧任务时不停止；不擅自克隆、重试或删除。
@@ -132,12 +132,14 @@ preloaded_extraction_skip_prefixes = []
 
 ## Artifact locations
 
-本次材料存放遵循当前会话的明确选择。用户选择“仅保留本机”时，报告与已取到的日志快照留在本机任务目录；历史服务器主存储约定不构成本次上传授权，这次选择也不变成以后所有任务都本地保存的规矩。需要服务器保存且已在授权范围内时，任务表单证据、日志截取、诊断 JSON 和 ETA 报告写 `/root/codex_artifacts/07_维护与迁移/06_环境模型及训练提交核验/火山平台声纹训练与评测的提交核验_volcengine/<task_id_or_run_id>/`；训练输出仍由实际 launcher/TOML 和共享挂载决定。
+2026-11-09 起，服务器上保存的新材料一律落在 `/root/group-shared/voiceprint` 下，`/root` 只放代码仓库与临时日志。仓库 `redimnet2-fork` 的 `AGENTS.md` 顶部《大数据落点硬规则》是同一条规定，含三类落点与自检命令。本技能的提交核验材料（任务表单证据、日志截取、诊断 JSON、ETA 报告）写 `/root/group-shared/voiceprint/artifacts/redimnet2/<用途>/`，提交类材料用 `volcengine-submission/<task_id_or_run_id>/`；训练与推理输出写 `/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/`，具体子目录仍由实际 launcher/TOML 的输出根决定。用户选择“仅保留本机”时，报告与日志快照留在本机任务目录、不上传；这次选择不变成以后所有任务都本地保存的规矩。
+
+不先写 `/root` 再 `mv`：训练容器里 `/root` 是容器本地盘，`/shared/group-shared`（容器内通常另挂成 `/root/group-shared`）是 vePFS，跨挂载点 `mv` 退化为复制，大检查点占双份空间且中途失败会留半份。容器里 group-shared 是只读挂载时，按平台工作流调成读写再提交，不把输出改回 `/root` 本地盘。旧根 `/root/codex_artifacts`、`/root/experiments` 里的既有材料原样保留、只读引用，文档里标“历史路径”。
 
 归拢旧产物或解释主机状态时读 [产物位置与统一根](references/artifact-locations.md)。
 
 ## 服务器产物的当前实体位置
 
-2026-10-20 服务器目录已实际重命名和归位。访问 `dev_a800_2gpus:/root/codex_artifacts/` 的产物时，先读根 `CURRENT_LAYOUT.json`；当前层级以真实目录和该指针为准。
-
-历史日志、冻结清单和旧聊天可能仍写旧名。用指针中的 `resolver_script` 解析，或通过 `--records` 读取原清单的当前路径视图；旧字符串不能拿来重建英文旧根、整批恢复到 Mac，也不能用来改写冻结原件。当前数据入口为任务根的 `当前数据入口.json`。音频标签、模型身份、许可、来源分组及评测保护规则保持原有约束。
+> 服务器产物位置与老路径解析：见
+> `../codex-server-artifact-storage/references/current-location-and-resolver.md`
+> （唯一事实源；本条不再复制具体路径，避免多处漂移。）

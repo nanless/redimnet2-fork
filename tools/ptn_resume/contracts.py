@@ -8,7 +8,7 @@ import os
 from pathlib import Path, PurePosixPath
 import stat
 
-BASE = '/root/experiments/redimnet2/b6-mix-official-20261019'
+BASE = '/root/experiments/redimnet2/b6-mix-official-20261019'  # storage-policy-allow: model47 世系既有只读证据树（原实验/前驱/来源），非新写出位置
 ORIGINAL = BASE + '/formal-main-7afb821-zero-20261019-2327'
 PREDECESSOR = BASE + '/ptn-resume-model35-20261024-v3'
 SOURCE = BASE + '/lm-continuation-20261022/source-7afb821'

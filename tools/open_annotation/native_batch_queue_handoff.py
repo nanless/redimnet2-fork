@@ -171,7 +171,17 @@ def check(pin,*,selection_scope=None):
     if b['purpose']=='production':
         need(Path(old['python']).resolve(strict=True)==python==Path(sys.executable).resolve(strict=True)and b['python_binary']==old['python_binary'],'actual/original interpreter differs')
     run=F.physical(base['new_run_root']);final=F.physical(b['final_handoff_root']);handoff=F.physical(b['handoff_root']);root=F.physical(old['task_root'])
-    need(root in run.parents and root in final.parents and root in handoff.parents and base['device_lock_root']==old['device_lock_root'],'new namespaces/original UUID lock root differ')
+    # 2026-11-09 用户规定：大数据落 /root/group-shared/voiceprint，不再限定在旧任务根内。
+    # 因此把"必须位于 old.task_root 之下"放宽为"位于 old.task_root 或 blueprint/base 声明的 storage_root 之下"，
+    # 其余判据（device_lock 相等、互不重叠、受保护命名空间）一律不变。
+    def _allowed(where,base_,blue_):
+        roots=[root]
+        for src in (blue_.get('storage_root'),base_.get('storage_root')):
+            if src:
+                cand=F.physical(src)
+                if cand not in roots: roots.append(cand)
+        return any(where==r or r in where.parents for r in roots)
+    need(_allowed(run,base,b) and _allowed(final,base,b) and _allowed(handoff,base,b) and base['device_lock_root']==old['device_lock_root'],'new namespaces/original UUID lock root differ')
     need(prepared['new_queue_root']==str(run/'queue')and prepared['new_sidecar_root']==str(run/'labels'),'new queue/labels namespace differs')
     protected=[F.physical(old['run_root']),F.physical(prior['new_run_root']),code,Path(prepared['old_index']['path']).parent,
         Path(prepared['old_contract']['path']).parent,Path(b['handoff_spec']['path']).parent,Path(base['new_contract']['path']).parent,

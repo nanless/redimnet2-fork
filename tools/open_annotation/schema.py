@@ -10,7 +10,7 @@ import math
 from pathlib import PurePosixPath
 import re
 import unicodedata
-from normalization import normalize_with_audit, POLICY, SUPPORTED_POLICIES
+from normalization import normalize_with_audit, POLICY, SUPPORTED_POLICIES, LEGACY_TEXT_PROFILES
 from quality_axes import quality_axes, native_observation_errors
 from source_clock import TIME_MAPPING, SUPPORTED_MAPPINGS, sample_bounds
 
@@ -57,8 +57,30 @@ def _surface(text):
                    if not c.isspace() and not unicodedata.category(c).startswith("P"))
 
 
+def _runtime_normalization_policy(record):
+    """Resolve the producer's own profile; never assume today's POLICY.
+
+    Later contracts store ``normalization_profile``.  The 10-25/10-27 trees
+    store only the exact legacy free-text description, which is mapped here.
+    An unknown or absent profile returns None and makes validation refuse.
+    """
+    runtime = record.get("provenance", {}).get("runtime")
+    if not isinstance(runtime, dict):
+        # Pre-provenance records/pilots carry no policy evidence at all; POLICY
+        # was the only behavior available then. This default is bounded to the
+        # no-evidence case and is not used for an unrecognised profile string.
+        return POLICY
+    policy = runtime.get("normalization_profile")
+    if policy is not None:
+        return policy
+    text = runtime.get("normalization")
+    if text is None:
+        return POLICY
+    return LEGACY_TEXT_PROFILES.get(text)
+
+
 def _expected_normalization(record, raw):
-    policy = record.get("provenance", {}).get("runtime", {}).get("normalization_profile", POLICY)
+    policy = _runtime_normalization_policy(record)
     if not isinstance(raw, str) or policy not in SUPPORTED_POLICIES:
         return None
     return normalize_with_audit(raw, policy)

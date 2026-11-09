@@ -115,8 +115,15 @@ class WorkQueue:
         path = self.chunk_receipt_path(shard_id)
         if not path.exists(): return None
         value = json.loads(path.read_text()); shard = self.by_id[shard_id]
-        need(value["schema"] == "redimnet2-chunk-commit/v1" and value["shard_id"] == shard_id,
-             "bad chunk commit identity")
+        # Receipt generations are dispatched here, not inferred: the bounded
+        # queue (10-28/11-09) writes redimnet2-bounded-chunk-commit/v1, which
+        # this v1 broker cannot interpret.
+        need(value.get("schema") in ("redimnet2-chunk-commit/v1", "redimnet2-bounded-chunk-commit/v1"),
+             "unsupported completion receipt schema %r; supported: redimnet2-chunk-commit/v1, redimnet2-bounded-chunk-commit/v1"
+             % (value.get("schema"),))
+        need(value["schema"] == "redimnet2-chunk-commit/v1",
+             "bounded-chunk-commit/v1 receipt belongs to the bounded queue; read it with bounded_speed_queue, not the v1 broker")
+        need(value["shard_id"] == shard_id, "bad chunk commit identity")
         need(value["index_sha256"] == self.index_sha and value["contract_sha256"] == self.contract_sha
              and value["shard_sha256"] == shard["sha256"] and value["source_count"] == shard["count"],
              "chunk commit belongs to another input/contract")

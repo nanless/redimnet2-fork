@@ -115,7 +115,12 @@ def verify_run(contract, index, queue_root, output_root, full=False, *, bounded_
                     need(len(sources) == shard["count"], "source shard count differs")
                     p = queue_root / "completed" / (shard["id"] + ".json")
                     value = json.loads(p.read_text())
-                    need(value["schema"] == "redimnet2-chunk-commit/v1" and value["shard_id"] == shard["id"]
+                    need(value.get("schema") in ("redimnet2-chunk-commit/v1", "redimnet2-bounded-chunk-commit/v1"),
+                         "unsupported completion receipt schema %r; supported: redimnet2-chunk-commit/v1, redimnet2-bounded-chunk-commit/v1"
+                         % (value.get("schema"),))
+                    need(value["schema"] == "redimnet2-chunk-commit/v1",
+                         "bounded-chunk-commit/v1 receipt cannot be verified by the v1 run report; use the bounded verifier")
+                    need(value["shard_id"] == shard["id"]
                          and value["source_count"] == shard["count"]
                          and value["contract_sha256"] == contract_sha and value["index_sha256"] == index_sha
                          and value["shard_sha256"] == shard["sha256"], "chunk receipt identity differs")

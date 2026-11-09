@@ -15,11 +15,19 @@ Description: "B6 三语料 LM：从 PTN model_115.pt 冷启动微调 1 轮；5,0
 
 # 入口命令（控制台「入口命令」字段，单行粘贴版）。
 # 两个 sha 同时写进 Envs 与本行，行内值优先；`set -euo pipefail` 保证任一步失败即退出。
+# 下面这行 exec 的是本轮实际冻结包 package-r3 在服务器上的历史位置（只读执行入口）。
+# storage-policy-allow: 历史冻结包位置，重打新包后按新包路径替换，不作为大数据写出缺省
 Entrypoint: >-
   set -euo pipefail; export LM_PACKAGE_SHA=08a34b68ec26515bbb424f258498b2bc8a3bc0451ce1601f99fade79b99aa003 LM_CONTRACT_SHA=bf437dc8fffe69822401c2f3f6b70205fec569a32d0a4d1bba3ec0bbd69230d0; exec bash /root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/package-r3/runtime/lm_launch.sh
 Args: ""
 
 # ---- 运行环境 -----------------------------------------------------------
+# 存储位置（2026-11-09 新规）：训练产物默认只写共享盘
+#   /root/group-shared/voiceprint/experiments/redimnet2/<实验名>/
+# 下面 PTN_EXP_DIR / MODEL_CKPT 是第三段已完成 run 的只读输入，保留历史路径；
+# EXP_DIR 记的是本轮已跑完的 LM 输出目录（历史路径）。下一次提交请改成
+#   /root/group-shared/voiceprint/experiments/redimnet2/<实验名>/lm
+# 并把下面「存储挂载」里的 /shared/group-shared 从只读改成读写。
 Envs:
   - Name: "LM_PACKAGE_SHA"
     Value: "08a34b68ec26515bbb424f258498b2bc8a3bc0451ce1601f99fade79b99aa003"
@@ -28,11 +36,11 @@ Envs:
   - Name: "DATA_ROOT"
     Value: "/root/group-shared/voiceprint/data/wespeaker_data"
   - Name: "PTN_EXP_DIR"
-    Value: "/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn"
+    Value: "/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn"  # storage-policy-allow: 已完成第三段 run 的只读输入
   - Name: "EXP_DIR"
-    Value: "/root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm"
+    Value: "/root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm"  # storage-policy-allow: 本轮已完成 LM 的历史输出目录，仅作记录
   - Name: "MODEL_CKPT"
-    Value: "/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn/models/model_115.pt"
+    Value: "/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn/models/model_115.pt"  # storage-policy-allow: 已完成第三段 run 的只读权重输入
   - Name: "PYTHON_BIN"
     Value: "/root/miniforge3/envs/redimnet2/bin/python"
   - Name: "NUM_GPUS"
@@ -85,7 +93,7 @@ DiagOptions:
 # ① 共享数据盘只读挂到 /shared/group-shared：
 #    data.list 里同时存在 /root/group-shared/... 与 /shared/group-shared/... 两个前缀，
 #    而 /root/group-shared 本身就是指向 /shared/group-shared 的软链，缺一不可。
-# ② 用户盘读写挂到 /root：包、PTN 权重、新输出都在 /root/experiments 下。
+# ② 用户盘读写挂到 /root：冻结包与历史 PTN 权重/输出在 /root/experiments 下（历史路径，本轮提交的写法）。  # storage-policy-allow: 记录本轮实际挂载与历史产物位置；新提交按 2026-11-09 存储新规把 group-shared 改成读写、新输出写那里。
 # 两块盘同属 vePFS 实例 `aiplatform-speech`。
 Storages:
   - Type: "Vepfs"

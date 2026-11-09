@@ -1,14 +1,14 @@
 {
   "schema": "annotation-bounded-speed-handoff/v1",
   "purpose": "production",
-  "old_index": {"path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/portable-successor-20261027-v1/remaining-v1/index-roles-v2.json", "sha256": "b5fe3e3f0fb091cd8763c14ddab42271bc52a534277c410a334214f60c992553"},
-  "old_contract": {"path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/portable-successor-20261027-v1/frozen-v1/production-contract.json", "sha256": "00195708c467e87283b99d0e89b2cdd4fed2582d811be96f90fc3107b6911bb4"},
+  "old_index": {"path": "/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261027/portable-successor-20261027-v1/remaining-v1/index-roles-v2.json", "sha256": "b5fe3e3f0fb091cd8763c14ddab42271bc52a534277c410a334214f60c992553"},
+  "old_contract": {"path": "/root/group-shared/voiceprint/artifacts/redimnet2/portable-successor-20261027-v1/frozen-v1/production-contract.json", "sha256": "00195708c467e87283b99d0e89b2cdd4fed2582d811be96f90fc3107b6911bb4"},
   "old_task_id": "t-20261028005420-h6675",
-  "old_queue_root": "/root/experiments/redimnet2/open-annotation-ultra-20261025/portable-successor-20261027-v1/run-v1/queue",
-  "old_sidecar_tree": "/root/experiments/redimnet2/open-annotation-ultra-20261025/portable-successor-20261027-v1/run-v1/labels/REPLACE_EXACT_OLD_CONTRACT_VERSION",
-  "portable_spec": {"path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/portable-current-producer.json", "sha256": "REPLACE_PORTABLE_SPEC_FOR_CURRENT_PRODUCER_SHA256"},
-  "new_queue_root": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/run-v1/queue",
-  "new_sidecar_root": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/run-v1/labels",
+  "old_queue_root": "/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261027/portable-successor-20261027-v1/run-v1/queue",
+  "old_sidecar_tree": "/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261027/portable-successor-20261027-v1/run-v1/labels/REPLACE_EXACT_OLD_CONTRACT_VERSION",
+  "portable_spec": {"path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/controls/portable-current-producer.json", "sha256": "REPLACE_PORTABLE_SPEC_FOR_CURRENT_PRODUCER_SHA256"},
+  "new_queue_root": "/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261028/native-speed-successor-20261028-v1/run-v1/queue",
+  "new_sidecar_root": "/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261028/native-speed-successor-20261028-v1/run-v1/labels",
   "global_source_count": 11521178,
   "previous_retained_count": 1159534
 }

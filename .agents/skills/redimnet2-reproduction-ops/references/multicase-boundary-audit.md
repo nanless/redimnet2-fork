@@ -2,7 +2,7 @@
 
 本页记录10月23日的18源实测。旧的“GPU未运行”与heartbeat的ACTIVE读回只描述当时；后续实测见文末的34源参考，后台现状按最新用户指示和实际配置判断。曾经创建或曾经授权，都不表示现在还在运行，也不授权恢复已经暂停的后台。
 
-本轮实测入口：`/Users/zhounan/Documents/声纹降噪/ReDimNet2变长微调_20261023/多样本实测_20261023/多样本实测报告.md`。远端只用新目录`/root/experiments/redimnet2/duration-finetune-20261023/multicase-v1`，旧训练、原音和冻结源码都不碰。
+本轮实测入口：`/Users/zhounan/Documents/声纹降噪/ReDimNet2变长微调_20261023/多样本实测_20261023/多样本实测报告.md`。远端只用新目录`/root/experiments/redimnet2/duration-finetune-20261023/multicase-v1`（历史路径），旧训练、原音和冻结源码都不碰。
 
 ## 继续前先核实际版本
 

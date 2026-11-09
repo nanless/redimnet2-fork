@@ -2,7 +2,7 @@
 
 本页是早期混合范围的实施历史。用户在10月25日已经把本轮正式标注限定为VoxCeleb2、VoxBlink2、CN-Celeb2的实际训练来源；MUSAN、Child、RIR和额外评测域不再按下文的旧计划继续。现行三域链路先读[Ultra实施记录](ultra-production-sidecar-20261025.md)，后续的正式B8和查询口径读[转写提速与接续](asr-speed-and-continuation.md)。本文里各个“当前”任务、合同、P0/P1数字，都对应原来的观察时刻。
 
-主根 `/Users/zhounan/Documents/声纹降噪/ReDimNet2全量开源标注_20261024`；详细计划 `docs/plans/2026-10-24-production-sidecar-execution.md`，实际报告 `全量实施_20261024/实施与验收报告.md`，实时状态 `当前状态.json`。服务器新根 `/root/experiments/redimnet2/open-annotation-20261024`。本页是带日期的实施记录；继续之前要核实际的sequence/parent_result及唯一平台ID，不能从静态文字推断提交已完成。
+主根 `/Users/zhounan/Documents/声纹降噪/ReDimNet2全量开源标注_20261024`；详细计划 `docs/plans/2026-10-24-production-sidecar-execution.md`，实际报告 `全量实施_20261024/实施与验收报告.md`，实时状态 `当前状态.json`。服务器新根 `/root/experiments/redimnet2/open-annotation-20261024`（历史路径）。本页是带日期的实施记录；继续之前要核实际的sequence/parent_result及唯一平台ID，不能从静态文字推断提交已完成。
 
 ## 范围与来源
 

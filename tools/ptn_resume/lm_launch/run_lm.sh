@@ -36,9 +36,18 @@ die()  { local code="$1"; shift; printf 'LM_LAUNCH_FAILED code=%s %s\n' "$code" 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 
+# ---- 存储位置（2026-11-09 新规） --------------------------------------------
+# 大数据（run、权重、日志）默认只写共享盘：
+#   /root/group-shared/voiceprint/experiments/redimnet2/<实验名>/
+# 下面 PTN_EXP_DIR 的默认值（历史盘 experiments 下）是已经跑完的第三段，只作
+# 只读输入保留；它不是新的写出位置。常量同 tools/ptn_resume/storage_policy.py。
+EXPERIMENT_ROOT="${EXPERIMENT_ROOT:-/root/group-shared/voiceprint/experiments/redimnet2}"
+EXPERIMENT_NAME="${EXPERIMENT_NAME:-lm-from-ptn115}"
+
 DATA_ROOT="${DATA_ROOT:-/root/group-shared/voiceprint/data/wespeaker_data}"
-PTN_EXP_DIR="${PTN_EXP_DIR:-/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn}"
-EXP_DIR="${EXP_DIR:-/root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm}"
+# 历史只读输入：第三段 PTN（48—120）的既有产物，含 model_115.pt 与 spk2id.json。
+PTN_EXP_DIR="${PTN_EXP_DIR:-/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn}"  # storage-policy-allow: 已完成第三段 run 的只读权重/映射来源
+EXP_DIR="${EXP_DIR:-$EXPERIMENT_ROOT/$EXPERIMENT_NAME/lm}"
 MODEL_CKPT="${MODEL_CKPT:-$PTN_EXP_DIR/models/model_115.pt}"
 PYTHON_BIN="${PYTHON_BIN:-/root/miniforge3/envs/redimnet2/bin/python}"
 NUM_GPUS="${NUM_GPUS:-8}"

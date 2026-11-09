@@ -8,6 +8,34 @@
 - 已删除的 `nanless/redimnet2-fork` 远端 `codex/repository-audit-20261025` 分支不恢复、不重建。本机 26 仓库的禁推配置保持不变，这些仓库也不必重新扫描。
 - 本地编辑、commit 可以做，作者与提交者仍是 `nanless <francis7999@outlook.com>`。需要写 GitHub 时走上面的服务器方式；GitLab 仍按用户指定的目的地协作。规则维护本身不代表仓库已经迁移或推送过，历史操作保持历史含义。
 
+## 大数据落点硬规则（2026-11-09 起）
+
+用户 2026-11-09 的硬性规定原文：**“大数据默认一律 `/root/group-shared/voiceprint` 下，不许写 `/root` 其他目录。”** 这条与上面的 GitHub 写入限制同级，是仓库规矩，不因任务方便、旧脚本写死或目录已经存在而例外。
+
+| 数据类型 | 落点 | 例子 |
+|------|------|------|
+| 实验产物：训练 run、检查点、日志、评测的输入与导出、批量推理输出 | `/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/` | `experiments/redimnet2/lm-from-ptn115-20261106-v1/` |
+| 工具产物、准入材料、账本、评测原件：任务表单证据、日志截取、诊断 JSON、ETA、claim 归档、交接脚本 | `/root/group-shared/voiceprint/artifacts/redimnet2/<用途>/` | `artifacts/redimnet2/eval-official-20261108/`（评测）、`artifacts/redimnet2/native-speed-successor-20261028-v1/controls/`（准入与合同）、`artifacts/redimnet2/retired-claims-20261108/`（账本归档）、`artifacts/redimnet2/device-locks/`（设备锁）、`artifacts/redimnet2/repo-handover-20261107/`（交接脚本）、`artifacts/redimnet2/volcengine-submission/<task_id>/`（提交核验） |
+| 开源标注侧车：逐音频标签、分片、租约与队列回执 | `/root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/` | `open_annotation/redimnet2-silver-20261109/handoff-v4r2-20261108-v6/run-v6/` |
+
+- **`/root` 只放代码仓库与临时日志。** 代码在 `/root/code/github_repos/...` 与独立实验树；临时日志用完即弃。`/root/experiments`、`/root/codex_artifacts`、`/root/annotations` 不再作为新产物的写入位置：里面已有的数据原样保留，作为 provenance 只读引用，并在文档里标成“历史路径”；不往里写新批，也不建旧路径别名。
+- **为什么不能先写 `/root` 再挪过去**：训练容器里 `/root` 是容器本地盘，`/shared/group-shared`（容器内通常另挂成 `/root/group-shared`）是 vePFS，两者是不同挂载点。跨挂载点的 `mv` 会退化为“复制 + 删除”：几百 GB 的检查点要先占双份空间，复制慢，中途失败还会留下半份文件，看起来像“已经移动”。所以新数据一开始就写 group-shared，不做“先落 `/root` 再搬”。
+- **运行中的任务不因这条规则重启。** 已经写在旧根的训练目录、侧车和冻结包保持原样；2026-11-09 还在跑的任务继续写旧根，文档里用“历史路径”注明。要切换读取位置，先把文件按字节搬到新根并核 sha，再改引用；迁移不重跑实验、不改变判据和统计口径。容器里 group-shared 若是只读挂载，先按平台工作流调成读写或申请权限，不退回 `/root` 本地盘。
+
+自检（提交任务或写报告前各跑一遍）：
+
+```bash
+# 1) 代码里不该再出现旧落点
+grep -rn "/root/experiments" --include='*.py' tools/ | head
+grep -rn "/root/codex_artifacts" --include='*.py' tools/ | head
+
+# 2) 指导性文档里，旧落点只允许出现在标了“历史路径”或 storage-policy-allow 的行
+grep -rn -e "/root/experiments" -e "/root/codex_artifacts" -e "/root/annotations" \
+  AGENTS.md docs .agents/skills | grep -v -e "历史路径" -e "storage-policy-allow" | head
+```
+
+第 2 条会把本节自己的规则原文也列出来（规则要写清禁止的目录名，绕不开），这类命中不用处理；剩下只看历史记录之外的新命中。确实要留旧路径的运行中写法，在 Markdown 行尾加 `<!-- storage-policy-allow: 原因 -->`，在 shell 脚本里加 `# storage-policy-allow`。
+
 这份文件给两类读者看：
 
 1. **刚接触说话人验证的研究生**：用来弄清本仓库在做什么、数据放哪、训练怎么接起来。
@@ -318,7 +346,7 @@ SITW 没测：全库唯一的 `sitw` 目录 3.5 KB，只有 `ACCESS_REQUIRED.txt
 
 8 秒口径单独看，不与 README 相减：官方 0.239、PTN115 0.404、PTN120 0.399、本实验 LM 0.293。这个口径系统性偏高，只能同口径内部比较。
 
-原件在 `/root/codex_artifacts/eval-official-20261108/csv/<权重>__{vox1OEH,ood,vox1O_8s}.csv`：四份权重（官方、PTN115、PTN120、LM）各三份，共 12 格，每格退出码 0。同目录 `csv/equiv__*.csv` 里的 E=0.28 来自被 `head` 截成 5,000 行的试验列表，不能引用（正确值 0.409），这两份只用来说明“共享嵌入版不改结果”。
+原件在 `/root/codex_artifacts/eval-official-20261108/csv/<权重>__{vox1OEH,ood,vox1O_8s}.csv`（历史路径；新评测产物按顶部《大数据落点硬规则》写 `/root/group-shared/voiceprint/artifacts/redimnet2/eval-official-<日期>/`，这轮原件保留在原处、只读引用）：四份权重（官方、PTN115、PTN120、LM）各三份，共 12 格，每格退出码 0。同目录 `csv/equiv__*.csv` 里的 E=0.28 来自被 `head` 截成 5,000 行的试验列表，不能引用（正确值 0.409），这两份只用来说明“共享嵌入版不改结果”。
 
 ### 9.2 LM 的执行门：冻结包 + 合同，两个哈希都不能省
 
@@ -410,6 +438,7 @@ exec /bin/bash <包根>/runtime/lm_launch.sh'
 - 用户于2026年10月27日明确要求所有任务名以 `zhounan_` 开头。生成或填写火山平台任务名称时按这个前缀来；名称前缀不替代优先级6、唯一任务查询和实际运行验收。已有任务若支持名称编辑，可在保留任务ID和运行配置的情况下原地添加前缀。报告保留提交时的历史名称并记录后续改名；平台生成的 task ID、worker ID、进程名或冻结文件路径不加这个前缀。
 - 本项目持续维护的代码、脚本、配置示例、测试和说明进入本仓库：实验目录只保存只读证据和部署副本，现行实现只留在仓库里，这样部署记录才对得上 Git 提交。部署时记录 Git 提交、文件摘要、配置与外部输入；修改源码后另建版本，改旧冻结清单冒充同版本会让人以为跑的是旧代码。
 - 项目技能的维护源是 `.agents/skills/redimnet2-reproduction-ops/`。已安装技能只作为同步副本：先改仓库源、检查引用，再由维护者同步安装并保留同步摘要。真实业务样本名单、标注原件、完整日志、模型或凭据不进公开技能。
+- 新产物按顶部《大数据落点硬规则》落盘：实验产物进 `experiments/redimnet2/`，工具产物、准入材料、账本与评测进 `artifacts/redimnet2/`，开源标注侧车进 `open_annotation/redimnet2-silver-<日期>/`；`/root` 只放代码仓库和临时日志，旧根里的数据只读引用并标“历史路径”。
 - 训练、标注与评测分别记录验收。CPU 合成测试通过不能写成新仓库版本已通过 GPU；自动候选边界不能自动转成训练或正式评测的可用标签。维护代码入库也不要求重启、迁移或改写正在运行的任务。
 - 需要写长篇中文说明时，写进仓库文档（如 `docs/`、`checkpoints/reports/`、本文）；只在对话里丢一堆口号式结论，过几天就没人找得到依据。
 

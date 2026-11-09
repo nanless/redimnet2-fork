@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # Evaluate the completed three-corpus B6 LM and a frozen official reference.
+#
+# 输出位置（2026-11-09 存储新规）：评测产物（embeddings、每个基准的 CSV、
+# summary.csv/json 这份 ledger）只写共享盘的 artifacts 根：
+#   /root/group-shared/voiceprint/artifacts/redimnet2/eval-<UTC日期>/<run目录名>/
+# 旧布局 $RUN_ROOT/evaluation 属于历史路径，仍可用 EVAL_DIR 显式指过去。
+# 常量同 tools/ptn_resume/storage_policy.py。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,7 +20,10 @@ export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
 export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-4}"
 
-EVAL_DIR="$RUN_ROOT/evaluation"
+# 评测产物的缺省落点：artifacts/eval-<UTC 日期>/<run 目录名>。
+# 加 run 目录名是为了同一天评测两个 run 时不互相覆盖同名 CSV。
+ARTIFACT_ROOT="${ARTIFACT_ROOT:-/root/group-shared/voiceprint/artifacts/redimnet2}"
+EVAL_DIR="${EVAL_DIR:-$ARTIFACT_ROOT/eval-$(date -u +%Y%m%d)/$(basename "$RUN_ROOT")}"
 TRAIN_CKPT="$RUN_ROOT/lm/models/model_1.pt"
 TRAIN_CONFIG="$RUN_ROOT/lm/config.yaml"
 PUBLISHED="$RUN_ROOT/published/b6-vb2+vox2+cnc2_v0-lm.pt"
@@ -106,7 +115,7 @@ trap - INT TERM
 [[ "$failed" -eq 0 ]] || exit 1
 
 "$PYTHON_BIN" - "$EVAL_DIR" "$PUBLISHED" "$REFERENCE" "$TRAIN_CKPT" "$TRAIN_CONFIG" \
-    "$VOX1_ROOT" "$VOICES_ROOT" "$CNCELEB_ROOT" <<'PY'
+    "$VOX1_ROOT" "$VOICES_ROOT" "$CNCELEB_ROOT" "$RUN_ROOT" <<'PY'
 import csv, hashlib, json, math, os, sys
 from pathlib import Path
 
@@ -117,7 +126,7 @@ def digest(path):
             h.update(block)
     return h.hexdigest()
 
-out, published, reference, source, config, vox1, voices, cnceleb = map(Path, sys.argv[1:])
+out, published, reference, source, config, vox1, voices, cnceleb, run_root = map(Path, sys.argv[1:])
 rows = []
 for benchmark in ['Vox1-O', 'Vox1-E', 'Vox1-H', 'Vox1-B', 'VOICES', 'CN-Celeb']:
     with (out / f'{benchmark}.csv').open() as stream:
@@ -132,6 +141,7 @@ for benchmark in ['Vox1-O', 'Vox1-E', 'Vox1-H', 'Vox1-B', 'VOICES', 'CN-Celeb']:
     rows.append({'benchmark': benchmark, 'reproduction_eer_percent': ours,
                  'reference_eer_percent': official, 'difference_percentage_points': round(ours-official, 6)})
 metadata = {'evaluation_complete': True, 'published': str(published),
+            'run_root': str(run_root), 'eval_dir': str(out),
             'published_sha256': digest(published), 'reference': str(reference),
             'reference_sha256': digest(reference), 'training_checkpoint': str(source),
             'training_checkpoint_sha256': digest(source), 'training_config': str(config),

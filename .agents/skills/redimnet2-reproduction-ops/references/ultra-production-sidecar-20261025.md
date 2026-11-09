@@ -31,7 +31,7 @@
 
 当前云工具只有cloud-three-train-v2；最终的C实际收据、原字节远端证据、live builder和唯一封存launcher/真实平台任务ID，分别读最新的本机当前状态。没有ID就不能称已提交。Mac还会再锁；收到已解锁后也以当前工具的实测为准，不绕锁，先把所有服务器上能做的准备做完，再报告具体的UI阻断。既有PAUSED后台不自行恢复。
 
-本地入口 `/Users/zhounan/Documents/声纹降噪/ReDimNet2_Ultra全量Sidecar_20261025/README.md`、`当前状态.json`、`执行记录.md`。远端专属根 `/root/experiments/redimnet2/open-annotation-ultra-20261025`。继续之前先读当前状态、最新的真实parent_result、独立审阅和唯一平台ID；本页不预写4000/恢复/八卡的通过结论。
+本地入口 `/Users/zhounan/Documents/声纹降噪/ReDimNet2_Ultra全量Sidecar_20261025/README.md`、`当前状态.json`、`执行记录.md`。远端专属根 `/root/experiments/redimnet2/open-annotation-ultra-20261025`（历史路径；2026-11-09 起侧车写 `/root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/`，运行中的任务仍写这里）。继续之前先读当前状态、最新的真实parent_result、独立审阅和唯一平台ID；本页不预写4000/恢复/八卡的通过结论。
 
 用户已授权按34源实测的选型接入Ultra主体：在指定的两卡机上测几千条真实数据，检查文字、完整字边界、吞吐及实际断点恢复，通过后提交唯一的P6八卡全量银标任务。这个意愿不必重复确认。PTN t-20261024154424-vggvm不能停止/改配方/迁移；本任务自己的新诊断进程确需修复时，可以核过身份再安全停止，但不扩大成杀未知的compute PID。既有后台PAUSED保持。
 

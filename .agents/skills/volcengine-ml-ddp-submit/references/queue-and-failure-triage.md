@@ -2,7 +2,7 @@
 
 提交之后的三件事：排队等多久、失败了先看哪里、交接任务要在什么时间窗内接上。这三件事都不看训练质量，只看“有没有真的在跑”。
 
-实测基准 2026-11-08 至 2026-11-09（平台控制台 + `/root/experiments/redimnet2/**` 运行目录 + `docs/STATUS.md` 第 5 节）。排队位次、任务终态这类数字每轮都变，用的时候重读，不要照抄本文。
+实测基准 2026-11-08 至 2026-11-09（平台控制台 + `/root/group-shared/voiceprint/experiments/redimnet2/**` 运行目录 + `docs/STATUS.md` 第 5 节；2026-11-09 前的旧目录在 `/root/experiments/redimnet2/**`，历史路径）。排队位次、任务终态这类数字每轮都变，用的时候重读，不要照抄本文。
 
 ---
 
@@ -44,7 +44,7 @@ gpu_common.Refused: worker initialization or CUDA allocation phase timed out
 去共享盘的运行目录看 `run-*` 目录里有什么：
 
 ```bash
-R=/root/experiments/redimnet2/<实验>/<手数目录>/run-v6
+R=/root/group-shared/voiceprint/experiments/redimnet2/<实验>/<手数目录>/run-v6
 ls -la "$R"
 ```
 
@@ -96,7 +96,9 @@ run-v6 的 `labels/` 下只有 `identity.json` 与三个语料目录（`cnceleb2
 `auto_publish` 的调用形态：
 
 ```bash
-/root/miniforge3/envs/qwen3-asr/bin/python3.10 /root/codex_artifacts/repo-handover-20261107/auto_publish.py \
+AUTO_PUBLISH=/root/group-shared/voiceprint/artifacts/redimnet2/repo-handover-<日期>/auto_publish.py
+# 迁移前这批脚本在 /root/codex_artifacts/repo-handover-20261107/（历史路径），还没搬时把上面一行换回旧路径
+/root/miniforge3/envs/qwen3-asr/bin/python3.10 "$AUTO_PUBLISH" \
   --ctrl <outer-controller 目录> \
   --blueprint <blueprint.json> --blueprint-sha <sha> \
   --handoff-root <handoff 根> --workdir <publish-work> \

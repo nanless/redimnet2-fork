@@ -28,6 +28,7 @@ from contracts import digest, job_key, model_provenance
 from readonly_progress import read_small, strict_json, inspect_progress, open_readonly
 from prepare_speed_continuation import physical, child, old_parent_lock, read_json_lines, source_roles
 from schema import assert_valid_record
+from annotation_format import FormatError, normalize_completion_receipt, sidecar_profile
 from source_registry import source_id
 from work_queue import decode_completion_slot, SLOT_BYTES
 
@@ -255,6 +256,8 @@ def read_result(source, value, expected_record_sha=None, expected_commit_sha=Non
     commit_path = path.with_name(path.name+'.commit.json')
     commit, commit_sha = read_json(commit_path, expected_commit_sha, 64*1024)
     assert_valid_record(record)
+    try: sidecar_profile(record)
+    except FormatError as exc: need(False, str(exc))
     contract_sha = value['contract']['sha256']; key = job_key(source, contract_sha)
     need(record['source'] == source and record['contract']['sha256'] == contract_sha and
          record['contract']['version'] == contract['version'] and
@@ -289,8 +292,13 @@ def _complete_chunk(index_pin, descriptor, ordinal, queue, producer_value, rows,
          slot['contract_sha256'] == producer_value['contract']['sha256'], 'completion input identity differs')
     need(expected_chunk_sha is None or slot['commit_sha256'] == expected_chunk_sha, 'retained chunk pin differs')
     chunk, chunk_sha = read_json(child(queue, 'completed/'+descriptor['id']+'.json'), slot['commit_sha256'])
-    need(chunk.get('schema') == 'redimnet2-chunk-commit/v1' and
-         all(chunk.get(k) == slot[k] for k in ('index_sha256','contract_sha256','shard_id','shard_sha256','source_count')),
+    try:
+        chunk = normalize_completion_receipt(
+            chunk, producer_contract_sha256=producer_value['contract']['sha256'],
+            producer_sidecar_tree=producer_value['sidecar_tree'])
+    except FormatError as exc:
+        need(False, str(exc))
+    need(all(chunk.get(k) == slot[k] for k in ('index_sha256','contract_sha256','shard_id','shard_sha256','source_count')),
          'chunk receipt identity differs')
     receipts = {r['source_id']:r for r in chunk['sources']}
     need(len(receipts) == len(chunk['sources']) == len(rows) and set(receipts) == {s['source_id'] for s in rows}, 'chunk source coverage differs')

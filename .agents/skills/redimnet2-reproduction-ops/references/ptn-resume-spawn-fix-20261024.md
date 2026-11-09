@@ -13,7 +13,7 @@
 
 ## 独立修复及验收
 
-新包 `/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-code-model35-20261024-v2`，15个文件、manifest锁14个成员，SHA `70fb366afb2535efdb3580e3bc8fed440b5e3ae094a6a33b884b7f4be144f364`。文件权限444/目录555。新run在同一父目录下 `ptn-resume-model35-20261024-v2`；旧v1包/失败run/原冻结源/清单都不改。
+新包 `/root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-code-model35-20261024-v2`（历史路径），15个文件、manifest锁14个成员，SHA `70fb366afb2535efdb3580e3bc8fed440b5e3ae094a6a33b884b7f4be144f364`。文件权限444/目录555。新run在同一父目录下 `ptn-resume-model35-20261024-v2`；旧v1包/失败run/原冻结源/清单都不改。
 
 守卫放在父rank的train.run_epoch边界，用模块级guard+partial包装并在finally里还原，在set_epoch之后、取批/前向之前核bundle/source/model35；不给Dataset实例附局部函数。正式24workers、spawn、8×96、15001批/轮、120总轮不变。YAML只改exp_dir；model35原SHA fdaa88b963720ccdc35708c3ca9d18e56296edd8711eb9309772afacc92beb84保持。起轮36、绝对iter525035、LR.72/margin.2；没有完整RNG/轮内游标，不声称逐位连续。
 

@@ -32,6 +32,7 @@ def make_case(root, *, purpose='cpu_fixture'):
     runtime={'dtype':'float32','max_new_tokens':12,'window':{'core_seconds':24,'context_seconds':2},
              'ownership':'synthetic-midpoint','boundary_mapping':base[4][0]['time_mapping'],
              'resampling':'synthetic-polyphase','normalization':'synthetic-same',
+             'normalization_profile':'nfkc_punctuation_to_space_whitespace_collapse/v1',
              'max_batch':1,'execution_policy':'single_window_independent','seed':0,
              'supported_languages':['Chinese','English']}
     contract={'schema':'redimnet2-production-contract/v2','purpose':purpose,'version':'engine-a',

@@ -37,7 +37,7 @@ admission 的 `passed:true` 只证明合同、路径、哈希和 pilot 证据自
 
 `.formal-parent-locks/bounded-speed-<sha>.claim.json` 是“一链一生产者”的硬门，绑定 `new_contract/new_bundle/new_run_root/index` 等核心。claim 一旦写入，换引擎就会被 `another bounded producer was permanently claimed` 挡住。
 
-写法：门禁、pilot、admission 都过了再写 claim。反过来先写 claim 再补门，失败现场会被锁成“已认领”，下次只能走退役流程。退役按顺序做：按字节归档 `claim.json` 和同名 `.sha256`（本次在 `/root/codex_artifacts/retired-claims-20261108/`）→ 写清原声明时间、声称的 run、任务终态与崩溃形态、为什么旧引擎不可能继续、为什么新引擎算不同生产者 → 写回滚方法（复制回 `.formal-parent-locks/` 并删新声明）→ 最后才从原位置删除。先删再补理由，等于把“这个生产者真的跑过”的现场抹掉。
+写法：门禁、pilot、admission 都过了再写 claim。反过来先写 claim 再补门，失败现场会被锁成“已认领”，下次只能走退役流程。退役按顺序做：按字节归档 `claim.json` 和同名 `.sha256`（2026-11-09 起归档到 `/root/group-shared/voiceprint/artifacts/redimnet2/ledger/retired-claims-<日期>/`；2026-11-08 那次在 `/root/codex_artifacts/retired-claims-20261108/`，历史路径）→ 写清原声明时间、声称的 run、任务终态与崩溃形态、为什么旧引擎不可能继续、为什么新引擎算不同生产者 → 写回滚方法（复制回 `.formal-parent-locks/` 并删新声明）→ 最后才从原位置删除。先删再补理由，等于把“这个生产者真的跑过”的现场抹掉。
 
 ## 提交前检查清单
 
@@ -52,7 +52,9 @@ admission 的 `passed:true` 只证明合同、路径、哈希和 pilot 证据自
 入口字段填：
 
 ```bash
-/bin/bash /root/codex_artifacts/repo-handover-20261107/run_handoff_v7.sh
+# 新交接脚本按硬规则落 /root/group-shared/voiceprint/artifacts/redimnet2/repo-handover-<日期>/
+# 2026-11-07 起的现存副本仍在 /root/codex_artifacts/repo-handover-20261107/（历史路径），迁移前照旧调用
+/bin/bash /root/codex_artifacts/repo-handover-20261107/run_handoff_v7.sh   # 历史路径（迁移前调用这里）
 ```
 
 脚本内容（v6 的实例，换任务时改 `CTRL`/`BP`/sha）：
@@ -60,13 +62,16 @@ admission 的 `passed:true` 只证明合同、路径、哈希和 pilot 证据自
 ```bash
 #!/bin/bash
 set -euo pipefail
-CTRL=/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v4-r2/admission-20261109/outer-controller-v4r4
+# 新一批把 admission 材料放 /root/group-shared/voiceprint/artifacts/redimnet2/<用途>/admission-<日期>/
+CTRL=/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v4-r2/admission-20261109/outer-controller-v4r4   # 历史路径（2026-11-09 版）
 BP=.../handoff-20261109b/blueprint.json
 cd "$CTRL"
 export PYTHONPATH="$CTRL"
 exec /root/miniforge3/envs/qwen3-asr/bin/python3.10 -B "$CTRL/native_batch_queue_handoff.py" \
   wait --blueprint "$BP" --blueprint-sha <sha> --execute
 ```
+
+写进标注 spec、blueprint 或 handoff request 的绝对路径要用 `/shared/group-shared/...` 的物理拼法：现有校验器要求路径本身和祖先都不是符号链接，`/root/group-shared` 是软链会被拒；文档里给人看的路径仍写 `/root/group-shared/...`。
 
 原因：控制台入口是多行文本框，长命令直接粘进去会丢首字符（2026-11-08 实测，重填一次才对上），而 `set -euo pipefail` 少一个字符可能整段不执行。短脚本只有一行，能在提交后全文回读比对。
 

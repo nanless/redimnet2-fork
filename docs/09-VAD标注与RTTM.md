@@ -193,6 +193,8 @@ RTTM_RESULT status=failed      失败
 
 ## 5. 输出放在哪、文件叫什么
 
+> 落点（2026-11-09 存储规范）：新任务的 `OUTPUT_DIR` 写 `/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/rttm/` 一类目录（或 `/dev/shm` 的临时试跑目录）；`/root` 只放代码与临时日志。已经生成在数据树里的 RTTM（例如 `mix_join/rttm_firered`）保持原位，属于历史位置，不再往里写新结果。规范见 [19 号第 6 节](19-今日工作与后续入口.md)。
+
 ### 5.1 文件名
 
 音频 `.../id00012/21Uxsk56VDQ/00001.wav` 对应的标注是：

@@ -1,6 +1,6 @@
 # 34源四法边界选型实测（2026-10-24）
 
-当前入口：`/Users/zhounan/Documents/声纹降噪/ReDimNet2边界选型对照_20261024/实测选型报告.md`；机读`选型策略_v1.json`，真实远端新根`/root/experiments/redimnet2/boundary-selection-20261024-v1`。先读当前状态及最终原始结果，不把GPU前的准备报告当成当前状态。
+当前入口：`/Users/zhounan/Documents/声纹降噪/ReDimNet2边界选型对照_20261024/实测选型报告.md`；机读`选型策略_v1.json`，当时远端新根`/root/experiments/redimnet2/boundary-selection-20261024-v1`（历史路径）。先读当前状态及最终原始结果，不把GPU前的准备报告当成当前状态。
 
 ## 已证范围与当前选择
 

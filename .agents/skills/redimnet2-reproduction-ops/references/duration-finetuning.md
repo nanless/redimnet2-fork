@@ -6,11 +6,11 @@
 
 用户要求从已下载官方模型做变长微调、短语音泛化、不等长注册/测试或长度分布消融时读本页。它是独立研究线，与当前八卡PTN/LM任务分开：既不修改或接续它，也不重写它的冻结清单。动手前先读相关源码目录的AGENTS，再核现场路径/HEAD/资源。
 
-2026-10-23独立实现位于dev_a800_2gpus:/root/code/github_repos/redimnet2-duration-finetune-20261023，分支codex/duration-finetune-20261023，来自0a3f6dd501e224a2bed85b6207df7c99046b4272。输出/root/experiments/redimnet2/duration-finetune-20261023；本机完整研究、计划、代码和验收在/Users/zhounan/Documents/声纹降噪/ReDimNet2变长微调_20261023。详细使用说明在独立源码docs/19-声学VAD变长微调与时长矩阵.md，计划docs/plans/2026-10-23-duration-finetune.md。主仓库已有文档复制到新工作树并保留原位，原目录文件不变；新工作树是本次用户新功能的隔离实现，不是恢复旧临时别名。
+2026-10-23独立实现位于dev_a800_2gpus:/root/code/github_repos/redimnet2-duration-finetune-20261023，分支codex/duration-finetune-20261023，来自0a3f6dd501e224a2bed85b6207df7c99046b4272。输出/root/experiments/redimnet2/duration-finetune-20261023（历史路径）；本机完整研究、计划、代码和验收在/Users/zhounan/Documents/声纹降噪/ReDimNet2变长微调_20261023。详细使用说明在独立源码docs/19-声学VAD变长微调与时长矩阵.md，计划docs/plans/2026-10-23-duration-finetune.md。主仓库已有文档复制到新工作树并保留原位，原目录文件不变；新工作树是本次用户新功能的隔离实现，不是恢复旧临时别名。
 
 ## 起点和研究对照
 
-首版从官方b6-vb2+vox2+cnc2_v0-lm.pt开始，51,152,991字节，SHA287365f6f485b19e65e5176554f8f7123bfa8d85185f3d2c040eab51acec9868。兼容入口/root/codex_artifacts/verification/volcengine/redimnet2-b6mix-20261019/reference/official-b6-vb2+vox2+cnc2_v0-lm.pt；用前重新核resolve及SHA，历史兼容路径不能当永久主目录。
+首版从官方b6-vb2+vox2+cnc2_v0-lm.pt开始，51,152,991字节，SHA287365f6f485b19e65e5176554f8f7123bfa8d85185f3d2c040eab51acec9868。兼容入口/root/codex_artifacts/verification/volcengine/redimnet2-b6mix-20261019/reference/official-b6-vb2+vox2+cnc2_v0-lm.pt（历史路径）；用前重新核resolve及SHA，历史兼容路径不能当永久主目录。
 
 公开载荷只有model_config/state_dict：821状态键、192维输出。骨干严格按公开配置装，另新建与本次speaker_map绑定的SphereFace2头、冷SGD/AMP。官方分类头或优化器并没有被恢复；这条线也和八卡从零检查点、115轮LM接续完全分开。
 
@@ -26,7 +26,7 @@ VAD目录/root/group-shared/voiceprint/data/wespeaker_data/vox2_vb2_cnc2_v0/mix_
 
 当前工程清单是576训练/72身份、96留出/12身份，三语料各24+4身份，每人8条，都够5秒预测语音。这是有界的首先合格抽样，不是全量代表性质量集。当前训练源音频校验不含内容SHA，所以别说逐字节复验；评测音频会hash原字节。正式分层/全量准备和跨语料实体/同源去重另做。
 
-redimnet2解释器依赖audio-flamingo父环境，因此不做升级/替换共享环境。新进程用局部LD_LIBRARY_PATH指向/root/experiments/redimnet2/duration-finetune-20261023/runtime_audio/lib，libsndfile1.2.2 的 SHA 为 c872fb84af2afc0e96b603e0000f0f407af86c49ad1126f2785e5722c7bb27d7；训练会核真实的/proc/self/maps路径。私有库从既有已审库按字节复制，只供新任务；旧PTN仍用原库，旧FLAC七事件许可不适用于新数据。
+redimnet2解释器依赖audio-flamingo父环境，因此不做升级/替换共享环境。新进程用局部LD_LIBRARY_PATH指向/root/experiments/redimnet2/duration-finetune-20261023/runtime_audio/lib（历史路径），libsndfile1.2.2 的 SHA 为 c872fb84af2afc0e96b603e0000f0f407af86c49ad1126f2785e5722c7bb27d7；训练会核真实的/proc/self/maps路径。私有库从既有已审库按字节复制，只供新任务；旧PTN仍用原库，旧FLAC七事件许可不适用于新数据。
 
 ## 训练、恢复和输出保护
 

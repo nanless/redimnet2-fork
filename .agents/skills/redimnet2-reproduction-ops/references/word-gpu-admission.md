@@ -12,7 +12,7 @@ GPU检查点用独立的`word-training-gpu-fp32/v1`，配置要求`runtime_polic
 
 先在CPU上核数据、配置、官方权重与私有解码库，再取两UUID的固定目录合作锁。读取两次真实nvidia-smi快照，至少相隔5秒，检查真实采集时钟窗口、UUID/驱动/内存一致性、有无既有compute PID、保守driver-used上限及显式预算＋预留。容器看不见的PID或未知计数按占用/不明拒绝；利用率0%不能当作空闲的证据。
 
-固定锁目录为`/root/experiments/redimnet2/.word-gpu-device-locks`，锁覆盖本次torchrun的整个生命周期。票据遇到符号链接直接拒绝，且只单次读取；它绑定字节摘要、父进程启动时刻/祖先关系、持锁FD及inode、采集新鲜度、配置/数据/输出/恢复请求。检查点有两个：CPU准备之后一次，打开CUDA之前再一次。大数据核验超过票据时限时，在开CUDA之前就拒绝；放宽旧票据，绑定的就是过期状态。
+固定锁目录为`/root/group-shared/voiceprint/experiments/redimnet2/.word-gpu-device-locks`（2026-11-09 前这一实验用 `/root/experiments/redimnet2/.word-gpu-device-locks`，历史路径；锁目录仍跨实验共用，不按实验拆开），锁覆盖本次torchrun的整个生命周期。票据遇到符号链接直接拒绝，且只单次读取；它绑定字节摘要、父进程启动时刻/祖先关系、持锁FD及inode、采集新鲜度、配置/数据/输出/恢复请求。检查点有两个：CPU准备之后一次，打开CUDA之前再一次。大数据核验超过票据时限时，在开CUDA之前就拒绝；放宽旧票据，绑定的就是过期状态。
 
 合作锁不等于平台排他预留，阻止不了外部调度。启动后要继续检查外部PID；本实验出异常或发现外部进程时，只退出自身实验，NVML里任意PID都不发信号。torchrun用新session及`--run-path --start-method=spawn`，工作进程继承同一进程组；清理时还核进程组、session、启动时刻和一次性nonce。父进程退出后也要查残留工作进程；父进程结束不等于全部结束。只读nonce，不保存完整的进程环境。
 
@@ -37,7 +37,7 @@ PyTorch allocator预算不等于驱动/NCCL/上下文的全量硬上限；首次
 cd /root/code/github_repos/redimnet2-duration-finetune-20261023
 /root/miniforge3/envs/redimnet2/bin/python scripts/launch_word_two_gpu.py \
   --probe-only --gpu-indices 0 1 --memory-mib 4096 \
-  --report /root/experiments/redimnet2/duration-finetune-20261023/<全新检查文件>.json
+  --report /root/group-shared/voiceprint/experiments/redimnet2/<实验名>/<全新检查文件>.json
 ```
 
 实际执行还要显式给`--execute`及config/dataset/official/output；命令用最终交付配置和全新输出，本页的占位路径不原样运行。当前忙卡条件下不执行。所有CPU/GPU科学状态、原始日志及新源码摘要见本机`ReDimNet2变长微调_20261023/验证结果/双卡入口CPU验收/`，独立审阅见`验证/GPU资源与进程保护独立审阅.md`。这套代码存在、CPU检查通过，既不等于GPU硬件可运行，也不等于短语音泛化改善。

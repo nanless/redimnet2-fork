@@ -8,15 +8,16 @@
 # 都在 train_b6_mix_cloud_8gpu.sh 里，这里不重复实现。
 #
 # 大间隔微调要用主训练的结果当起点，所以要跑完主训练。默认从
-#   $REPO_ROOT/exp/vox2_vb2_cnc2/b6_cloud/ptn
+#   /root/group-shared/voiceprint/experiments/redimnet2/b6-mix-ptn
 # 里按修改时间取最新的 model_<N>.pt；用 PTN_EXP_DIR 可以换成别的目录，
 # 用 MODEL_CKPT=<权重文件> 可以指定某一个具体文件。
+# （旧默认 $REPO_ROOT/exp/vox2_vb2_cnc2/b6_cloud/ptn 属于历史路径，已不再使用。）
 #
 # 用法（8 卡，数据与结果都在持久化存储上）：
 #   NUM_GPUS=8 \
-#   DATA_ROOT=/mnt/vepfs/wespeaker_data \
-#   EXP_DIR=/mnt/vepfs/exp/b6_cloud/lm \
-#   PTN_EXP_DIR=/mnt/vepfs/exp/b6_cloud/ptn \
+#   DATA_ROOT=/root/group-shared/voiceprint/data/wespeaker_data \
+#   EXP_DIR=/root/group-shared/voiceprint/experiments/redimnet2/b6-mix-lm \
+#   PTN_EXP_DIR=/root/group-shared/voiceprint/experiments/redimnet2/b6-mix-ptn \
 #   applications/speaker_rec/scripts/cloud/train_b6_mix_cloud_8gpu_lm.sh
 #
 # 本机 2 卡小样验证：先跑 ptn 小样，再把 PTN_EXP_DIR 指过去跑这个脚本。

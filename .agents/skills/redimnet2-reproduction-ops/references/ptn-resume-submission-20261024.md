@@ -11,7 +11,7 @@
 
 有效 task 是t-20261024115909-mhczc，名称redimnet2-b6mix-ptn-resume35-8a800-p6-20261024-v2，2026-10-24 11:59:09北京创建，当时在排队。P6、单worker八A800、PyTorchDDP、720h、自动重试off；镜像dev_zhounan:4.0，可用区B aiplatform-SPEECH。共享只读源→/shared/group-shared，个人读写源→/root。原task t-20261019232824-8zqrl没有改；PAUSED的redimnet2 heartbeat没有恢复。
 
-严格恢复 model_35.pt 的 SHA fdaa88b963720ccdc35708c3ca9d18e56296edd8711eb9309772afacc92beb84，650777251B。新run是 /root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model35-20261024-v1，源码包在同父目录 ptn-resume-code-model35-20261024-v1；run/package的v1名称是不可变合同，不因为平台叫v2就重复改写。只改exp_dir/checkpoint，保持总120轮、15001批/轮、8×96，第36轮轮首/绝对iter525035/LR.72/margin.2，完整分类头、SGD/AMP。缺RNG/loader游标，因此要重做轮内旧工作，不声称逐位连续。
+严格恢复 model_35.pt 的 SHA fdaa88b963720ccdc35708c3ca9d18e56296edd8711eb9309772afacc92beb84，650777251B。新run是 /root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model35-20261024-v1（历史路径），源码包在同父目录 ptn-resume-code-model35-20261024-v1；run/package的v1名称是不可变合同，不因为平台叫v2就重复改写。只改exp_dir/checkpoint，保持总120轮、15001批/轮、8×96，第36轮轮首/绝对iter525035/LR.72/margin.2，完整分类头、SGD/AMP。缺RNG/loader游标，因此要重做轮内旧工作，不声称逐位连续。
 
 13文件冻结包的manifest SHA ef0136503e3676f56a044237267824f2117c9c082eaf07f0c906203bd214fb55；平台从外部固定这个SHA，逐文件验证后才执行launch.sh --execute。代码包不用于同步报告，所有报告/截图/日志快照都留在本机。
 

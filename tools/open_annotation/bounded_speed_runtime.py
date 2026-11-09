@@ -482,7 +482,12 @@ def compile_runtime(runtime_pin,*,fresh=True,selection_scope=None,_selected_proo
              'old runtime v1 refuses native contract; use explicit native v2')
         selected=check_selected_pilot(spec['selected_pilot_admission'],new,purpose)
     run=R.physical(spec['new_run_root']);code=R.physical(spec['new_code_root'])
-    need(base in run.parents and base in code.parents and run!=code and run not in code.parents and code not in run.parents,'new runtime/code namespace differs')
+    # 2026-11-09：同上，允许落在 spec 声明的 storage_root 之下（默认仍是 base）。
+    def _under(where,anc):
+        return where==anc or anc in where.parents
+    _extra=[R.physical(x) for x in (spec.get('storage_root'),) if x]
+    need((_under(run,base) or any(_under(run,e) for e in _extra)) and (_under(code,base) or any(_under(code,e) for e in _extra))
+         and run!=code and run not in code.parents and code not in run.parents,'new runtime/code namespace differs')
     need(index['new_queue_root']==str(run/'queue')and index['new_sidecar_root']==str(run/'labels')and
          spec['device_lock_root']==old['device_lock_root'],'new run/queue/labels/shared UUID locks differ')
     protected=[oldrun,Path(index['old_queue_root']).parent,R.physical(old['code_root']),Path(index['parent_index']['path']).parent,Path(spec['index']['path']).parent,semantic.parent]

@@ -102,7 +102,7 @@ def worker_ready_before_cuda(rank):
     S.need(actual['start_ticks']==parent['start_ticks']and ancestor(os.getpid(),parent['pid']),'actual parent generation differs')
     S.need(os.environ.get('CUDA_VISIBLE_DEVICES')==','.join(admission['GPU']['UUIDs']),'visible GPU UUID mapping differs')
     lock=admission['GPU']['lock_evidence'][rank];target=S.C.physical(lock['path'])
-    S.need(target.name==lock['uuid']+'.lock' and target.parent==Path('/root/experiments/redimnet2/.word-gpu-device-locks'),'GPU stable lock path differs')
+    S.need(target.name==lock['uuid']+'.lock' and target.parent==Path('/root/experiments/redimnet2/.word-gpu-device-locks'),'GPU stable lock path differs')  # storage-policy-allow: 八进程共享的GPU UUID锁目录（协调文件，非大数据产物），换位置会与既有段失去互斥
     parent_fd=Path('/proc/%d/fd/%d'%(parent['pid'],lock['fd']));st=parent_fd.stat();current=target.stat()
     S.need(parent_fd.resolve()==target.resolve()and (st.st_dev,st.st_ino)==(lock['device'],lock['inode'])==(current.st_dev,current.st_ino),'parent GPU FD/inode differs')
     stream=target.open('rb');fcntl.flock(stream,fcntl.LOCK_SH|fcntl.LOCK_NB)
@@ -184,7 +184,7 @@ def gpu_snapshot():
 
 def gpu_admit(stack):
     first = gpu_snapshot()
-    lock_root = Path('/root/experiments/redimnet2/.word-gpu-device-locks')
+    lock_root = Path('/root/experiments/redimnet2/.word-gpu-device-locks')  # storage-policy-allow: 同上，GPU UUID锁目录，非大数据产物
     S.C.physical(lock_root); lock_root.mkdir(exist_ok=True)
     locks = [acquire(stack, lock_root / (d['uuid'] + '.lock'), existing=False) for d in sorted(first['devices'], key=lambda d: d['uuid'])]
     start = time.monotonic(); time.sleep(5); second = gpu_snapshot()

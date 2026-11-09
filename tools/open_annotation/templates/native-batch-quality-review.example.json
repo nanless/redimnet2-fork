@@ -2,11 +2,11 @@
   "schema": "annotation-native-batch-quality-review/v2",
   "purpose": "production",
   "comparison": {
-    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/native-speed-comparison.json",
+    "path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/controls/native-speed-comparison.json",
     "sha256": "REPLACE_ACTUAL_NATIVE_SPEED_COMPARISON_SHA256"
   },
   "candidate_contract": {
-    "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/selected-native-pilot-contract.json",
+    "path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/controls/selected-native-pilot-contract.json",
     "sha256": "REPLACE_ACTUAL_SELECTED_NATIVE_PILOT_CONTRACT_SHA256"
   },
   "review_complete": false,
@@ -25,7 +25,7 @@
       "leading_trailing_neighbor_checked": false,
       "review_evidence": [
         {
-          "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/actual-local-context-listening-and-boundary-review.json",
+          "path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/controls/actual-local-context-listening-and-boundary-review.json",
           "sha256": "REPLACE_ACTUAL_ACTUAL_LOCAL_CONTEXT_LISTENING_AND_BOUNDARY_REVIEW_SHA256"
         }
       ]
@@ -33,7 +33,7 @@
   ],
   "review_evidence": [
     {
-      "path": "/root/experiments/redimnet2/open-annotation-ultra-20261025/native-speed-successor-20261028-v1/controls/actual-finite-quality-summary.json",
+      "path": "/root/group-shared/voiceprint/artifacts/redimnet2/native-speed-successor-20261028-v1/controls/actual-finite-quality-summary.json",
       "sha256": "REPLACE_ACTUAL_ACTUAL_FINITE_QUALITY_SUMMARY_SHA256"
     }
   ]
