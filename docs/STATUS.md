@@ -10,33 +10,15 @@
 
 ## 1. 仓库
 
-- 完整 HEAD：`00bf836558ebed32d3fc88b9da03643328359494`
+- 完整 HEAD：`d83b68b889874fe7698e1031a33e6ed4bc60160c`
 - 当前分支：`main`
-- 顶端提交：`00bf836 2026-11-08 16:47:58 +0000 STATUS 在提交后重新生成（工作树归零）`
-- 未提交改动：95 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
+- 顶端提交：`d83b68b 2026-11-09 08:10:59 +0000 大数据落点改为 group-shared：准入放宽 + 跳过已有标注 + 四代格式兼容`
+- 未提交改动：3 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
 
 ```
- M .agents/skills/redimnet2-reproduction-ops/SKILL.md
- M .agents/skills/redimnet2-reproduction-ops/references/20261021-audit-baseline.md
- M .agents/skills/redimnet2-reproduction-ops/references/annotation-freeze-and-submission.md
- M .agents/skills/redimnet2-reproduction-ops/references/annotation-production-20261109.md
- M .agents/skills/redimnet2-reproduction-ops/references/boundary-selection-comparison-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/duration-finetuning.md
- M .agents/skills/redimnet2-reproduction-ops/references/evaluation-six-column-20261108.md
- M .agents/skills/redimnet2-reproduction-ops/references/lm-launch-20261106.md
- M .agents/skills/redimnet2-reproduction-ops/references/multicase-boundary-audit.md
- M .agents/skills/redimnet2-reproduction-ops/references/production-sidecar-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/ptn-resume-ordinary-entry-fix-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/ptn-resume-spawn-fix-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/ptn-resume-submission-20261024.md
- M .agents/skills/redimnet2-reproduction-ops/references/repository-and-evidence.md
- M .agents/skills/redimnet2-reproduction-ops/references/stage-gates-and-provenance.md
- M .agents/skills/redimnet2-reproduction-ops/references/training-and-continuation.md
- M .agents/skills/redimnet2-reproduction-ops/references/ultra-production-sidecar-20261025.md
- M .agents/skills/redimnet2-reproduction-ops/references/word-complete-finetuning.md
- M .agents/skills/redimnet2-reproduction-ops/references/word-gpu-admission.md
- M .agents/skills/volcengine-ml-ddp-submit/SKILL.md
-... 其余 75 项省略
+ M docs/README.md
+ M docs/STATUS.md
+?? docs/21-标注结果归集验收报告.md
 ```
 
 复核：`git rev-parse HEAD`、`git log -1 --format='%h %ad %s'`、`git status --porcelain | wc -l`
@@ -58,7 +40,7 @@
 命令：`/root/miniforge3/envs/USE/bin/python -m pytest tools/open_annotation/tests -q -p no:cacheprovider`
 
 - 退出码：0
-- 摘要行：`1128 passed, 18 skipped, 6 warnings`
+- 摘要行：`1132 passed, 18 skipped, 6 warnings`
 
 注意：这是本次生成时的观测。用例数、失败项都会变，引用前先重跑。
 
