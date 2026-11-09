@@ -10,15 +10,15 @@
 
 ## 1. 仓库
 
-- 完整 HEAD：`d83b68b889874fe7698e1031a33e6ed4bc60160c`
+- 完整 HEAD：`d82a23cb71afd53a696597b239940990f68bd20c`
 - 当前分支：`main`
-- 顶端提交：`d83b68b 2026-11-09 08:10:59 +0000 大数据落点改为 group-shared：准入放宽 + 跳过已有标注 + 四代格式兼容`
+- 顶端提交：`d82a23c 2026-11-09 09:10:03 +0000 标注归集验收：四代结果全部迁到共享盘、源目录已删、去重索引为唯一权威`
 - 未提交改动：3 项（`git status --porcelain | wc -l`；若本文件刚被改，会把自己算进去）
 
 ```
- M docs/README.md
- M docs/STATUS.md
-?? docs/21-标注结果归集验收报告.md
+ M tools/annotation_dashboard_server.py
+ M tools/annotation_progress.py
+ M tools/gen_status.py
 ```
 
 复核：`git rev-parse HEAD`、`git log -1 --format='%h %ad %s'`、`git status --porcelain | wc -l`
@@ -48,7 +48,7 @@
 
 sha256 只给前 16 位，够 diff；要完整值用下面第 6 节的命令。
 
-路径里的 `$EXP` = `/root/experiments/redimnet2`，是 2026-11-09 之前的实验产物根（**历史路径**，只读）。2026-11-09 起新产物写 `/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/`，准入材料、账本、评测写 `.../artifacts/redimnet2/<用途>/`。
+路径里的 `$EXP` = `/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2`（2026-11-09 迁移前的 `/root/experiments/redimnet2`，**历史路径**，只读）。2026-11-09 起新产物写 `/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/`，准入材料、账本、评测写 `.../artifacts/redimnet2/<用途>/`。
 
 | 产物 | 路径 | 大小 | 摘要 | 文件时间 |
 |---|---|---|---|---|
@@ -70,7 +70,7 @@ sha256 只给前 16 位，够 diff；要完整值用下面第 6 节的命令。
 
 状态按 `queue/` 与 `failure.json` 判，不探测进程；生产已停但队列文件还在时，这里仍可能显示“运行中”，实时状态以任务页与 `docs/19` 第 2 节为准。
 
-2026-11-09 起交接目录按存储规范写在 `/root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/` 下；`20261109` 已就位，更早三代仍在 `/root/experiments/redimnet2/open-annotation-ultra-*/`（历史路径）、迁移中；旧基址只读。归档与跳过规则见 `docs/20-标注结果归档与跳过规则.md`。
+2026-11-09 起交接目录按存储规范写在 `/root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/` 下；四代均已归档；2026-11-09 前的旧树整体在 `/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/open-annotation-ultra-*/`（历史路径，只读）。归档与跳过规则见 `docs/20-标注结果归档与跳过规则.md`。
 
 | 代次 | 交接目录 | 任务号（取文件名） | 状态 / 失败原因一句话 | 侧车条数 |
 |---|---|---|---|---|
@@ -78,18 +78,18 @@ sha256 只给前 16 位，够 diff；要完整值用下面第 6 节的命令。
 | v5 | `handoff-v4r2-20261108-v5` | `t-20261108141622-9fkcm` | 无本地留档（run 目录为空） | — |
 | v6 | `handoff-v4r2-20261108-v6` | `t-20261108144507-mrvsh` | `KeyboardInterrupt: parent terminated`（resources-attempt1/failure.json） | 有侧车（不逐个数） |
 
-复核：`ls /root/group-shared/voiceprint/open_annotation/redimnet2-silver-*/handoff-*`（新基址）；旧代次用 `ls /root/experiments/redimnet2/open-annotation-ultra-*/handoff-*`（历史路径）；`find <run> -path '*labels*' -type f | wc -l`；`cat <run>/resources-attempt1/failure.json`
+复核：`ls /root/group-shared/voiceprint/open_annotation/redimnet2-silver-*/handoff-*`（新基址）；旧代次用 `ls /root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/open-annotation-ultra-*/handoff-*`（历史路径）；`find <run> -path '*labels*' -type f | wc -l`；`cat <run>/resources-attempt1/failure.json`
 
 ## 6. 说明
 
 - 本文件只用于承载易变事实。`docs/*.md` 正文不写死 HEAD、权限位、测试计数、产物 sha、“已修/已验证”、目录里有什么。
 - **存储规范（2026-11-09 起，用户硬性要求）**：大数据默认位置一律在 `/root/group-shared/voiceprint` 下——实验产物 `experiments/redimnet2/<实验名>/`，准入材料、账本、评测 `artifacts/redimnet2/<用途>/`，开源标注侧车 `open_annotation/redimnet2-silver-<日期>/`；`/root` 只放代码仓库与临时日志。`/root` 与 `/root/group-shared` 是两个不同挂载点，跨挂载点 `mv` 会退化成“复制 + 删除”（几十万小文件按小时计），所以新数据一开始就写最终位置。详见 `docs/19-今日工作与后续入口.md` 第 6 节；标注按代次归档、建索引与跳过规则见 `docs/20-标注结果归档与跳过规则.md`。
-- 复核全部产物 sha（下面三条是 2026-11-09 之前的旧基址，**历史路径**；新产物按上面的规范写新基址）：
+- 复核全部产物 sha（下面三条是 2026-11-09 之前的产物，现位于 02 根，**历史路径**；新产物按上面的规范写新基址）：
 
   ```bash
-  # 历史路径（2026-11-09 前的产物仍在这里）
-  sha256sum /root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm/models/model_1.pt \
-            /root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn/models/model_{115,120}.pt
+  # 历史路径（2026-11-09 前的产物，2026-11-09 迁移后位于 02 根）
+  sha256sum /root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm/models/model_1.pt \
+            /root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn/models/model_{115,120}.pt
   ```
 
 - 本文件由 `python3 tools/gen_status.py` 生成；`--check` 判过期，`--lint` 查正文硬编码。两者都不需要 GPU、不联网、不写仓库外路径。

@@ -32,7 +32,7 @@
 
 LM 已经跑过了。2026-11-06 收口时各篇文档都写「已提交、排队中」，那是当晚的观测，现在不成立：
 
-- 运行目录 `/root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm`（历史路径） 在 11-07 03:05–05:37 UTC 之间写满了 1 轮：`13075` 次优化更新（`train.log` 两行都是这个数）、`models/model_1.pt`、`val_log.csv` 记 `vox1-eer-8s = 0.293`、回执 `training_exit_code: 0`。大小与 sha 见 [STATUS 第 4 节](STATUS.md)。
+- 运行目录 `/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm`（历史路径） 在 11-07 03:05–05:37 UTC 之间写满了 1 轮：`13075` 次优化更新（`train.log` 两行都是这个数）、`models/model_1.pt`、`val_log.csv` 记 `vox1-eer-8s = 0.293`、回执 `training_exit_code: 0`。大小与 sha 见 [STATUS 第 4 节](STATUS.md)。
 - **但回执的 `ok` 仍是 `false`**：冷启动标记只写进 `cloud_launch_lm.log`，回执却去读 `train.log`，于是判成"没看到冷启动"。仓库源码已改成两份日志都读，**r3 冻结包没重打**，那份回执不会自己变对。看到 `ok:false` 先去日志找标记，再判断训练是否失败。
 - 六列数值已经由独立评测跑过（11-07，见 [13 号第 7 节](13-训练权重导出与评测.md)）；但第 5 节那套自动导出与六组汇总入口**没对 LM 跑过**（运行目录下没有 `released/`、`evaluation/`）。
 
@@ -96,7 +96,7 @@ LM 已经跑过了。2026-11-06 收口时各篇文档都写「已提交、排队
 | [`reviews/`](reviews/) | 文字记录、JSON 摘要和图片（10-25 至 11-06） | 每次操作的证据与边界；带日期，按日期读。**未逐篇复核**，链接没死不等于内容正确 |
 | [15 号前半](15-三语料B6八卡短测与正式训练记录.md) | 10-19 至 10-20 的短测与任务更替 | 历史事实；后半有 11-06 与 11-09 状态补充 |
 
-> 历史记录里出现「运行中」「已通过」「可启动」时，都只对应它自己的日期与源码；不能当作今天的状态。历史记录里的 `/root/experiments`、`/root/codex_artifacts` 是 2026-11-09 之前的旧基址（历史路径），保留原样；新产物按 [19 号第 6 节](19-今日工作与后续入口.md) 写 `/root/group-shared/voiceprint` 下的新基址。
+> 历史记录里出现「运行中」「已通过」「可启动」时，都只对应它自己的日期与源码；不能当作今天的状态。历史记录里的 `/root/experiments`、`/root/codex_artifacts` 是 2026-11-09 之前的旧基址（历史路径），已分别迁到 `/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2` 与 `01_正式产物档案`（`/root/codex_artifacts` 现为软链，旧 `/root/experiments` 已不存在）；历史记录里的路径按此映射读。新产物按 [19 号第 6 节](19-今日工作与后续入口.md) 写 `/root/group-shared/voiceprint` 下的新基址。
 
 ---
 

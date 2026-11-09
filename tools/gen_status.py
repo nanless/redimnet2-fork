@@ -49,9 +49,10 @@ STATUS_PATH = REPO / "docs" / "STATUS.md"
 # 存储规范（2026-11-09 起，用户硬性要求）：大数据默认写在
 # /root/group-shared/voiceprint 下——实验产物进 experiments/redimnet2/<实验名>/，
 # 准入材料、账本、评测进 artifacts/redimnet2/<用途>/，开源标注侧车进
-# open_annotation/redimnet2-silver-<日期>/。下面这些 /root/experiments/... 根是
-# 2026-11-09 之前的实验产物，只读，用来生成历史记录；新产物不再写这里。
-EXP_ROOT = Path("/root/experiments/redimnet2")
+# open_annotation/redimnet2-silver-<日期>/。下面这些根是 2026-11-09 之前的实验产物，
+# 现整体位于 /root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2，只读，用来生成
+# 历史记录；新产物不再写这里（旧 /root/experiments 已不存在）。
+EXP_ROOT = Path("/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2")
 B6_ROOT = EXP_ROOT / "b6-mix-official-20261019"
 ANNOT_ROOT = EXP_ROOT / "open-annotation-ultra-20261025"
 V4R2 = ANNOT_ROOT / "native-speed-successor-20261028-v4-r2"
@@ -317,7 +318,8 @@ def artifact_row(label, path: Path):
 
 def short(path: Path):
     s = str(path)
-    for prefix, repl in (("/root/experiments/redimnet2/", "$EXP/"),
+    for prefix, repl in (("/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/", "$EXP/"),
+                         ("/root/experiments/redimnet2/", "$EXP/"),
                          ("/root/experiments/", "$EXPROOT/")):
         if s.startswith(prefix):
             return repl + s[len(prefix):]
@@ -328,8 +330,8 @@ def section_artifacts():
     lines = ["## 4. 已知产物", ""]
     lines.append("sha256 只给前 16 位，够 diff；要完整值用下面第 6 节的命令。")
     lines.append("")
-    lines.append("路径里的 `$EXP` = `/root/experiments/redimnet2`，是 2026-11-09 之前的实验产物根"
-                 "（**历史路径**，只读）。2026-11-09 起新产物写 "
+    lines.append("路径里的 `$EXP` = `/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2`"
+                 "（2026-11-09 迁移前的 `/root/experiments/redimnet2`，**历史路径**，只读）。2026-11-09 起新产物写 "
                  "`/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/`，"
                  "准入材料、账本、评测写 `.../artifacts/redimnet2/<用途>/`。")
     lines.append("")
@@ -429,7 +431,9 @@ def section_submissions():
     lines.append("")
     lines.append("2026-11-09 起交接目录按存储规范写在 "
                  "`/root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/` 下；"
-                 "`20261109` 已就位，更早三代仍在 `/root/experiments/redimnet2/open-annotation-ultra-*/`（历史路径）、迁移中；旧基址只读。归档与跳过规则见 `docs/20-标注结果归档与跳过规则.md`。")
+                 "四代均已归档；2026-11-09 前的旧树整体在 "
+                 "`/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/open-annotation-ultra-*/`"
+                 "（历史路径，只读）。归档与跳过规则见 `docs/20-标注结果归档与跳过规则.md`。")
     lines.append("")
     lines.append("| 代次 | 交接目录 | 任务号（取文件名） | 状态 / 失败原因一句话 | 侧车条数 |")
     lines.append("|---|---|---|---|---|")
@@ -453,7 +457,7 @@ def section_submissions():
         lines.append("| %s | `%s` | `%s` | %s | %s |" % (gen, dirname, task, reason, sidecars))
     lines.append("")
     lines.append("复核：`ls /root/group-shared/voiceprint/open_annotation/redimnet2-silver-*/handoff-*`（新基址）；"
-                 "旧代次用 `ls /root/experiments/redimnet2/open-annotation-ultra-*/handoff-*`（历史路径）；"
+                 "旧代次用 `ls /root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/open-annotation-ultra-*/handoff-*`（历史路径）；"
                  "`find <run> -path '*labels*' -type f | wc -l`；`cat <run>/resources-attempt1/failure.json`")
     return lines
 
@@ -471,13 +475,13 @@ def section_notes():
         "`/root` 与 `/root/group-shared` 是两个不同挂载点，跨挂载点 `mv` 会退化成"
         "“复制 + 删除”（几十万小文件按小时计），所以新数据一开始就写最终位置。"
         "详见 `docs/19-今日工作与后续入口.md` 第 6 节；标注按代次归档、建索引与跳过规则见 `docs/20-标注结果归档与跳过规则.md`。",
-        "- 复核全部产物 sha（下面三条是 2026-11-09 之前的旧基址，**历史路径**；"
+        "- 复核全部产物 sha（下面三条是 2026-11-09 之前的产物，现位于 02 根，**历史路径**；"
         "新产物按上面的规范写新基址）：",
         "",
         "  ```bash",
-        "  # 历史路径（2026-11-09 前的产物仍在这里）",
-        "  sha256sum /root/experiments/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm/models/model_1.pt \\",
-        "            /root/experiments/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn/models/model_{115,120}.pt",
+        "  # 历史路径（2026-11-09 前的产物，2026-11-09 迁移后位于 02 根）",
+        "  sha256sum /root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/b6-mix-official-20261019/lm-from-ptn115-20261106-v1/lm/models/model_1.pt \\",
+        "            /root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/b6-mix-official-20261019/ptn-resume-model47-capture-20261026-v1/ptn/models/model_{115,120}.pt",
         "  ```",
         "",
         "- 本文件由 `python3 tools/gen_status.py` 生成；`--check` 判过期，`--lint` 查正文硬编码。"

@@ -202,7 +202,7 @@ def make_handler(run, window, task):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", default="/root/experiments/redimnet2/open-annotation-ultra-20261025")
+    ap.add_argument("--root", default="/root/group-shared/voiceprint/open_annotation")
     ap.add_argument("--run")
     ap.add_argument("--window", type=int, default=60)
     ap.add_argument("--port", type=int, default=8899)
@@ -210,7 +210,11 @@ def main():
     args = ap.parse_args()
     run = Path(args.run) if args.run else latest_run(Path(args.root))
     if run is None or not (run / "queue").is_dir():
-        raise SystemExit("找不到 run 目录，用 --run 指定")
+        raise SystemExit(
+            "找不到可读的 run 目录：--root=%s 下没有含 queue/ 的 run-*。" % args.root
+            + "用 --run 显式指定，例如 "
+            "/root/group-shared/voiceprint/open_annotation/redimnet2-silver-20261109/"
+            "handoff-v4r2-20261108-v6/run-v6")
     print("serving %s on http://%s:%d/  (window=%dmin)" % (run, args.bind, args.port, args.window), flush=True)
     ThreadingHTTPServer((args.bind, args.port), make_handler(run, args.window, None)).serve_forever()
 

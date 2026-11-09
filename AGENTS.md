@@ -18,9 +18,9 @@
 | 工具产物、准入材料、账本、评测原件：任务表单证据、日志截取、诊断 JSON、ETA、claim 归档、交接脚本 | `/root/group-shared/voiceprint/artifacts/redimnet2/<用途>/` | `artifacts/redimnet2/eval-official-20261108/`（评测）、`artifacts/redimnet2/native-speed-successor-20261028-v1/controls/`（准入与合同）、`artifacts/redimnet2/retired-claims-20261108/`（账本归档）、`artifacts/redimnet2/device-locks/`（设备锁）、`artifacts/redimnet2/repo-handover-20261107/`（交接脚本）、`artifacts/redimnet2/volcengine-submission/<task_id>/`（提交核验） |
 | 开源标注侧车：逐音频标签、分片、租约与队列回执 | `/root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/` | `open_annotation/redimnet2-silver-20261109/handoff-v4r2-20261108-v6/run-v6/` |
 
-- **`/root` 只放代码仓库与临时日志。** 代码在 `/root/code/github_repos/...` 与独立实验树；临时日志用完即弃。`/root/experiments`、`/root/codex_artifacts`、`/root/annotations` 不再作为新产物的写入位置：里面已有的数据原样保留，作为 provenance 只读引用，并在文档里标成“历史路径”；不往里写新批，也不建旧路径别名。
+- **`/root` 只放代码仓库与临时日志。** 代码在 `/root/code/github_repos/...` 与独立实验树；临时日志用完即弃。`/root/experiments` 已于 2026-11-09 整树迁到 `/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2`（旧路径不再存在），`/root/codex_artifacts` 现为指向 `01_正式产物档案` 的兼容软链，`/root/annotations` 不存新产物：这些位置只作 provenance 只读引用，并在文档里标成“历史路径”；不往里写新批，也不建旧路径别名。
 - **为什么不能先写 `/root` 再挪过去**：训练容器里 `/root` 是容器本地盘，`/shared/group-shared`（容器内通常另挂成 `/root/group-shared`）是 vePFS，两者是不同挂载点。跨挂载点的 `mv` 会退化为“复制 + 删除”：几百 GB 的检查点要先占双份空间，复制慢，中途失败还会留下半份文件，看起来像“已经移动”。所以新数据一开始就写 group-shared，不做“先落 `/root` 再搬”。
-- **运行中的任务不因这条规则重启。** 已经写在旧根的训练目录、侧车和冻结包保持原样；2026-11-09 还在跑的任务继续写旧根，文档里用“历史路径”注明。要切换读取位置，先把文件按字节搬到新根并核 sha，再改引用；迁移不重跑实验、不改变判据和统计口径。容器里 group-shared 若是只读挂载，先按平台工作流调成读写或申请权限，不退回 `/root` 本地盘。
+- **运行中的任务不因这条规则重启。** 2026-11-09 起没有继续写旧根的任务；旧根已整体迁走，已经写在其中的训练目录、侧车和冻结包只读，文档里用“历史路径”注明。要切换读取位置，先把文件按字节搬到新根并核 sha，再改引用；迁移不重跑实验、不改变判据和统计口径。容器里 group-shared 若是只读挂载，先按平台工作流调成读写或申请权限，不退回 `/root` 本地盘。
 
 自检（提交任务或写报告前各跑一遍）：
 

@@ -25,9 +25,10 @@ TASK_RE = re.compile(r"t-\d{14}-[a-z0-9]+")
 
 # 存储规范（2026-11-09 起）：侧车与 run 目录写在
 # /root/group-shared/voiceprint/open_annotation/redimnet2-silver-<日期>/ 下；
-# 老代次留在 /root/experiments/... 的旧基址，只读历史。新基址优先。
+# 新基址优先；老代次在 02 根的历史树（2026-11-09 迁移前在 /root/experiments，
+# 旧路径已不存在），只读。
 SILVER_ROOT = Path("/root/group-shared/voiceprint/open_annotation")
-HIST_ROOT = Path("/root/experiments/redimnet2/open-annotation-ultra-20261025")
+HIST_ROOT = Path("/root/dsh-workspaces-mac/02_实验与标注_ReDimNet2/redimnet2/open-annotation-ultra-20261025")
 
 
 def candidate_roots(root=None):
@@ -121,7 +122,7 @@ def render(m, window_minutes: int, task: str | None):
     lines.append("> 不用文件计数——GPFS 上几十万文件要十几分钟，而收据只有几千个。")
     lines.append("> 存储规范（2026-11-09 起）：新 run 根写 "
                  "`/root/group-shared/voiceprint/experiments/redimnet2/<实验名>/`，侧车写 "
-                 "`.../open_annotation/redimnet2-silver-<日期>/`；更早的标注代次也迁往该归档目录，迁移期间旧基址可能还在（历史路径），"
+                 "`.../open_annotation/redimnet2-silver-<日期>/`；四代均已归档；2026-11-09 迁移前的旧树在 02 根（历史路径），"
                  "见 `docs/20-标注结果归档与跳过规则.md`。")
     lines.append("")
     lines.append("## 1. 总量")
@@ -181,7 +182,7 @@ def render(m, window_minutes: int, task: str | None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", help="侧车或旧实验根；省略时先找新基址"
-                    "（/root/group-shared/voiceprint/open_annotation），找不到再回退旧基址")
+                    "（/root/group-shared/voiceprint/open_annotation），找不到再回退 02 根的历史树")
     ap.add_argument("--run", help="直接指定 run 目录；省略则取最新")
     ap.add_argument("--window", type=int, default=60, help="速率窗口（分钟，默认 60）")
     ap.add_argument("--task", help="任务 ID（省略则从 publish-work 文件名自动取）")
